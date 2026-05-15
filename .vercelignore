@@ -1,0 +1,10 @@
+android/
+electron-src/
+release/
+out/
+.git/
+node_modules/
+.next/cache/
+*.exe
+*.log
+*.txt

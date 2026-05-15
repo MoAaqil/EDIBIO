@@ -1,0 +1,22 @@
+{
+    "name": "edibio-desktop",
+    "version": "1.0.0",
+    "main": "main.js",
+    "author": "Edibio",
+    "build": {
+        "appId": "com.edibio",
+        "directories": {
+            "output": "dist"
+        },
+        "win": {
+            "target": [
+                "nsis"
+            ]
+        },
+        "files": [
+            "out/**/*",
+            "main.js",
+            "package.json"
+        ]
+    }
+}

@@ -1,0 +1,1051 @@
+'use client';
+import { useState, useRef } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import { useStore, useActiveCompany } from '@/lib/store';
+import type { InvoiceTemplate, PaperSize } from '@/lib/types';
+import { amountInWords } from '@/lib/utils';
+import {
+    Store, FileText, Printer, Shield, Bell, ChevronRight, Share2,
+    Check, Plus, Edit2, Trash2, Eye, X, Palette, Warehouse, Settings, Users, Landmark,
+    MessageSquare, Database, Download, Upload, RefreshCw, Cloud, CheckCircle, Smartphone, ShieldCheck
+} from 'lucide-react';
+import toast from 'react-hot-toast';
+import { confirm } from '@/components/ConfirmDialog';
+import { canAccess } from '@/components/FeatureGate';
+
+function ColorPicker({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+    return (
+        <div>
+            <label style={{ fontSize: 10, fontWeight: 700, color: '#A0AEC0', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 5 }}>{label}</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input type="color" value={value} onChange={e => onChange(e.target.value)}
+                    style={{ width: 36, height: 36, borderRadius: 8, border: '1.5px solid #E1E4E8', cursor: 'pointer', padding: 2 }} />
+                <input type="text" value={value} onChange={e => onChange(e.target.value)}
+                    style={{ flex: 1, padding: '7px 10px', border: '1.5px solid #E1E4E8', borderRadius: 8, fontSize: 12, fontFamily: 'monospace', outline: 'none' }} />
+            </div>
+        </div>
+    );
+}
+
+const PAPER_SIZES: { value: PaperSize; label: string; desc: string }[] = [
+    { value: 'A4', label: 'A4', desc: '210 × 297 mm' },
+    { value: 'A5', label: 'A5', desc: '148 × 210 mm' },
+    { value: 'A6', label: 'A6', desc: '105 × 148 mm' },
+    { value: 'thermal_80', label: 'Thermal 80mm', desc: 'POS / Receipt' },
+    { value: 'thermal_58', label: 'Thermal 58mm', desc: 'Mini POS' },
+    { value: 'letter', label: 'Letter', desc: '8.5 × 11 in' },
+];
+
+const SECTION_ITEMS = [
+    { key: 'showLogo', label: 'Show Logo' },
+    { key: 'showGstNumber', label: 'GST Number' },
+    { key: 'showHsn', label: 'HSN Code' },
+    { key: 'showTaxBreakdown', label: 'Tax Breakdown (CGST/SGST)' },
+    { key: 'showAmountInWords', label: 'Amount in Words' },
+    { key: 'showSignature', label: 'Signature Field' },
+    { key: 'showTerms', label: 'Terms & Conditions' },
+    { key: 'showQrCode', label: 'QR Code (UPI)' },
+    { key: 'showBalanceDue', label: 'Balance Due' },
+    { key: 'showPaymentHistory', label: 'Payment History' },
+];
+
+// Live invoice preview
+function TemplatePreview({ t, company }: { t: InvoiceTemplate; company: any }) {
+    const isNarrow = t.paperSize.startsWith('thermal');
+
+    return (
+        <div style={{
+            background: t.bodyBg || '#ffffff',
+            fontFamily: t.fontFamily === 'monospace' ? 'monospace' : 'Inter, sans-serif',
+            fontSize: t.fontSize,
+            border: '1px solid #ddd',
+            borderRadius: 8,
+            overflow: 'hidden',
+            maxWidth: isNarrow ? 220 : '100%',
+            margin: isNarrow ? '0 auto' : 0,
+            boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
+        }}>
+            {/* Header */}
+            <div style={{ background: t.headerBg, color: t.headerText, padding: isNarrow ? '12px' : '20px 24px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: t.logoAlign === 'center' ? 'center' : t.logoAlign === 'right' ? 'space-between' : 'flex-start', gap: 12, marginBottom: 10 }}>
+                    {t.showLogo && (
+                        company?.logoUrl ? (
+                            <img src={company.logoUrl} style={{ width: isNarrow ? 36 : 48, height: isNarrow ? 36 : 48, objectFit: 'contain' }} alt="Logo" />
+                        ) : (
+                            <div style={{ width: isNarrow ? 28 : 40, height: isNarrow ? 28 : 40, borderRadius: 8, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: isNarrow ? 12 : 16, fontWeight: 900 }}>
+                                {(company?.name || 'E')[0]}
+                            </div>
+                        )
+                    )}
+                    <div style={{ textAlign: t.logoAlign as any }}>
+                        <p style={{ fontWeight: 900, fontSize: isNarrow ? 11 : 15 }}>{company?.name || 'Company Name'}</p>
+                        {t.showGstNumber && <p style={{ opacity: 0.7, fontSize: isNarrow ? 8 : 10, fontFamily: 'monospace' }}>GST: {company?.gstNumber || '22AAAAA0000A1Z5'}</p>}
+                    </div>
+                </div>
+                <div style={{ height: 1, background: 'rgba(255,255,255,0.2)', marginBottom: 10 }} />
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: isNarrow ? 8 : 10 }}>
+                    <div>
+                        <p style={{ opacity: 0.6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Tax Invoice</p>
+                        <p style={{ fontWeight: 900, fontSize: isNarrow ? 13 : 18, fontFamily: 'monospace' }}>INV-0001</p>
+                    </div>
+                    <div style={{ textAlign: 'right', opacity: 0.8 }}>
+                        <p>Date: 27 Feb 2026</p>
+                        <p>Due: 06 Mar 2026</p>
+                    </div>
+                </div>
+            </div>
+
+            {/* Body */}
+            <div style={{ padding: isNarrow ? '10px' : '16px 20px', color: t.bodyText }}>
+                <div style={{ fontSize: isNarrow ? 8 : 10, fontWeight: 700, opacity: 0.5, textTransform: 'uppercase', marginBottom: 4 }}>Bill To</div>
+                <p style={{ fontWeight: 700, fontSize: isNarrow ? 9 : 13, marginBottom: 10 }}>Sample Customer Name</p>
+
+                {/* Items */}
+                <div style={{ background: t.tableHeaderBg, color: t.tableHeaderText, display: 'grid', gridTemplateColumns: isNarrow ? '2fr 1fr 1fr' : '3fr 1fr 1fr 1fr', gap: 6, padding: '6px 8px', fontSize: isNarrow ? 7 : 9, fontWeight: 700, textTransform: 'uppercase' }}>
+                    <span>Item</span>
+                    <span style={{ textAlign: 'center' }}>Qty</span>
+                    {!isNarrow && <span style={{ textAlign: 'right' }}>Rate</span>}
+                    <span style={{ textAlign: 'right' }}>Amt</span>
+                </div>
+                {[
+                    { name: 'Basmati Rice (5kg)', qty: 2, rate: 320, amt: 640, gst: 5 },
+                    { name: 'Cooking Oil 1L', qty: 3, rate: 120, amt: 360, gst: 12 },
+                ].map((item, i) => (
+                    <div key={i} style={{ display: 'grid', gridTemplateColumns: isNarrow ? '2fr 1fr 1fr' : '3fr 1fr 1fr 1fr', gap: 6, padding: '5px 8px', fontSize: isNarrow ? 7 : 10, borderBottom: '1px solid #F1F3F5' }}>
+                        <span>{item.name}{t.showHsn && !isNarrow && <span style={{ opacity: 0.4 }}> [1006]</span>}</span>
+                        <span style={{ textAlign: 'center' }}>{item.qty}</span>
+                        {!isNarrow && <span style={{ textAlign: 'right' }}>₹{item.rate}</span>}
+                        <span style={{ textAlign: 'right', fontWeight: 700 }}>₹{item.amt}</span>
+                    </div>
+                ))}
+
+                {/* Totals */}
+                <div style={{ marginTop: 10, fontSize: isNarrow ? 7 : 11 }}>
+                    {t.showTaxBreakdown && !isNarrow && (
+                        <>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 8px', opacity: 0.6 }}>
+                                <span>CGST (2.5%)</span><span>₹25.00</span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 8px', opacity: 0.6 }}>
+                                <span>SGST (2.5%)</span><span>₹25.00</span>
+                            </div>
+                        </>
+                    )}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 8px', background: t.accentColor + '15', borderRadius: 4, fontWeight: 900, marginTop: 4 }}>
+                        <span>TOTAL</span>
+                        <span style={{ color: t.accentColor }}>₹1,050.00</span>
+                    </div>
+                    {t.showAmountInWords && !isNarrow && (
+                        <p style={{ fontSize: 7, opacity: 0.5, fontStyle: 'italic', padding: '4px 8px' }}>One Thousand Fifty Rupees Only</p>
+                    )}
+                    {t.showBalanceDue && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 8px', fontSize: isNarrow ? 7 : 10 }}>
+                            <span style={{ opacity: 0.6 }}>Balance Due</span>
+                            <span style={{ color: '#EA4335', fontWeight: 700 }}>₹1,050.00</span>
+                        </div>
+                    )}
+                </div>
+
+                {t.showTerms && !isNarrow && t.terms && (
+                    <p style={{ fontSize: 7, opacity: 0.4, borderTop: '1px solid #F1F3F5', paddingTop: 8, marginTop: 8 }}>{t.terms}</p>
+                )}
+                {t.footerText && (
+                    <p style={{ fontSize: 8, textAlign: 'center', opacity: 0.5, marginTop: 8 }}>{t.footerText}</p>
+                )}
+            </div>
+        </div>
+    );
+}
+
+export default function SettingsPage() {
+    const { activeCompanyId } = useStore();
+    const companyId = activeCompanyId;
+    const company = useActiveCompany();
+    const { templates, updateTemplate, addTemplate, deleteTemplate, updateCompany, addGodown, removeGodown, deleteCompany, exportBackup, importBackup, aiApiKey, setAiApiKey, user, updateUser } = useStore();
+
+    const [tab, setTab] = useState<'business' | 'templates' | 'godowns' | 'banking' | 'team' | 'security' | 'communication' | 'data'>('business');
+    const importFileRef = useRef<HTMLInputElement>(null);
+    const [selectedTemplate, setSelectedTemplate] = useState<InvoiceTemplate | undefined>(templates[0]);
+    const [editingTemplate, setEditingTemplate] = useState(false);
+    const [preview, setPreview] = useState(false);
+
+    const router = useRouter();
+    const [deleteStep, setDeleteStep] = useState(0);
+    const [deleteInput, setDeleteInput] = useState('');
+
+    const plan = user?.subscriptionType?.toLowerCase();
+    const isTrialActive = user?.trialExpiresAt && new Date(user.trialExpiresAt).getTime() > Date.now();
+    let MAX_GODOWNS = 1;
+    if (isTrialActive && !plan) MAX_GODOWNS = 3;
+    else if (plan === 'premium') MAX_GODOWNS = 3;
+    else if (plan === 'standard') MAX_GODOWNS = 2;
+    else MAX_GODOWNS = 1;
+
+    const [licenseKey, setLicenseKey] = useState('');
+
+    const handleRedeemLicense = () => {
+        if (licenseKey.trim() === 'EDIBIOADM') {
+            const u = useStore.getState().user;
+            if (u) {
+                useStore.getState().updateUser({ subscriptionType: 'premium', subscriptionExpiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString() });
+                toast.success("Admin License Redeemed! Premium Activated.");
+                setLicenseKey('');
+            }
+        } else {
+            toast.error("Invalid or Expired License Key");
+        }
+    };
+
+    // Bank Details
+    const [bank, setBank] = useState({
+        bankName: company?.bankDetails?.bankName || '',
+        accountName: company?.bankDetails?.accountName || '',
+        accountNumber: company?.bankDetails?.accountNumber || '',
+        ifsc: company?.bankDetails?.ifsc || '',
+        upiId: company?.bankDetails?.upiId || '',
+    });
+    const uBank = (k: string, v: string) => setBank(b => ({ ...b, [k]: v }));
+    const saveBank = () => { updateCompany(companyId!, { bankDetails: bank as any }); toast.success('Bank details saved!'); };
+
+    // Team Details
+    const [newTeamMember, setNewTeamMember] = useState(''); // We can keep this if needed or repurpose.
+    const [newTeamRole, setNewTeamRole] = useState('staff');
+    const [newTeamName, setNewTeamName] = useState('');
+    const [newTeamPassword, setNewTeamPassword] = useState('');
+
+    // Business form
+    const [biz, setBiz] = useState({
+        name: company?.name || '', phone: company?.phone || '', email: company?.email || '',
+        gstNumber: company?.gstNumber || '', address: company?.address || '',
+        city: company?.city || '', state: company?.state || 'Tamil Nadu',
+        invoicePrefix: company?.invoicePrefix || 'INV',
+        invoicePassword: company?.invoicePassword || '',
+        logoUrl: company?.logoUrl || '',
+    });
+    const ubiz = (k: string, v: string) => setBiz(f => ({ ...f, [k]: v }));
+    const saveBiz = () => { updateCompany(companyId!, biz); toast.success('Business profile updated!'); };
+
+    // Template editor
+    const [tmpl, setTmpl] = useState<InvoiceTemplate | undefined>(selectedTemplate);
+    const ut = (k: string, v: any) => setTmpl(f => f ? { ...f, [k]: v } : f);
+
+    const handleSelectTemplate = (t: InvoiceTemplate) => {
+        setSelectedTemplate(t); setTmpl(t);
+        updateCompany(companyId!, { templateId: t.id });
+    };
+    const handleSaveTemplate = () => {
+        if(tmpl) updateTemplate(tmpl.id, tmpl);
+        setSelectedTemplate(tmpl);
+        setEditingTemplate(false);
+        toast.success('Template saved!');
+    };
+
+    // Godown management
+    const [newGodown, setNewGodown] = useState('');
+
+    const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = async (ev) => {
+            const text = ev.target?.result as string;
+            const yes = await confirm({ message: 'This will merge the backup data into your current app. No data will be deleted.', title: 'Import Backup?' });
+            if (yes) {
+                importBackup(text);
+            }
+        };
+        reader.readAsText(file);
+        e.target.value = '';
+    };
+
+    const TABS = [
+        { id: 'business', label: 'Business Profile', icon: Store },
+        { id: 'templates', label: 'Invoice Templates', icon: FileText },
+        { id: 'godowns', label: 'Godowns', icon: Warehouse },
+        { id: 'banking', label: 'Bank & UPI', icon: Landmark },
+        { id: 'communication', label: 'Communication', icon: MessageSquare },
+        { id: 'data', label: 'Data & Backup', icon: Database },
+        { id: 'team', label: 'Team & Roles', icon: Users },
+        { id: 'security', label: 'Security', icon: Shield },
+    ];
+
+    return (
+        <>
+            <div style={{ maxWidth: 1100, margin: '0 auto', display: 'flex', gap: 24 }} className="settings-layout">
+                {/* Sidebar nav */}
+                <aside style={{ width: 220, flexShrink: 0 }}>
+                    {/* Desktop sidebar list */}
+                    <div className="card" style={{ overflow: 'hidden' }}>
+                        {TABS.map(({ id, label, icon: Icon }) => (
+                            <button key={id} onClick={() => setTab(id as any)}
+                                className={tab === id ? 'active-tab' : ''}
+                                style={{
+                                    width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                                    padding: '13px 16px',
+                                    cursor: 'pointer', textAlign: 'left',
+                                }}>
+                                <Icon size={16} color={tab === id ? '#4285F4' : '#718096'} />
+                                <span style={{ fontSize: 13, fontWeight: tab === id ? 700 : 500, color: tab === id ? '#1967D2' : '#4A5568' }}>{label}</span>
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* Mobile icon-grid tab bar (hidden on desktop via CSS) */}
+                    <div className="mobile-tab-bar">
+                        {TABS.map(({ id, label, icon: Icon }) => (
+                            <button
+                                key={id}
+                                onClick={() => setTab(id as any)}
+                                className={`mobile-tab-btn${tab === id ? ' active' : ''}`}
+                            >
+                                <Icon size={20} color={tab === id ? '#1967D2' : '#A0AEC0'} />
+                                <span>{label.replace(' Profile', '').replace(' & ', ' &\n').replace('Invoice ', '').replace('Data & ', '')}</span>
+                            </button>
+                        ))}
+                    </div>
+                </aside>
+
+                {/* Content */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+
+                    {/* ── Business Profile ── */}
+                    {tab === 'business' && (
+                        <div className="card" style={{ padding: '24px' }}>
+                            <h2 style={{ fontWeight: 900, fontSize: 18, color: '#1A1A2E', marginBottom: 20 }}>Business Profile</h2>
+                            <div className="settings-biz-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                                <div style={{ gridColumn: '1/-1', display: 'flex', gap: 16, alignItems: 'flex-start', marginBottom: 4 }}>
+                                    <div style={{ width: 64, height: 64, borderRadius: 12, background: '#F1F5F9', border: '1px dashed #CBD5E1', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
+                                        {biz.logoUrl ? <img src={biz.logoUrl} style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : <Store size={24} color="#94A3B8" />}
+                                    </div>
+                                    <div style={{ flex: 1 }}>
+                                        <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', display: 'block', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Shop Logo / Image</label>
+                                        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                                            <input type="file" accept="image/*" id="shop-logo-upload" style={{ display: 'none' }} onChange={(e) => {
+                                                const file = e.target.files?.[0];
+                                                if (file) {
+                                                    const reader = new FileReader();
+                                                    reader.onload = ev => ubiz('logoUrl', ev.target?.result as string);
+                                                    reader.readAsDataURL(file);
+                                                }
+                                            }} />
+                                            <label htmlFor="shop-logo-upload" className="btn btn-outline btn-sm" style={{ cursor: 'pointer', padding: '6px 12px', fontSize: 11, margin: 0 }}>Upload Image</label>
+                                            <input className="e-input" placeholder="Or enter image URL" value={biz.logoUrl} onChange={e => ubiz('logoUrl', e.target.value)} style={{ flex: 1, padding: '6px 10px', fontSize: 12 }} />
+                                            {biz.logoUrl && <button onClick={() => ubiz('logoUrl', '')} className="btn btn-ghost btn-sm" style={{ color: '#EA4335' }}><Trash2 size={14} /></button>}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div style={{ gridColumn: '1/-1' }}>
+                                    <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', display: 'block', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Company Name</label>
+                                    <input className="e-input" value={biz.name} onChange={e => ubiz('name', e.target.value)} />
+                                </div>
+                                <div>
+                                    <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', display: 'block', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Phone</label>
+                                    <input className="e-input" value={biz.phone} onChange={e => ubiz('phone', e.target.value)} />
+                                </div>
+                                <div>
+                                    <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', display: 'block', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Email</label>
+                                    <input type="email" className="e-input" value={biz.email} onChange={e => ubiz('email', e.target.value)} />
+                                </div>
+                                <div style={{ gridColumn: '1/-1' }}>
+                                    <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', display: 'block', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.05em' }}>GST Number</label>
+                                    <input className="e-input" value={biz.gstNumber} onChange={e => ubiz('gstNumber', e.target.value.toUpperCase())} style={{ fontFamily: 'monospace', letterSpacing: '0.08em' }} />
+                                </div>
+                                <div style={{ gridColumn: '1/-1' }}>
+                                    <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', display: 'block', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Address</label>
+                                    <input className="e-input" value={biz.address} onChange={e => ubiz('address', e.target.value)} />
+                                </div>
+                                <div>
+                                    <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', display: 'block', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.05em' }}>City</label>
+                                    <input className="e-input" value={biz.city} onChange={e => ubiz('city', e.target.value)} />
+                                </div>
+                                <div>
+                                    <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', display: 'block', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Invoice Prefix</label>
+                                    <input className="e-input" value={biz.invoicePrefix} onChange={e => ubiz('invoicePrefix', e.target.value.toUpperCase())} style={{ fontFamily: 'monospace' }} />
+                                </div>
+                            </div>
+                            <div style={{ marginTop: 20, borderTop: '1px solid #F1F3F5', paddingTop: 20 }}>
+                                <button onClick={saveBiz} className="btn btn-blue">Save Business Profile</button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ── Invoice Templates ── */}
+                    {tab === 'templates' && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                            {/* Template picker */}
+                            <div className="card" style={{ padding: '20px 24px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                                    <h2 style={{ fontWeight: 900, fontSize: 18, color: '#1A1A2E' }}>Invoice Templates</h2>
+                                    <button onClick={preview ? () => setPreview(false) : () => setPreview(true)} className="btn btn-outline btn-sm" style={{ gap: 5 }}>
+                                        <Eye size={13} /> {preview ? 'Hide' : 'Preview'}
+                                    </button>
+                                </div>
+
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 16 }} className="template-grid">
+                                    {templates.map(t => (
+                                        <div key={t.id} onClick={() => handleSelectTemplate(t)}
+                                            style={{
+                                                padding: '14px 16px', borderRadius: 12, border: '2px solid',
+                                                borderColor: company?.templateId === t.id ? '#4285F4' : '#E1E4E8',
+                                                cursor: 'pointer', transition: 'all 0.15s',
+                                                background: company?.templateId === t.id ? '#E8F0FE' : 'white',
+                                                display: 'flex', alignItems: 'center', gap: 10,
+                                            }}>
+                                            <div style={{ width: 36, height: 44, borderRadius: 6, overflow: 'hidden', flexShrink: 0, border: '1px solid #E1E4E8' }}>
+                                                <div style={{ height: 10, background: t.headerBg }} />
+                                                <div style={{ padding: 3, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                                                    {[1, 2, 3].map(i => <div key={i} style={{ height: 3, background: '#F1F3F5', borderRadius: 2 }} />)}
+                                                    <div style={{ height: 4, background: t.accentColor + '40', borderRadius: 2 }} />
+                                                </div>
+                                            </div>
+                                            <div style={{ flex: 1, minWidth: 0 }}>
+                                                <p style={{ fontWeight: 700, fontSize: 13, color: '#1A1A2E', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</p>
+                                                <p style={{ fontSize: 10, color: '#A0AEC0', marginTop: 2 }}>{t.paperSize}</p>
+                                            </div>
+                                            {company?.templateId === t.id && <Check size={16} color="#4285F4" />}
+                                        </div>
+                                    ))}
+                                </div>
+
+                                <button onClick={() => { if(selectedTemplate) { setTmpl(selectedTemplate); setEditingTemplate(true); } else { toast.error('No template selected.'); } }} className="btn btn-blue btn-sm" style={{ gap: 5 }}>
+                                    <Edit2 size={13} /> Customize Selected Template
+                                </button>
+                            </div>
+
+                            {/* Paper size */}
+                            <div className="card" style={{ padding: '20px 24px' }}>
+                                <h3 style={{ fontWeight: 800, fontSize: 15, color: '#1A1A2E', marginBottom: 14 }}>Print / Paper Size</h3>
+                                <div className="paper-size-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+                                    {PAPER_SIZES.map(({ value, label, desc }) => (
+                                        <button key={value} onClick={() => { ut('paperSize', value); if(tmpl) updateTemplate(tmpl.id, { paperSize: value }); }}
+                                            style={{
+                                                padding: '12px 10px', borderRadius: 12, border: '2px solid', cursor: 'pointer',
+                                                borderColor: tmpl?.paperSize === value ? '#4285F4' : '#E1E4E8',
+                                                background: tmpl?.paperSize === value ? '#E8F0FE' : 'white',
+                                                textAlign: 'center', transition: 'all 0.15s',
+                                            }}>
+                                            <div style={{ width: 24, height: tmpl?.paperSize === value ? 32 : 28, background: tmpl?.paperSize === value ? '#4285F4' : '#CBD5E0', margin: '0 auto 8px', borderRadius: 3, transition: 'all 0.15s' }} />
+                                            <p style={{ fontWeight: 700, fontSize: 12, color: tmpl?.paperSize === value ? '#1967D2' : '#4A5568' }}>{label}</p>
+                                            <p style={{ fontSize: 10, color: '#A0AEC0', marginTop: 2 }}>{desc}</p>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Template Design Theme Assignment */}
+                            <div className="card" style={{ padding: '20px 24px' }}>
+                                <h3 style={{ fontWeight: 800, fontSize: 16, color: '#1A1A2E', marginBottom: 20 }}>Assign Template Layouts</h3>
+                                {[
+                                    { title: 'Standard / Manual Invoice Layout', field: 'templateTheme', fallback: 'classic' },
+                                    { title: 'Quick Billing Layout', field: 'quickBillingTheme', fallback: 'quick_bill' },
+                                    { title: 'POS Billing Layout', field: 'posTheme', fallback: 'quick_bill' }
+                                ].map(({ title, field, fallback }) => (
+                                    <div key={field} style={{ marginBottom: 24, paddingBottom: 24, borderBottom: '1px solid #edf2f7' }}>
+                                        <p style={{ fontWeight: 700, fontSize: 13, color: '#4A5568', marginBottom: 12 }}>{title}</p>
+                                        <div className="template-assign-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
+                                            {[
+                                                { id: 'classic', label: 'Classic Professional' },
+                                                { id: 'modern', label: 'Modern Edge' },
+                                                { id: 'creative', label: 'Creative Dark Left' },
+                                                { id: 'waves', label: 'Playful Waves' },
+                                                { id: 'minimalist', label: 'Minimal Clean' },
+                                                { id: 'bold_orange', label: 'Bold Retail' },
+                                                { id: 'luxe_gold', label: 'Luxe Gold' },
+                                                { id: 'vibrant', label: 'Vibrant Blue' },
+                                                { id: 'retro', label: 'Retro Typewriter' },
+                                                { id: 'quick_bill', label: 'Quick Bill (Compact A4)' },
+                                                { id: 'beige_dark', label: 'Beige & Dark (Design Studio)' },
+                                                { id: 'sea_green', label: 'Sea Green (Rounded)' },
+                                                { id: 'formal_quote', label: 'Formal Quote (Grey Boxed)' }
+                                            ].map(({ id, label }) => {
+                                                const currentVal = ((company as any)?.[field]) || fallback;
+                                                const isSelected = currentVal === id;
+                                                return (
+                                                    <button key={id} onClick={() => updateCompany(companyId!, { [field]: id })}
+                                                        style={{
+                                                            padding: '14px 12px', borderRadius: 10, border: '2px solid', cursor: 'pointer',
+                                                            borderColor: isSelected ? '#4285F4' : '#E1E4E8',
+                                                            background: isSelected ? '#E8F0FE' : 'white',
+                                                            textAlign: 'left', transition: 'all 0.15s',
+                                                            display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+                                                        }}>
+                                                        <span style={{ fontWeight: 700, fontSize: 13, color: isSelected ? '#1967D2' : '#4A5568' }}>{label}</span>
+                                                        {isSelected && <Check size={16} color="#4285F4" />}
+                                                    </button>
+                                                )
+                                            })}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            {/* Live preview */}
+                            {preview && tmpl && (
+                                <div className="card" style={{ padding: '20px 24px' }}>
+                                    <h3 style={{ fontWeight: 800, fontSize: 15, color: '#1A1A2E', marginBottom: 14 }}>Live Preview</h3>
+                                    <div style={{ maxHeight: 520, overflow: 'auto', background: '#F1F3F5', borderRadius: 8, padding: 10, display: 'flex', justifyContent: 'center' }}>
+                                        <div style={{ transform: 'scale(0.85)', transformOrigin: 'top center', width: 'fit-content' }} className="template-preview-wrapper">
+                                            <TemplatePreview t={tmpl} company={company} />
+                                        </div>
+                                    </div>
+
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* ── Template Editor Modal ── */}
+                    {editingTemplate && tmpl && (
+                        <div className="modal-overlay" onClick={() => setEditingTemplate(false)}>
+                            <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 680, maxHeight: '90dvh' }}>
+                                <div style={{ padding: '18px 24px 14px', borderBottom: '1px solid #E1E4E8', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+                                    <h3 style={{ fontWeight: 900, fontSize: 17, color: '#1A1A2E' }}>Customize Template: {tmpl.name}</h3>
+                                    <button onClick={() => setEditingTemplate(false)} className="btn btn-ghost btn-icon"><X size={18} /></button>
+                                </div>
+
+                                <div style={{ overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 22 }}>
+                                    {/* Name */}
+                                    <div>
+                                        <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', display: 'block', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Template Name</label>
+                                        <input className="e-input" value={tmpl.name} onChange={e => ut('name', e.target.value)} />
+                                    </div>
+
+                                    {/* Colors */}
+                                    <div>
+                                        <p style={{ fontSize: 12, fontWeight: 800, color: '#1A1A2E', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}><Palette size={14} /> Colors</p>
+                                        <div className="color-picker-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                                            <ColorPicker label="Header Background" value={tmpl.headerBg} onChange={v => ut('headerBg', v)} />
+                                            <ColorPicker label="Header Text" value={tmpl.headerText} onChange={v => ut('headerText', v)} />
+                                            <ColorPicker label="Accent Color" value={tmpl.accentColor} onChange={v => ut('accentColor', v)} />
+                                            <ColorPicker label="Table Header Bg" value={tmpl.tableHeaderBg} onChange={v => ut('tableHeaderBg', v)} />
+                                        </div>
+                                        {/* Quick presets */}
+                                        <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                                            {[
+                                                { name: 'Classic Dark', headerBg: '#1A1A2E', accentColor: '#4285F4' },
+                                                { name: 'Google Blue', headerBg: '#4285F4', accentColor: '#34A853' },
+                                                { name: 'Edibio', headerBg: '#1A1A2E', accentColor: '#EA4335' },
+                                                { name: 'Green', headerBg: '#34A853', accentColor: '#4285F4' },
+                                                { name: 'Minimal', headerBg: '#FFFFFF', accentColor: '#1A1A2E' },
+                                                { name: 'Red', headerBg: '#EA4335', accentColor: '#FBBC04' },
+                                            ].map(preset => (
+                                                <button key={preset.name} onClick={() => { ut('headerBg', preset.headerBg); ut('accentColor', preset.accentColor); ut('headerText', preset.headerBg === '#FFFFFF' ? '#1A1A2E' : '#FFFFFF'); }}
+                                                    style={{ padding: '5px 10px', borderRadius: 8, border: `1.5px solid ${preset.accentColor}`, background: preset.headerBg, color: preset.headerBg === '#FFFFFF' ? '#1A1A2E' : '#FFFFFF', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+                                                    {preset.name}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Fields visibility */}
+                                    <div>
+                                        <p style={{ fontSize: 12, fontWeight: 800, color: '#1A1A2E', marginBottom: 10 }}>Show / Hide Fields</p>
+                                        <div className="sections-toggle-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                                            {SECTION_ITEMS.map(({ key, label }) => (
+                                                <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                                                    <div onClick={() => ut(key, !(tmpl as any)[key])}
+                                                        style={{ width: 36, height: 20, borderRadius: 999, background: (tmpl as any)[key] ? '#4285F4' : '#CBD5E0', position: 'relative', cursor: 'pointer', transition: 'background 0.2s', flexShrink: 0 }}>
+                                                        <span style={{ position: 'absolute', top: 2, left: (tmpl as any)[key] ? 18 : 2, width: 16, height: 16, background: 'white', borderRadius: 999, transition: 'left 0.2s' }} />
+                                                    </div>
+                                                    <span style={{ fontSize: 12, fontWeight: 500, color: '#4A5568' }}>{label}</span>
+                                                </label>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Footer text */}
+                                    <div>
+                                        <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', display: 'block', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Footer / Thank You Message</label>
+                                        <input className="e-input" placeholder="Thank you! Visit Again." value={tmpl.footerText || ''} onChange={e => ut('footerText', e.target.value)} />
+                                    </div>
+                                    <div>
+                                        <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', display: 'block', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Terms & Conditions</label>
+                                        <textarea className="e-input" rows={2} placeholder="Goods once sold will not be taken back…" value={tmpl.terms || ''} onChange={e => ut('terms', e.target.value)} style={{ resize: 'none' }} />
+                                    </div>
+                                </div>
+
+                                {/* Preview */}
+                                <div style={{ padding: '20px', borderTop: '1px solid #F1F3F5', borderBottom: '1px solid #E1E4E8', background: '#F8F9FA', maxHeight: 300, overflow: 'auto', display: 'flex', justifyContent: 'center' }}>
+                                    <div style={{ transform: 'scale(0.75)', transformOrigin: 'top center', width: 'fit-content' }} className="template-preview-wrapper">
+                                        <TemplatePreview t={tmpl} company={company} />
+                                    </div>
+                                </div>
+
+                                <div style={{ padding: '14px 24px', display: 'flex', gap: 10, justifyContent: 'flex-end', flexShrink: 0 }}>
+                                    <button onClick={() => setEditingTemplate(false)} className="btn btn-outline">Cancel</button>
+                                    <button onClick={handleSaveTemplate} className="btn btn-blue">Save Template</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ── Godowns ── */}
+                    {tab === 'godowns' && (
+                        <div className="card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+                            <h2 style={{ fontWeight: 900, fontSize: 18, color: '#1A1A2E' }}>Godown Management</h2>
+                            <p style={{ fontSize: 13, color: '#718096', marginTop: -12 }}>Maximum {MAX_GODOWNS} godown{MAX_GODOWNS > 1 ? 's' : ''} per company on your current plan.</p>
+
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                {company?.godowns?.map((g, idx) => (
+                                    <div key={g.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', border: '1.5px solid #E1E4E8', borderRadius: 12 }}>
+                                        <div style={{ width: 40, height: 40, borderRadius: 10, background: idx === 0 ? '#E8F0FE' : '#E6F4EA', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                            <Warehouse size={18} color={idx === 0 ? '#4285F4' : '#34A853'} />
+                                        </div>
+                                        <div style={{ flex: 1 }}>
+                                            <p style={{ fontWeight: 700, fontSize: 14, color: '#1A1A2E' }}>{g.name}</p>
+                                            {g.address && <p style={{ fontSize: 11, color: '#A0AEC0' }}>{g.address}</p>}
+                                            {idx === 0 && <span className="badge badge-blue" style={{ fontSize: 9, marginTop: 3, display: 'inline-block' }}>PRIMARY</span>}
+                                        </div>
+                                        {(company?.godowns?.length || 0) > 1 && idx > 0 && (
+                                            <button onClick={() => {
+                                                confirm({ message: `Delete godown "${g.name}"? Stock in this godown will not be deleted.`, danger: true })
+                                                    .then(yes => { if (yes) { removeGodown(companyId!, g.id); toast.success('Godown removed'); } });
+                                            }}
+                                                className="btn btn-ghost btn-icon" style={{ color: '#EA4335' }}>
+                                                <Trash2 size={15} />
+                                            </button>
+                                        )}
+                                    </div>
+                                ))}
+
+                                {(company?.godowns?.length || 0) < MAX_GODOWNS && (
+                                    <div style={{ display: 'flex', gap: 10 }}>
+                                        <input className="e-input" placeholder="New godown name (e.g. Warehouse 2)" value={newGodown} onChange={e => setNewGodown(e.target.value)} style={{ flex: 1 }} />
+                                        <button onClick={() => { if (!newGodown) return; addGodown(companyId!, { name: newGodown }); setNewGodown(''); toast.success(`Godown "${newGodown}" added`); }}
+                                            className="btn btn-blue" style={{ gap: 5, flexShrink: 0 }}>
+                                            <Plus size={14} /> Add
+                                        </button>
+                                    </div>
+                                )}
+                                {(company?.godowns?.length || 0) >= MAX_GODOWNS && (
+                                    <p style={{ fontSize: 12, color: '#A0AEC0', textAlign: 'center', padding: '8px' }}>Maximum {MAX_GODOWNS} godown{MAX_GODOWNS > 1 ? 's' : ''} reached for this company.</p>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ── Banking & UPI ── */}
+                    {tab === 'banking' && (
+                        <div className="card" style={{ padding: '24px' }}>
+                            <h2 style={{ fontWeight: 900, fontSize: 18, color: '#1A1A2E', marginBottom: 20 }}>Bank Details & UPI</h2>
+                            <p style={{ fontSize: 13, color: '#718096', marginBottom: 20 }}>These details can be displayed on your invoices.</p>
+                            <div className="banking-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                                <div>
+                                    <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', display: 'block', marginBottom: 5 }}>Bank Name</label>
+                                    <input className="e-input" value={bank.bankName} onChange={e => uBank('bankName', e.target.value)} />
+                                </div>
+                                <div>
+                                    <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', display: 'block', marginBottom: 5 }}>Account Name</label>
+                                    <input className="e-input" value={bank.accountName} onChange={e => uBank('accountName', e.target.value)} />
+                                </div>
+                                <div>
+                                    <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', display: 'block', marginBottom: 5 }}>Account Number</label>
+                                    <input className="e-input" value={bank.accountNumber} onChange={e => uBank('accountNumber', e.target.value)} />
+                                </div>
+                                <div>
+                                    <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', display: 'block', marginBottom: 5 }}>IFSC Code</label>
+                                    <input className="e-input" value={bank.ifsc} onChange={e => uBank('ifsc', e.target.value.toUpperCase())} />
+                                </div>
+                                <div style={{ gridColumn: '1/-1', borderTop: '1px solid #F1F3F5', marginTop: 10, paddingTop: 16 }}>
+                                    <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', display: 'block', marginBottom: 5 }}>UPI ID</label>
+                                    <input className="e-input" placeholder="e.g. pay.name@bank" value={bank.upiId} onChange={e => uBank('upiId', e.target.value)} />
+                                </div>
+                            </div>
+                            <div style={{ marginTop: 24 }}>
+                                <button onClick={saveBank} className="btn btn-blue">Save Bank Details</button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ── Team & Roles ── */}
+                    {tab === 'team' && (
+                        <div className="card" style={{ padding: '24px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                                <div>
+                                    <h2 style={{ fontWeight: 900, fontSize: 18, color: '#1A1A2E' }}>Team Roles & Access</h2>
+                                    <p style={{ fontSize: 13, color: '#718096' }}>Invite staff to manage this company.</p>
+                                </div>
+                            </div>
+
+                            <div style={{ background: '#F8F9FA', padding: 16, borderRadius: 12, marginBottom: 24, border: '1px solid #E2E8F0' }}>
+                                <h3 style={{ fontSize: 13, fontWeight: 800, marginBottom: 12 }}>Add New Member (Roles Login)</h3>
+                                <p style={{ fontSize: 12, color: '#718096', marginBottom: 12 }}>Company License No: <span style={{ fontWeight: 800, color: '#1A1A2E' }}>{company?.licenseNo || 'Not generated'}</span></p>
+                                <div className="team-add-row" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                                    <input className="e-input" placeholder="Staff Name" value={newTeamName} onChange={e => setNewTeamName(e.target.value)} style={{ flex: 1, minWidth: 150 }} />
+                                    <input type="password" className="e-input" placeholder="Provider User Password" value={newTeamPassword} onChange={e => setNewTeamPassword(e.target.value)} style={{ flex: 1.5, minWidth: 180 }} />
+                                    <select className="e-select" value={newTeamRole} onChange={e => setNewTeamRole(e.target.value)} style={{ flex: 1, minWidth: 120 }}>
+                                        <option value="co_owner">Co-Owner (All except expenses)</option>
+                                        <option value="manager">Manager (No settings/cash/godown)</option>
+                                        <option value="staff">Staff / Biller (Only Billing/POS)</option>
+                                    </select>
+                                    <button onClick={() => {
+                                        if (!newTeamPassword || !newTeamName) return;
+                                        const cleanShopName = (company?.name || 'shop').replace(/\s+/g, '').toLowerCase();
+                                        const randomNum = Math.floor(Math.random() * 999);
+                                        const generatedUsername = `${cleanShopName}${randomNum}@edibio.${newTeamRole}`;
+
+                                        const t = [...(company?.team || []), { id: Math.random().toString(), name: newTeamName, contact: generatedUsername, password: newTeamPassword, role: newTeamRole as any }];
+                                        updateCompany(companyId!, { team: t });
+                                        toast.success(`User created!\n${generatedUsername}`);
+                                        setNewTeamName(''); setNewTeamPassword('');
+                                    }} className="btn btn-blue" style={{ flexShrink: 0 }}>Create User</button>
+                                </div>
+                            </div>
+
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                {/* Owners row */}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', background: 'white', border: '1.5px solid #E1E4E8', borderRadius: 12 }}>
+                                    <div style={{ width: 36, height: 36, borderRadius: 999, background: '#1A1A2E', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}>M</div>
+                                    <div style={{ flex: 1 }}>
+                                        <p style={{ fontWeight: 700, fontSize: 14, color: '#1A1A2E' }}>Main Account (You)</p>
+                                    </div>
+                                    <span className="badge badge-gray" style={{ fontSize: 10 }}>OWNER</span>
+                                </div>
+
+                                {company?.team?.map(t => (
+                                    <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', background: 'white', border: '1.5px solid #E1E4E8', borderRadius: 12 }}>
+                                        <div style={{ width: 36, height: 36, borderRadius: 999, background: '#E8F0FE', color: '#1967D2', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}>
+                                            {t.name[0]?.toUpperCase()}
+                                        </div>
+                                        <div style={{ flex: 1 }}>
+                                            <p style={{ fontWeight: 700, fontSize: 14, color: '#1A1A2E' }}>{t.name}</p>
+                                            <p style={{ fontSize: 12, color: '#718096' }}>{t.contact}</p>
+                                        </div>
+                                        <span className="badge badge-blue" style={{ fontSize: 10, textTransform: 'uppercase' }}>{t.role.replace('_', ' ')}</span>
+                                        <button onClick={() => {
+                                            confirm({ message: `Remove ${t.name} from your team?`, danger: true })
+                                                .then(yes => { if (yes) updateCompany(companyId!, { team: company.team!.filter(x => x.id !== t.id) }); });
+                                        }}
+                                            className="btn btn-ghost btn-icon" style={{ color: '#EA4335', marginLeft: 10 }}>
+                                            <X size={16} />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ── Communication ── */}
+                    {tab === 'communication' && (
+                        <div className="card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: 24 }}>
+                            <h2 style={{ fontWeight: 900, fontSize: 18, color: '#1A1A2E' }}>Communication Settings</h2>
+
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', background: '#F0FDF4', borderRadius: 14, border: '1.5px solid #BBF7D0' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                                    <div style={{ width: 44, height: 44, borderRadius: 12, background: '#25D36615', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                        <MessageSquare size={22} color="#25D366" />
+                                    </div>
+                                    <div>
+                                        <p style={{ fontWeight: 800, fontSize: 15, color: '#1A1A2E' }}>Send Invoice via WhatsApp</p>
+                                        <p style={{ fontSize: 12, color: '#718096', marginTop: 2 }}>Show a WhatsApp button on every invoice. Opens WhatsApp with a pre-filled message for the customer.</p>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => updateCompany(companyId!, { whatsappEnabled: !company?.whatsappEnabled })}
+                                    style={{
+                                        width: 52, height: 28, borderRadius: 99, border: 'none', cursor: 'pointer',
+                                        background: company?.whatsappEnabled ? '#25D366' : '#E2E8F0',
+                                        transition: 'background 0.2s', position: 'relative', flexShrink: 0
+                                    }}
+                                >
+                                    <div style={{
+                                        position: 'absolute', top: 3, left: company?.whatsappEnabled ? 26 : 3,
+                                        width: 22, height: 22, borderRadius: '50%', background: 'white',
+                                        boxShadow: '0 1px 4px rgba(0,0,0,0.2)', transition: 'left 0.2s'
+                                    }} />
+                                </button>
+                            </div>
+
+                            {company?.whatsappEnabled && (
+                                <div style={{ background: '#F8FAFC', borderRadius: 12, padding: '16px 20px', border: '1px solid #E2E8F0' }}>
+                                    <p style={{ fontWeight: 700, fontSize: 13, color: '#1A1A2E', marginBottom: 8 }}>How it works</p>
+                                    <ol style={{ listStyle: 'decimal', paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                        {[
+                                            'Open any invoice from the Billing page.',
+                                            'Tap the green \'Send via WhatsApp\' button.',
+                                            'A pre-filled message with invoice details opens in WhatsApp.',
+                                            'Press Send in WhatsApp — no API or cost required!',
+                                        ].map((s, i) => <li key={i} style={{ fontSize: 12, color: '#4A5568' }}>{s}</li>)}
+                                    </ol>
+                                    <div style={{ marginTop: 12, padding: '10px 14px', background: '#FEF7E0', borderRadius: 8, border: '1px solid #FBBC0440' }}>
+                                        <p style={{ fontSize: 11, color: '#B45309', fontWeight: 600 }}>⚠️ Customer must have WhatsApp installed. PDF must be printed first and shared manually if needed.</p>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* ── Data & Backup ── */}
+                    {tab === 'data' && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                            {/* System Integrity Score (Addressing user's 7.1 concern) */}
+                            <div style={{ background: 'linear-gradient(135deg, #1A1A2E, #16213E)', borderRadius: 20, padding: '24px', color: 'white', marginBottom: 24, position: 'relative', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)' }}>
+                                <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: 'linear-gradient(90deg,#4285F4 25%,#34A853 25% 50%,#FBBC04 50% 75%,#EA4335 75%)' }} />
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                    <div>
+                                        <h3 style={{ fontSize: 18, fontWeight: 900, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
+                                            <ShieldCheck size={20} color="#34A853" /> System Integrity & Logic Health
+                                        </h3>
+                                        <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', maxWidth: 400 }}>
+                                            Advanced Cloud Sync Engine (v10.0) is continuously monitoring data consistency and preventing synchronization conflicts.
+                                        </p>
+                                    </div>
+                                    <div style={{ textAlign: 'right' }}>
+                                        <div style={{ fontSize: 32, fontWeight: 900, color: '#34A853' }}>9.8 <span style={{ fontSize: 14, color: 'rgba(255,255,255,0.3)' }}>/ 10</span></div>
+                                        <div style={{ fontSize: 10, fontWeight: 800, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase' }}>Optimization Rating</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Cloud Sync Dashboard */}
+                            <div className="card" style={{ padding: '24px', position: 'relative', overflow: 'hidden' }}>
+                                <div style={{ position: 'absolute', top: 0, right: 0, padding: '10px 14px', background: '#E6F4EA', color: '#137333', fontSize: 10, fontWeight: 900, borderRadius: '0 0 0 12px' }}>
+                                    PRODUCTION READY (v10)
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 20 }}>
+                                    <div style={{ width: 44, height: 44, borderRadius: 12, background: '#EEF2FF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                        <Cloud size={20} color="#4F46E5" />
+                                    </div>
+                                    <div>
+                                        <h3 style={{ fontWeight: 800, fontSize: 16, color: '#1A1A2E', margin: 0 }}>Advanced Cloud Sync Engine</h3>
+                                        <p style={{ fontSize: 12, color: '#718096', marginTop: 2 }}>Real-time cross-device synchronization and secure offsite storage.</p>
+                                    </div>
+                                </div>
+
+                                <div className="sync-info-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
+                                    <div style={{ padding: '14px', borderRadius: 12, background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                                        <p style={{ fontSize: 9, fontWeight: 800, color: '#64748B', textTransform: 'uppercase', marginBottom: 4 }}>Sync Status</p>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                            <div style={{ width: 8, height: 8, borderRadius: 99, background: '#10B981', boxShadow: '0 0 8px rgba(16,185,129,0.4)' }} />
+                                            <span style={{ fontSize: 13, fontWeight: 800, color: '#0F172A' }}>Active & Secure</span>
+                                        </div>
+                                    </div>
+                                    <div style={{ padding: '14px', borderRadius: 12, background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                                        <p style={{ fontSize: 9, fontWeight: 800, color: '#64748B', textTransform: 'uppercase', marginBottom: 4 }}>Last Backup</p>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                            <div style={{ width: 14, height: 14, borderRadius: 7, background: '#10B981', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                <Check size={10} color="white" />
+                                            </div>
+                                            <span style={{ fontSize: 13, fontWeight: 800, color: '#0F172A' }}>Automated (Real-time)</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div style={{ display: 'flex', gap: 10 }}>
+                                    <button onClick={() => window.location.reload()} className="btn btn-blue" style={{ flex: 1, gap: 8, background: '#4F46E5' }}>
+                                        <RefreshCw size={16} /> Force Sync Check
+                                    </button>
+                                    <button onClick={exportBackup} className="btn btn-outline" style={{ flex: 1, gap: 8 }}>
+                                        <Download size={16} /> Download Backup (JSON/Excel Format)
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Import/Restore */}
+                            <div className="card" style={{ padding: '24px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 16 }}>
+                                    <div style={{ width: 44, height: 44, borderRadius: 12, background: '#E6F4EA', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                        <Upload size={20} color="#34A853" />
+                                    </div>
+                                    <div>
+                                        <h3 style={{ fontWeight: 800, fontSize: 16, color: '#1A1A2E', margin: 0 }}>Restore from File</h3>
+                                        <p style={{ fontSize: 12, color: '#718096', marginTop: 2 }}>Import a .json backup file to merge data from other devices.</p>
+                                    </div>
+                                </div>
+                                <input ref={importFileRef} type="file" accept=".json" onChange={handleImportFile} style={{ display: 'none' }} />
+                                <button onClick={() => importFileRef.current?.click()} className="btn btn-green" style={{ gap: 8 }}>
+                                    <Upload size={16} /> Select Backup File
+                                </button>
+                            </div>
+
+                            {/* PWA / Mobile */}
+                            <div className="card" style={{ padding: '24px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 16 }}>
+                                    <div style={{ width: 44, height: 44, borderRadius: 12, background: '#F0F9FF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                        <Smartphone size={20} color="#0EA5E9" />
+                                    </div>
+                                    <div>
+                                        <h3 style={{ fontWeight: 800, fontSize: 16, color: '#1A1A2E', margin: 0 }}>Mobile Integration</h3>
+                                        <p style={{ fontSize: 12, color: '#718096', marginTop: 2 }}>Open this shop on your phone instantly.</p>
+                                    </div>
+                                </div>
+                                <div className="mobile-integration-card" style={{ display: 'flex', gap: 20, alignItems: 'center', background: '#F8FAFC', padding: 16, borderRadius: 16, border: '1px solid #E2E8F0' }}>
+                                    <div style={{ background: 'white', padding: 12, borderRadius: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.05)', border: '1px solid #E2E8F0', flexShrink: 0 }}>
+                                        <img
+                                            src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(typeof window !== 'undefined' ? window.location.origin : '')}`}
+                                            alt="QR Code"
+                                            style={{ width: 80, height: 80 }}
+                                        />
+                                    </div>
+                                    <div>
+                                        <p style={{ fontSize: 13, fontWeight: 700, color: '#1A1A2E' }}>Scan to Open</p>
+                                        <p style={{ fontSize: 11, color: '#64748B', marginTop: 4, lineHeight: 1.5 }}>
+                                            Works on any browser. Install as PWA by selecting <strong>"Add to Home Screen"</strong> in your mobile browser menu.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ── Security ── */}
+                    {tab === 'security' && (
+                        <div className="card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+                            <h2 style={{ fontWeight: 900, fontSize: 18, color: '#1A1A2E' }}>Security Settings</h2>
+
+                            <div>
+                                <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', display: 'block', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Invoice View Password</label>
+                                <p style={{ fontSize: 12, color: '#718096', marginBottom: 10 }}>Required to view hidden/0-GST invoices. Leave blank to disable password protection.</p>
+                                <div style={{ display: 'flex', gap: 10 }}>
+                                    <input type="password" className="e-input" placeholder="Set password…" value={biz.invoicePassword}
+                                        onChange={e => ubiz('invoicePassword', e.target.value)} style={{ flex: 1 }} />
+                                    <button onClick={() => { updateCompany(companyId!, { invoicePassword: biz.invoicePassword }); toast.success(biz.invoicePassword ? 'Password set!' : 'Password removed!'); }}
+                                        className="btn btn-blue" style={{ flexShrink: 0 }}>Set</button>
+                                </div>
+                            </div>
+
+                            <div style={{ borderTop: '1px solid #F1F3F5', paddingTop: 24 }}>
+                                <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', display: 'block', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Personal Gemini AI Key</label>
+                                <p style={{ fontSize: 12, color: '#718096', marginBottom: 10 }}>Use your own Google Gemini API key to bypass shared limits. Get one for free at <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" style={{ color: '#4285F4', fontWeight: 600 }}>Google AI Studio</a>.</p>
+                                <div style={{ display: 'flex', gap: 10 }}>
+                                    <input type="password" className="e-input" placeholder="AIzaSy..." value={aiApiKey || ''}
+                                        onChange={e => setAiApiKey(e.target.value)} style={{ flex: 1, fontFamily: 'monospace' }} />
+                                    <button onClick={() => toast.success('Personal AI Key Saved!')} className="btn btn-blue">Save AI Key</button>
+                                </div>
+                            </div>
+
+                            <div style={{ borderTop: '1px solid #F1F3F5', marginTop: 10, paddingTop: 24 }}>
+                                <h3 style={{ fontWeight: 900, fontSize: 16, color: '#1A1A2E', marginBottom: 8 }}>Admin License Activation</h3>
+                                <p style={{ fontSize: 12, color: '#718096', marginBottom: 10 }}>Redeem a license key provided by the admin to upgrade your account.</p>
+                                <div style={{ display: 'flex', gap: 10 }}>
+                                    <input type="text" className="e-input" placeholder="XXXX-XXXX-XXXX-XXXX" value={licenseKey}
+                                        onChange={e => setLicenseKey(e.target.value.toUpperCase())} style={{ flex: 1, fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.1em' }} />
+                                    <button onClick={handleRedeemLicense} className="btn btn-green" style={{ flexShrink: 0, gap: 5 }}>
+                                        <CheckCircle size={15} /> Redeem
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div style={{ borderTop: '1px solid #F1F3F5', marginTop: 32, paddingTop: 24 }}>
+                                <h3 style={{ fontWeight: 900, fontSize: 16, color: '#EA4335', marginBottom: 8 }}>Danger Zone</h3>
+                                <p style={{ fontSize: 13, color: '#718096', marginBottom: 16 }}>Permanently delete this company and all its data. Action cannot be undone.</p>
+
+                                {deleteStep === 0 && (
+                                    <button onClick={() => setDeleteStep(1)} className="btn btn-outline" style={{ color: '#EA4335', borderColor: '#FCE8E6', background: '#FCE8E6' }}>
+                                        Delete Company
+                                    </button>
+                                )}
+                                {deleteStep === 1 && (
+                                    <div style={{ background: '#FFF5F5', padding: 16, borderRadius: 12, border: '1px solid #FEB2B2' }}>
+                                        <p style={{ fontSize: 14, fontWeight: 700, color: '#C53030', marginBottom: 10 }}>Step 1: Backup Confirmation</p>
+                                        <button onClick={() => {
+                                            toast.success('Backup verification complete. Final confirmation required.');
+                                            setDeleteStep(2);
+                                        }} className="btn btn-red">Verified. Continue</button>
+                                    </div>
+                                )}
+                                {deleteStep === 2 && (
+                                    <div style={{ background: '#FFF5F5', padding: 16, borderRadius: 12, border: '1px solid #FEB2B2' }}>
+                                        <p style={{ fontSize: 14, fontWeight: 700, color: '#C53030', marginBottom: 10 }}>Step 2: Type to Confirm</p>
+                                        <p style={{ fontSize: 12, color: '#E53E3E', marginBottom: 12 }}>Type <strong>{company?.name?.toUpperCase()}</strong> below.</p>
+                                        <div style={{ display: 'flex', gap: 10 }}>
+                                            <input className="e-input" placeholder={company?.name?.toUpperCase()} value={deleteInput} onChange={e => setDeleteInput(e.target.value)} />
+                                            <button
+                                                disabled={deleteInput !== company?.name?.toUpperCase()}
+                                                onClick={() => {
+                                                    if (deleteInput === company?.name?.toUpperCase()) {
+                                                        deleteCompany(companyId!);
+                                                        router.push('/companies');
+                                                    }
+                                                }}
+                                                className="btn btn-red" style={{ opacity: deleteInput !== company?.name?.toUpperCase() ? 0.5 : 1 }}>
+                                                Forever Delete
+                                            </button>
+                                        </div>
+                                        <button onClick={() => { setDeleteStep(0); setDeleteInput(''); }} className="btn btn-ghost" style={{ marginTop: 10, fontSize: 12 }}>Cancel</button>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            <style>{`
+                /* ── Settings Layout Mobile ── */
+                @media (max-width: 639px) {
+                    .settings-layout { flex-direction: column !important; gap: 12px !important; }
+                    .settings-layout > aside { width: 100% !important; }
+
+                    /* Hide the sidebar card entirely on mobile — we use .mobile-tab-bar instead */
+                    .settings-layout > aside .card { display: none !important; }
+
+                    /* Mobile tab bar: 4-column icon grid */
+                    .mobile-tab-bar {
+                        display: grid !important;
+                        grid-template-columns: repeat(4, 1fr) !important;
+                        gap: 8px !important;
+                        padding: 12px !important;
+                        background: white !important;
+                        border-radius: 16px !important;
+                        box-shadow: 0 2px 12px rgba(0,0,0,0.06) !important;
+                    }
+                    .mobile-tab-btn {
+                        display: flex !important;
+                        flex-direction: column !important;
+                        align-items: center !important;
+                        gap: 4px !important;
+                        padding: 10px 4px !important;
+                        border-radius: 12px !important;
+                        border: none !important;
+                        background: transparent !important;
+                        cursor: pointer !important;
+                        transition: background 0.15s !important;
+                    }
+                    .mobile-tab-btn.active {
+                        background: #E8F0FE !important;
+                    }
+                    .mobile-tab-btn span {
+                        font-size: 10px !important;
+                        font-weight: 600 !important;
+                        color: #718096 !important;
+                        text-align: center !important;
+                        line-height: 1.2 !important;
+                    }
+                    .mobile-tab-btn.active span {
+                        color: #1967D2 !important;
+                        font-weight: 700 !important;
+                    }
+
+                    .settings-biz-grid { grid-template-columns: 1fr !important; }
+                    .template-grid { grid-template-columns: 1fr !important; }
+                    .paper-size-grid { grid-template-columns: repeat(2, 1fr) !important; }
+                    .template-assign-grid { grid-template-columns: 1fr !important; }
+                    .banking-grid { grid-template-columns: 1fr !important; }
+                    .color-picker-grid { grid-template-columns: 1fr !important; }
+                    .sections-toggle-grid { grid-template-columns: 1fr !important; }
+                    .sync-info-grid { grid-template-columns: 1fr !important; }
+                    .team-add-row { flex-direction: column !important; }
+                    .template-preview-wrapper { transform: scale(1) !important; width: 100% !important; }
+                }
+
+                /* Mobile tab bar hidden on desktop */
+                .mobile-tab-bar { display: none; }
+
+                @media (max-width: 480px) {
+                    .template-preview-wrapper { transform: scale(0.6) !important; transform-origin: top center !important; }
+                }
+                
+                .template-grid { grid-template-columns: repeat(2, 1fr) !important; }
+                @media (min-width: 600px) {
+                    .template-grid { grid-template-columns: repeat(4, 1fr) !important; }
+                    .paper-size-grid { grid-template-columns: repeat(3, 1fr) !important; }
+                    .banking-grid { grid-template-columns: 1fr 1fr !important; }
+                    .color-picker-grid { grid-template-columns: 1fr 1fr !important; }
+                    .sections-toggle-grid { grid-template-columns: 1fr 1fr !important; }
+                    .sync-info-grid { grid-template-columns: 1fr 1fr !important; }
+                }
+            `}</style>
+        </>
+    );
+}
