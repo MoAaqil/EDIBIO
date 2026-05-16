@@ -62,6 +62,45 @@ export default function AnalyticsReportsPage() {
         return Object.values(result);
     })();
 
+    // Daily History for the last 30 days
+    const dailyHistory = (() => {
+        const result = [];
+        const now = new Date();
+        for (let i = 0; i < 30; i++) {
+            const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+            const key = d.toLocaleDateString('en-CA'); // YYYY-MM-DD local
+            
+            let dailySales = 0;
+            let dailyProfit = 0;
+            let invoicesCount = 0;
+            
+            saleInvoices.forEach((inv: any) => {
+                if (inv.date === key) {
+                    dailySales += inv.grandTotal || 0;
+                    invoicesCount++;
+                    let cost = 0;
+                    (inv.items || []).forEach((item: any) => {
+                         const p = products.find((prod: any) => prod.id === item.productId || prod.name === item.name);
+                         const buyPrice = p ? (p.purchasePrice || 0) : 0;
+                         cost += buyPrice * (item.qty || 0);
+                    });
+                    dailyProfit += (inv.grandTotal || 0) - cost;
+                }
+            });
+            
+            result.push({
+                dateKey: key,
+                dateLabel: d.toLocaleDateString('en-IN', { weekday: 'short', month: 'short', day: 'numeric' }),
+                sales: dailySales,
+                profit: dailyProfit,
+                invoices: invoicesCount
+            });
+        }
+        return result;
+    })();
+
+    const totalStocksLeft = products.reduce((acc, p) => acc + (p.stockQty || 0), 0);
+
     // Top 5 products by revenue
     const topProductsPie = Object.values(itemMap)
         .sort((a, b) => b.revenue - a.revenue)
@@ -206,10 +245,48 @@ export default function AnalyticsReportsPage() {
                                 <div style={{ background: '#FEF7E0', width: 48, height: 48, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><PackageSearch size={24} color="#F9AB00" /></div>
                                 <div>
                                     <p style={{ fontSize: 12, fontWeight: 800, color: '#718096', textTransform: 'uppercase', marginBottom: 2 }}>Inventory</p>
-                                    <p style={{ fontSize: 14, fontWeight: 700, color: '#2D3748', margin: 0 }}>Catalog Size</p>
+                                    <p style={{ fontSize: 14, fontWeight: 700, color: '#2D3748', margin: 0 }}>Total Stocks Left</p>
                                 </div>
                             </div>
-                            <h2 style={{ fontSize: 32, fontWeight: 900, margin: 0, color: '#1A202C' }}>{products.length} <span style={{ fontSize: 18, color: '#A0AEC0', fontWeight: 600 }}>Items</span></h2>
+                            <h2 style={{ fontSize: 32, fontWeight: 900, margin: 0, color: '#1A202C' }}>{totalStocksLeft.toLocaleString('en-IN')} <span style={{ fontSize: 18, color: '#A0AEC0', fontWeight: 600 }}>Units</span></h2>
+                            <p style={{ fontSize: 12, color: '#A0AEC0', marginTop: 4, fontWeight: 600 }}>Across {products.length} catalog items</p>
+                        </div>
+                    </div>
+
+                    {/* Daily History Table (Last 30 Days) */}
+                    <div style={{ background: 'white', borderRadius: 24, border: '1px solid #E2E8F0', overflow: 'hidden', boxShadow: '0 4px 12px rgba(0,0,0,0.02)' }}>
+                        <div style={{ padding: '24px 32px', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                <div style={{ background: '#F3E8FF', width: 40, height: 40, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    <Activity size={20} color="#9333EA" />
+                                </div>
+                                <div>
+                                    <h3 style={{ fontSize: 18, fontWeight: 900, margin: 0, color: '#1A202C' }}>Daily Sales History</h3>
+                                    <p style={{ fontSize: 12, color: '#718096', margin: 0, fontWeight: 600 }}>Performance over the last 30 days</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div style={{ overflowX: 'auto' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: 13 }}>
+                                <thead>
+                                    <tr style={{ background: '#F8FAFC', color: '#64748B' }}>
+                                        <th style={{ padding: '16px 32px', fontWeight: 800 }}>Date</th>
+                                        <th style={{ padding: '16px 32px', fontWeight: 800 }}>Invoices</th>
+                                        <th style={{ padding: '16px 32px', fontWeight: 800 }}>Total Sales</th>
+                                        <th style={{ padding: '16px 32px', fontWeight: 800 }}>Est. Profit</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {dailyHistory.map((day, i) => (
+                                        <tr key={i} style={{ borderBottom: '1px solid #F1F5F9' }}>
+                                            <td style={{ padding: '14px 32px', fontWeight: 700, color: '#1E293B' }}>{day.dateLabel}</td>
+                                            <td style={{ padding: '14px 32px', color: '#64748B', fontWeight: 600 }}>{day.invoices} bills</td>
+                                            <td style={{ padding: '14px 32px', fontWeight: 800, color: '#1E293B' }}>₹{day.sales.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
+                                            <td style={{ padding: '14px 32px', fontWeight: 800, color: day.profit >= 0 ? '#16A34A' : '#DC2626' }}>₹{day.profit.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
                         </div>
                     </div>
 
