@@ -1,4 +1,5 @@
 'use client';
+import { useState } from 'react';
 import AppLayout from '@/components/AppLayout';
 import FeatureGate from '@/components/FeatureGate';
 import { useCompanyData, useActiveCompany } from '@/lib/store';
@@ -11,6 +12,14 @@ export default function AnalyticsReportsPage() {
     const invoices = useCompanyData('invoices') as any[];
     const expenses = useCompanyData('expenses') as any[];
     const products = useCompanyData('products') as any[];
+    
+    const [isCustomHistory, setIsCustomHistory] = useState(false);
+    const [startDate, setStartDate] = useState(() => {
+        const d = new Date();
+        d.setDate(d.getDate() - 30);
+        return d.toLocaleDateString('en-CA');
+    });
+    const [endDate, setEndDate] = useState(() => new Date().toLocaleDateString('en-CA'));
 
     const saleInvoices = invoices.filter(i => i.invoiceType === 'sale');
     const purchaseInvoices = invoices.filter(i => i.invoiceType === 'purchase');
@@ -62,12 +71,19 @@ export default function AnalyticsReportsPage() {
         return Object.values(result);
     })();
 
-    // Daily History for the last 30 days
+    // Daily History for the last 30 days (or custom range)
     const dailyHistory = (() => {
         const result = [];
-        const now = new Date();
-        for (let i = 0; i < 30; i++) {
-            const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+        const start = isCustomHistory && startDate ? new Date(startDate) : new Date(new Date().setDate(new Date().getDate() - 30));
+        const end = isCustomHistory && endDate ? new Date(endDate) : new Date();
+        
+        // Limit to prevent massive loops (max 365 days)
+        const diffTime = Math.abs(end.getTime() - start.getTime());
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        const maxDays = Math.min(diffDays + 1, 365); 
+        
+        for (let i = 0; i < maxDays; i++) {
+            const d = new Date(end.getFullYear(), end.getMonth(), end.getDate() - i);
             const key = d.toLocaleDateString('en-CA'); // YYYY-MM-DD local
             
             let dailySales = 0;
@@ -253,17 +269,32 @@ export default function AnalyticsReportsPage() {
                         </div>
                     </div>
 
-                    {/* Daily History Table (Last 30 Days) */}
+                    {/* Daily History Table */}
                     <div style={{ background: 'white', borderRadius: 24, border: '1px solid #E2E8F0', overflow: 'hidden', boxShadow: '0 4px 12px rgba(0,0,0,0.02)' }}>
-                        <div style={{ padding: '24px 32px', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div style={{ padding: '24px 32px', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                                 <div style={{ background: '#F3E8FF', width: 40, height: 40, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                     <Activity size={20} color="#9333EA" />
                                 </div>
                                 <div>
                                     <h3 style={{ fontSize: 18, fontWeight: 900, margin: 0, color: '#1A202C' }}>Daily Sales History</h3>
-                                    <p style={{ fontSize: 12, color: '#718096', margin: 0, fontWeight: 600 }}>Performance over the last 30 days</p>
+                                    <p style={{ fontSize: 12, color: '#718096', margin: 0, fontWeight: 600 }}>{isCustomHistory ? 'Custom Date Range' : 'Performance over the last 30 days'}</p>
                                 </div>
+                            </div>
+                            
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 700, color: '#4A5568', cursor: 'pointer' }}>
+                                    <input type="checkbox" checked={isCustomHistory} onChange={e => setIsCustomHistory(e.target.checked)} style={{ width: 16, height: 16, accentColor: '#9333EA' }} />
+                                    Custom Range
+                                </label>
+                                
+                                {isCustomHistory && (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                        <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} style={{ padding: '6px 12px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 12, fontWeight: 600, color: '#1A202C' }} />
+                                        <span style={{ fontSize: 12, color: '#A0AEC0', fontWeight: 600 }}>to</span>
+                                        <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} style={{ padding: '6px 12px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 12, fontWeight: 600, color: '#1A202C' }} />
+                                    </div>
+                                )}
                             </div>
                         </div>
                         <div style={{ overflowX: 'auto' }}>
