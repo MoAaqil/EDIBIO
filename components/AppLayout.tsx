@@ -137,19 +137,18 @@ function SubscriptionGuard({ children }: { children: React.ReactNode }) {
 
 export default function AppLayout({ children, title }: AppLayoutProps) {
     const [sidebarOpen, setSidebarOpen] = useState(false);
-    const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
-        if (typeof window !== 'undefined') {
-            return localStorage.getItem('sidebar_collapsed') === 'true';
-        }
-        return false;
-    });
+    // Always start as false (matches SSR). Read persisted state after mount to avoid hydration mismatch.
+    const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+    useEffect(() => {
+        const stored = localStorage.getItem('sidebar_collapsed');
+        if (stored === 'true') setSidebarCollapsed(true);
+    }, []);
 
     const toggleDesktopSidebar = () => {
         const next = !sidebarCollapsed;
         setSidebarCollapsed(next);
-        if (typeof window !== 'undefined') {
-            localStorage.setItem('sidebar_collapsed', String(next));
-        }
+        localStorage.setItem('sidebar_collapsed', String(next));
     };
 
     return (

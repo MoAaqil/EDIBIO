@@ -86,6 +86,10 @@ export default function InventoryPage() {
     const [showAIAdd, setShowAIAdd] = useState(false);
     const [activeTab, setActiveTab] = useState<'items' | 'purchases' | 'ledger'>('items');
 
+    // Derive canScan once from reactive hook — avoids SSR/hydration mismatch from useStore.getState() in render
+    const { user: storeUser, isDemo: storeIsDemo } = useStore();
+    const canScan = canAccess('ai_scanner', storeUser, storeIsDemo);
+
     // Import states
     const [showImport, setShowImport] = useState(false);
     const [importGodownId, setImportGodownId] = useState(company?.godowns?.[0]?.id || '');
@@ -361,12 +365,19 @@ export default function InventoryPage() {
     return (
         <>
             <div style={{ maxWidth: 1200, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 20 }}>
-                {/* Tabs */}
-                <div style={{ display: 'flex', gap: 10, marginBottom: 8, borderBottom: '1px solid #E2E8F0', paddingBottom: 0, overflowX: 'auto' }}>
-                    <button onClick={() => setActiveTab('items')} style={{ background: 'none', border: 'none', padding: '10px 20px', fontWeight: activeTab === 'items' ? 900 : 600, color: activeTab === 'items' ? '#1A1A2E' : '#A0AEC0', borderBottom: activeTab === 'items' ? '3px solid #4285F4' : '3px solid transparent', cursor: 'pointer', fontSize: 13, transition: 'all 0.2s', whiteSpace: 'nowrap' }}>Stock Items</button>
-                    <button onClick={() => setActiveTab('purchases')} style={{ background: 'none', border: 'none', padding: '10px 20px', fontWeight: activeTab === 'purchases' ? 900 : 600, color: activeTab === 'purchases' ? '#1A1A2E' : '#A0AEC0', borderBottom: activeTab === 'purchases' ? '3px solid #4285F4' : '3px solid transparent', cursor: 'pointer', fontSize: 13, transition: 'all 0.2s', whiteSpace: 'nowrap' }}>Purchase Bills</button>
-                    <button onClick={() => setActiveTab('ledger')} style={{ background: 'none', border: 'none', padding: '10px 20px', fontWeight: activeTab === 'ledger' ? 900 : 600, color: activeTab === 'ledger' ? '#1A1A2E' : '#A0AEC0', borderBottom: activeTab === 'ledger' ? '3px solid #4285F4' : '3px solid transparent', cursor: 'pointer', fontSize: 13, transition: 'all 0.2s', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <History size={14} /> Stock Ledger & Ageing
+                {/* Tabs — Mobile: fixed 3-pill grid, Desktop: underline tabs */}
+                <div className="inv-tab-bar">
+                    <button onClick={() => setActiveTab('items')} className={`inv-tab-btn${activeTab === 'items' ? ' inv-tab-active' : ''}`}>
+                        <Package size={13} />
+                        Stock Items
+                    </button>
+                    <button onClick={() => setActiveTab('purchases')} className={`inv-tab-btn${activeTab === 'purchases' ? ' inv-tab-active' : ''}`}>
+                        <ArrowDown size={13} />
+                        Purchase Bills
+                    </button>
+                    <button onClick={() => setActiveTab('ledger')} className={`inv-tab-btn${activeTab === 'ledger' ? ' inv-tab-active' : ''}`}>
+                        <History size={13} />
+                        Ledger
                     </button>
                 </div>
 
@@ -427,13 +438,13 @@ export default function InventoryPage() {
                                 </button>
                             )}
                             <button onClick={() => {
-                                if (!canAccess('ai_scanner', useStore.getState().user, useStore.getState().isDemo)) {
+                                if (!canScan) {
                                     toast('AI Scanning requires the Premium Plan. Upgrade in Subscription settings.', { icon: '🔒' });
                                     return;
                                 }
                                 setShowAIAdd(true);
-                            }} className="btn btn-sm" style={{ background: canAccess('ai_scanner', useStore.getState().user, useStore.getState().isDemo) ? 'linear-gradient(135deg, #1A1A2E, #4285F4)' : '#E2E8F0', color: canAccess('ai_scanner', useStore.getState().user, useStore.getState().isDemo) ? 'white' : '#A0AEC0', borderColor: canAccess('ai_scanner', useStore.getState().user, useStore.getState().isDemo) ? '#1A1A2E' : '#E2E8F0', gap: 5, cursor: canAccess('ai_scanner', useStore.getState().user, useStore.getState().isDemo) ? 'pointer' : 'not-allowed' }}>
-                                <ScanLine size={13} /> AI Scan Item {!canAccess('ai_scanner', useStore.getState().user, useStore.getState().isDemo) && '🔒'}
+                            }} className="btn btn-sm" style={{ background: canScan ? 'linear-gradient(135deg, #1A1A2E, #4285F4)' : '#E2E8F0', color: canScan ? 'white' : '#A0AEC0', borderColor: canScan ? '#1A1A2E' : '#E2E8F0', gap: 5, cursor: canScan ? 'pointer' : 'not-allowed' }}>
+                                <ScanLine size={13} /> AI Scan Item {!canScan && '🔒'}
                             </button>
                             <button onClick={() => { setEditProduct(null); setForm(emptyForm); setShowAdd(true); }} className="btn btn-blue btn-sm" style={{ gap: 5 }}>
                                 <Plus size={13} /> Add Item
@@ -686,6 +697,94 @@ export default function InventoryPage() {
                 @media (min-width: 768px) {
                   .desktop-table { display: block; }
                   .mobile-list { display: none; }
+                }
+
+                /* ── Inventory tab bar ─────────────────────────────── */
+                /* Mobile default: pill button row, each tab fixed width */
+                .inv-tab-bar {
+                    display: grid;
+                    grid-template-columns: repeat(3, 1fr);
+                    gap: 8px;
+                    background: #F1F5F9;
+                    border-radius: 14px;
+                    padding: 5px;
+                    margin-bottom: 4px;
+                }
+                .inv-tab-btn {
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 5px;
+                    padding: 9px 6px;
+                    border: none;
+                    border-radius: 10px;
+                    background: transparent;
+                    font-size: 11px;
+                    font-weight: 700;
+                    color: #718096;
+                    cursor: pointer;
+                    transition: all 0.18s cubic-bezier(0.4,0,0.2,1);
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                }
+                .inv-tab-active {
+                    background: white;
+                    color: #1A1A2E;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+                }
+
+                /* Desktop: switch to underline style */
+                @media (min-width: 640px) {
+                    .inv-tab-bar {
+                        display: flex;
+                        grid-template-columns: unset;
+                        gap: 0;
+                        background: transparent;
+                        border-radius: 0;
+                        padding: 0;
+                        border-bottom: 1px solid #E2E8F0;
+                        margin-bottom: 8px;
+                    }
+                    .inv-tab-btn {
+                        padding: 10px 20px;
+                        border-radius: 0;
+                        background: none;
+                        font-size: 13px;
+                        font-weight: 600;
+                        color: #A0AEC0;
+                        border-bottom: 3px solid transparent;
+                        box-shadow: none;
+                        white-space: nowrap;
+                        overflow: visible;
+                    }
+                    .inv-tab-active {
+                        background: none;
+                        color: #1A1A2E;
+                        font-weight: 900;
+                        border-bottom: 3px solid #4285F4;
+                        box-shadow: none;
+                    }
+                }
+
+                .godown-chip {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 5px;
+                    padding: 5px 12px;
+                    border-radius: 20px;
+                    border: 1.5px solid #E2E8F0;
+                    background: white;
+                    font-size: 12px;
+                    font-weight: 700;
+                    color: #718096;
+                    cursor: pointer;
+                    transition: all 0.15s;
+                }
+                .godown-chip.active {
+                    background: #EBF4FF;
+                    color: #4285F4;
+                    border-color: #4285F4;
                 }
             `}</style>
         </>

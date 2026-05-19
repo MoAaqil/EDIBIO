@@ -14,7 +14,9 @@ import {
     Clock,
     Package,
     ArrowRightCircle,
-    CheckCircle2
+    CheckCircle2,
+    ChevronDown,
+    ChevronUp
 } from 'lucide-react';
 import { r2 } from '@/lib/utils';
 import toast from 'react-hot-toast';
@@ -26,6 +28,7 @@ export default function StockLedgerTab() {
 
     const [selectedProductId, setSelectedProductId] = useState('');
     const [searchTerm, setSearchTerm] = useState('');
+    const [showHistory, setShowHistory] = useState(true);
 
     // Filter products for dropdown
     const filteredProducts = useMemo(() => {
@@ -273,29 +276,44 @@ export default function StockLedgerTab() {
 
                     {/* Ledger Table */}
                     <div className="card" style={{ overflow: 'hidden', borderRadius: 24, border: '1px solid #E2E8F0', boxShadow: '0 4px 20px rgba(0,0,0,0.03)' }}>
-                        <div style={{ padding: '20px 24px', borderBottom: '1px solid #F1F5F9', background: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ padding: '16px 20px', borderBottom: showHistory ? '1px solid #F1F5F9' : 'none', background: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                                 <History size={18} color="#475569" />
                                 <h3 style={{ fontSize: 16, fontWeight: 900, color: '#1E293B' }}>Transaction History</h3>
+                                <span className="badge badge-gray" style={{ background: '#F1F5F9', color: '#475569', padding: '4px 10px', fontSize: 11 }}>{ledgerEntries.length} ops</span>
                             </div>
-                            <div style={{ display: 'flex', gap: 10 }}>
-                                <span className="badge badge-gray" style={{ background: '#F1F5F9', color: '#475569', padding: '6px 12px' }}>{ledgerEntries.length} Operations</span>
-                            </div>
+                            {/* Toggle button */}
+                            <button
+                                onClick={() => setShowHistory(v => !v)}
+                                style={{
+                                    display: 'flex', alignItems: 'center', gap: 6,
+                                    padding: '7px 14px', borderRadius: 10,
+                                    border: '1.5px solid #E2E8F0',
+                                    background: showHistory ? '#EBF4FF' : 'white',
+                                    color: showHistory ? '#4285F4' : '#718096',
+                                    fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                                    transition: 'all 0.18s'
+                                }}
+                            >
+                                {showHistory ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                {showHistory ? 'Hide' : 'Show History'}
+                            </button>
                         </div>
-                        <div style={{ overflowX: 'auto' }}>
-                            <table className="e-table" style={{ border: 'none' }}>
-                                <thead style={{ background: '#F8FAFC' }}>
-                                    <tr>
-                                        <th style={{ padding: '16px 24px' }}>Date & Time</th>
-                                        <th>Movement</th>
-                                        <th>Details</th>
-                                        <th>Qty Change</th>
-                                        <th>Closing Stock</th>
-                                        <th>Price (₹)</th>
-                                        <th>Mfg Date</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
+                        {showHistory && (
+                            <div style={{ overflowX: 'auto' }}>
+                                <table className="e-table" style={{ border: 'none' }}>
+                                    <thead style={{ background: '#F8FAFC' }}>
+                                        <tr>
+                                            <th style={{ padding: '16px 24px' }}>Date &amp; Time</th>
+                                            <th>Movement</th>
+                                            <th>Details</th>
+                                            <th>Qty Change</th>
+                                            <th>Closing Stock</th>
+                                            <th>Price (₹)</th>
+                                            <th>Mfg Date</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
                                     {ledgerEntries.length === 0 ? (
                                         <tr>
                                             <td colSpan={7} style={{ textAlign: 'center', padding: '60px 20px', color: '#94A3B8' }}>
@@ -360,12 +378,15 @@ export default function StockLedgerTab() {
                                 </tbody>
                             </table>
                         </div>
-                        <div style={{ padding: '16px 24px', background: '#F8FAFC', borderTop: '1px solid #F1F5F9', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                <CheckCircle2 size={14} color="#10B981" />
-                                <span style={{ fontSize: 12, fontWeight: 700, color: '#64748B' }}>Audit Complete & Synchronized</span>
+                        )}
+                        {(!showHistory || ledgerEntries.length > 0) && (
+                            <div style={{ padding: '14px 20px', background: '#F8FAFC', borderTop: showHistory ? '1px solid #F1F5F9' : 'none', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                    <CheckCircle2 size={14} color="#10B981" />
+                                    <span style={{ fontSize: 12, fontWeight: 700, color: '#64748B' }}>Audit Complete &amp; Synchronized</span>
+                                </div>
                             </div>
-                        </div>
+                        )}
                     </div>
                 </>
             )}

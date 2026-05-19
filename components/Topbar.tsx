@@ -108,9 +108,9 @@ export default function Topbar({ title, onMenuOpen, onDesktopToggle, isSidebarCo
                 <Menu size={20} color="#4A5568" />
             </button>
 
-            {/* Edibio logo — mobile only */}
-            <div style={{ display: 'none', alignItems: 'center', justifyContent: 'center', position: 'absolute', left: '50%', transform: 'translateX(-50%)' }} id="mobile-logo">
-                <Image src="/logo-full.jpg" alt="Edibio" width={110} height={32} style={{ objectFit: 'contain' }} priority />
+            {/* Edibio logo — mobile only (centered in topbar) */}
+            <div className="mobile-topbar-logo" id="mobile-logo">
+                <Image src="/logo-full.jpg" alt="Edibio" width={90} height={28} style={{ objectFit: 'contain', width: 'auto', height: 28 }} priority />
             </div>
 
             {/* Page title (desktop) */}
@@ -256,27 +256,45 @@ export default function Topbar({ title, onMenuOpen, onDesktopToggle, isSidebarCo
             </div>
 
             <style>{`
-        .user-menu-item:hover { background: #F7FAFC !important; }
-        .notification-dropdown { right: 0; width: 320px; }
-        @media (max-width: 639px) {
-          .notification-dropdown {
-              position: fixed !important;
-              top: 56px !important;
-              left: 10px !important;
-              right: 10px !important;
-              width: auto !important;
-              z-index: 100 !important;
+          .user-menu-item:hover { background: #F7FAFC !important; }
+          .notification-dropdown { right: 0; width: 320px; }
+          @media (max-width: 639px) {
+            .notification-dropdown {
+                position: fixed !important;
+                top: 56px !important;
+                left: 10px !important;
+                right: 10px !important;
+                width: auto !important;
+                z-index: 100 !important;
+            }
+            #mobile-menu-btn { display: flex !important; margin-right: 0 !important; }
+            /* Mobile logo: absolute centre, won't overflow */
+            .mobile-topbar-logo {
+                display: flex !important;
+                position: absolute !important;
+                left: 50% !important;
+                top: 50% !important;
+                transform: translate(-50%, -50%) !important;
+                align-items: center !important;
+                justify-content: center !important;
+                pointer-events: none;
+            }
+            .mobile-topbar-logo img {
+                height: 26px !important;
+                width: auto !important;
+                max-width: 110px !important;
+            }
+            .topbar-search { display: none !important; }
+            .topbar-userinfo { display: none !important; }
+            .app-topbar h1 { display: none !important; }
+            .trial-alert-badge { display: none !important; }
+            .mobile-only-menu-item { display: block !important; }
+            .godown-selector, .mobile-hide { display: none !important; }
           }
-          #mobile-menu-btn { display: flex !important; margin-right: 0 !important; }
-          #mobile-logo { display: flex !important; transform: translate(-50%, -50%) !important; top: 50% !important; left: 50% !important; align-items: center !important; }
-          #mobile-logo img { width: auto !important; height: 32px !important; max-width: 140px !important; }
-          .topbar-search { display: none !important; }
-          .topbar-userinfo { display: none !important; }
-          .app-topbar h1 { display: none !important; }
-          .trial-alert-badge { display: none !important; }
-          .mobile-only-menu-item { display: block !important; }
-          .godown-selector, .mobile-hide { display: none !important; }
-        }
+          /* Hide logo on desktop */
+          @media (min-width: 640px) {
+            .mobile-topbar-logo { display: none !important; }
+          }
       `}</style>
         </header>
     );

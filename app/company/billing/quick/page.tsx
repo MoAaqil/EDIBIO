@@ -4,10 +4,10 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useStore, useActiveCompany, useCompanyData } from '@/lib/store';
 import { calcLineItem, r2, roundOff, INDIAN_STATES } from '@/lib/utils';
 import type { InvoiceLineItem } from '@/lib/types';
-import { Search, Plus, Trash2, X, RefreshCw, Printer, ChevronDown, Check, FileText, Image as ImageIcon, Calendar, Clock, Download, TrendingUp, Repeat } from 'lucide-react';
+import { Search, Plus, Trash2, X, RefreshCw, Printer, ChevronDown, Check, FileText, Image as ImageIcon, Calendar, Clock, Download, TrendingUp, Repeat, PauseCircle, PlayCircle, Wallet, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { InvoicePrintTemplate } from '@/components/InvoicePrintTemplate';
-import { confirm } from '@/components/ConfirmDialog';
+import { confirm, ConfirmDialog } from '@/components/ConfirmDialog';
 
 const emptyRow = (): InvoiceLineItem & { mfgDate?: string; mrp?: number; size?: string; barcode?: string } => ({
     name: '', barcode: '', hsnCode: '', mfgDate: '', mrp: 0, size: '',
@@ -24,7 +24,7 @@ function QuickBillingContent() {
     const products = useCompanyData('products') as any[];
     const invoices = useCompanyData('invoices') as any[];
     const parties = useCompanyData('parties') as any[];
-    const { addInvoice, nextInvoiceNumber, adjustStock } = useStore();
+    const { addInvoice, nextInvoiceNumber, adjustStock, addParty, updateParty, updateInvoice } = useStore();
 
     useEffect(() => {
         const handlePopState = () => {
@@ -71,6 +71,25 @@ function QuickBillingContent() {
     const [actionModal, setActionModal] = useState<{ isOpen: boolean, isRefund: boolean }>({ isOpen: false, isRefund: false });
     const [actionQuery, setActionQuery] = useState('');
     const [recurringModalOpen, setRecurringModalOpen] = useState(false);
+
+    // Suspended bills
+    const [suspendedBills, setSuspendedBills] = useState<any[]>(() => {
+        if (typeof window !== 'undefined') {
+            try { return JSON.parse(localStorage.getItem('edibio_suspended_bills') || '[]'); } catch { return []; }
+        }
+        return [];
+    });
+    const [showSuspendModal, setShowSuspendModal] = useState(false);
+
+    // Balance modal
+    const [showBalanceModal, setShowBalanceModal] = useState(false);
+    const [customPayments, setCustomPayments] = useState<Record<string, string>>({});
+    const [balanceSearchQuery, setBalanceSearchQuery] = useState('');
+
+    const saveSuspendedBills = (bills: any[]) => {
+        setSuspendedBills(bills);
+        if (typeof window !== 'undefined') localStorage.setItem('edibio_suspended_bills', JSON.stringify(bills));
+    };
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
@@ -201,6 +220,62 @@ function QuickBillingContent() {
 
         const finalPartyName = partyName.trim() || 'Cash / Walk-in Customer';
 
+        const parsedAmountGiven = amountGiven.trim() !== '' ? parseFloat(amountGiven) || 0 : null;
+        
+        let calculatedAmountPaid = 0;
+        let calculatedBalanceDue = grandTotal;
+        let calculatedPaymentStatus: 'paid' | 'partial' | 'unpaid' = 'unpaid';
+        
+        if (parsedAmountGiven !== null) {
+            if (parsedAmountGiven >= grandTotal) {
+                calculatedAmountPaid = grandTotal;
+                calculatedBalanceDue = 0;
+                calculatedPaymentStatus = 'paid';
+            } else {
+                calculatedAmountPaid = parsedAmountGiven;
+                calculatedBalanceDue = grandTotal - parsedAmountGiven;
+                calculatedPaymentStatus = parsedAmountGiven > 0 ? 'partial' : 'unpaid';
+            }
+        } else {
+            if (billType === 'CASH') {
+                calculatedAmountPaid = grandTotal;
+                calculatedBalanceDue = 0;
+                calculatedPaymentStatus = 'paid';
+            } else {
+                calculatedAmountPaid = 0;
+                calculatedBalanceDue = grandTotal;
+                calculatedPaymentStatus = 'unpaid';
+            }
+        }
+
+        let finalPartyId = undefined;
+        if (finalPartyName !== 'Cash / Walk-in Customer') {
+            const matchingParty = parties.find(p => 
+                (partyPhone && (String(p.phone).trim() === partyPhone.trim() || String(p.mobile).trim() === partyPhone.trim())) ||
+                (p.name.toLowerCase().trim() === finalPartyName.toLowerCase().trim())
+            );
+            
+            if (matchingParty) {
+                finalPartyId = matchingParty.id;
+                if (calculatedBalanceDue > 0) {
+                    updateParty(matchingParty.id, {
+                        balance: (matchingParty.balance || 0) + calculatedBalanceDue
+                    });
+                }
+            } else if (calculatedBalanceDue > 0) {
+                const newParty = addParty({
+                    companyId: companyId!,
+                    type: 'customer',
+                    name: finalPartyName,
+                    phone: partyPhone || '',
+                    address: billingAddress || '',
+                    openingBalance: 0,
+                    balance: calculatedBalanceDue
+                });
+                finalPartyId = newParty.id;
+            }
+        }
+
         const invNo = nextInvoiceNumber(companyId!, 'MN');
         const invoice = {
             id: 'mb_' + Date.now().toString(36),
@@ -209,6 +284,7 @@ function QuickBillingContent() {
             invoiceNumber: invNo,
             date, time,
             stateOfSupply,
+            partyId: finalPartyId,
             partyName: finalPartyName, partyPhone, billingAddress,
             items: validItems,
             subTotal, taxableAmount: subTotal,
@@ -218,9 +294,9 @@ function QuickBillingContent() {
             totalDiscount: globalDiscount + r2(validItems.reduce((a, i) => a + i.discountAmt, 0)), // global + line items
             roundOff: parseFloat(roundOffVal) || 0,
             grandTotal,
-            paymentStatus: billType === 'CASH' ? 'paid' : 'unpaid',
-            amountPaid: billType === 'CASH' ? grandTotal : 0,
-            balanceDue: billType === 'CASH' ? 0 : grandTotal,
+            paymentStatus: calculatedPaymentStatus,
+            amountPaid: calculatedAmountPaid,
+            balanceDue: calculatedBalanceDue,
             paymentMethod: 'cash',
             isGstBill: validItems.some(i => i.gstRate > 0),
             isHidden: false,
@@ -236,7 +312,47 @@ function QuickBillingContent() {
             validItems.forEach(item => { if (item.productId) adjustStock(item.productId, item.qty); });
         }
         setSavedBill(invoice as any);
+        // Auto-trigger print/PDF-save dialog
+        toast.success('Bill saved! Opening print/save dialog…');
+        setTimeout(() => window.print(), 600);
         return true;
+    };
+
+    const handleSuspend = () => {
+        if (validItems.length === 0) { toast.error('No items to suspend.'); return; }
+        const suspended = {
+            id: 'sus_' + Date.now().toString(36),
+            suspendedAt: new Date().toISOString(),
+            partyName, partyPhone, billingAddress, stateOfSupply, billType, counter,
+            items, discountType, discountVal, roundOffEnabled, roundOffVal, description, date, time,
+            grandTotal, label: partyName || `Bill #${suspendedBills.length + 1}`,
+        };
+        const updated = [suspended, ...suspendedBills];
+        saveSuspendedBills(updated);
+        setItems([emptyRow()]); setPartyName(''); setPartyPhone(''); setBillingAddress('');
+        setDiscountVal(''); setDescription(''); setAmountGiven('');
+        toast.success(`Bill for "${suspended.label}" suspended! Resume anytime.`);
+        setShowSuspendModal(false);
+    };
+
+    const handleResumeSuspended = (sus: any) => {
+        setPartyName(sus.partyName); setPartyPhone(sus.partyPhone);
+        setBillingAddress(sus.billingAddress); setStateOfSupply(sus.stateOfSupply || 'Tamil Nadu');
+        setBillType(sus.billType || 'CASH'); setCounter(sus.counter || 'Counter 1');
+        setItems(sus.items); setDiscountType(sus.discountType || '%');
+        setDiscountVal(sus.discountVal || ''); setRoundOffEnabled(sus.roundOffEnabled ?? true);
+        setRoundOffVal(sus.roundOffVal || '0.00'); setDescription(sus.description || '');
+        setDate(sus.date || new Date().toISOString().slice(0, 10));
+        setTime(sus.time || new Date().toTimeString().slice(0, 5));
+        const updated = suspendedBills.filter((b: any) => b.id !== sus.id);
+        saveSuspendedBills(updated);
+        setShowSuspendModal(false);
+        toast.success(`Resumed bill for "${sus.label}".`);
+    };
+
+    const handleDeleteSuspended = (id: string) => {
+        saveSuspendedBills(suspendedBills.filter((b: any) => b.id !== id));
+        toast.success('Suspended bill removed.');
     };
 
     const handlePrintRequest = () => {
@@ -404,9 +520,27 @@ function QuickBillingContent() {
 
                         <button onClick={() => handleFetchBill(true)} className="mi-btn" style={{ border: '1px solid #E2E8F0', padding: '6px 14px' }}><RefreshCw size={14} /> Refund</button>
                         <button onClick={() => handleFetchBill(false)} className="mi-btn" style={{ border: '1px solid #E2E8F0', padding: '6px 14px' }}><Search size={14} /> Fetch</button>
-                        <button onClick={() => setRecurringModalOpen(true)} className="mi-btn" style={{ border: '1px solid transparent', background: '#EBF4FF', color: '#3182CE', padding: '6px 14px', marginLeft: 8 }}><Repeat size={14} /> Recurring Bill</button>
-                        <button onClick={() => router.push(`${activeCompanyId ? '/company' : ''}/billing/expenditure`)} className="mi-btn" style={{ border: '1px solid transparent', background: '#FEEBC8', color: '#DD6B20', padding: '6px 14px', marginLeft: 8 }}>
+                        <button onClick={() => setRecurringModalOpen(true)} className="mi-btn" style={{ border: '1px solid transparent', background: '#EBF4FF', color: '#3182CE', padding: '6px 14px' }}><Repeat size={14} /> Recurring</button>
+                        <button onClick={() => router.push(`${activeCompanyId ? '/company' : ''}/billing/expenditure`)} className="mi-btn" style={{ border: '1px solid transparent', background: '#FEEBC8', color: '#DD6B20', padding: '6px 14px' }}>
                             <TrendingUp size={14} /> Expenditure
+                        </button>
+                        {/* Balance Button */}
+                        <button onClick={() => setShowBalanceModal(true)} className="mi-btn" style={{ border: '1px solid transparent', background: '#E6FFFA', color: '#2C7A7B', padding: '6px 14px', position: 'relative' }}>
+                            <Wallet size={14} /> Balance
+                            {parties.filter((p: any) => p.balance > 0).length > 0 && (
+                                <span style={{ position: 'absolute', top: -4, right: -4, background: '#E53E3E', color: 'white', borderRadius: '50%', width: 16, height: 16, fontSize: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900 }}>
+                                    {parties.filter((p: any) => p.balance > 0).length}
+                                </span>
+                            )}
+                        </button>
+                        {/* Suspend Button */}
+                        <button onClick={() => setShowSuspendModal(true)} className="mi-btn" style={{ border: '1px solid transparent', background: suspendedBills.length > 0 ? '#FFF5F5' : '#F7FAFC', color: suspendedBills.length > 0 ? '#C53030' : '#4A5568', padding: '6px 14px', position: 'relative' }}>
+                            <PauseCircle size={14} /> Suspend
+                            {suspendedBills.length > 0 && (
+                                <span style={{ position: 'absolute', top: -4, right: -4, background: '#DD6B20', color: 'white', borderRadius: '50%', width: 16, height: 16, fontSize: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900 }}>
+                                    {suspendedBills.length}
+                                </span>
+                            )}
                         </button>
                     </div>
 
@@ -817,6 +951,234 @@ function QuickBillingContent() {
                         </div>
                     </div>
                 )}
+
+                {/* Suspend Modal */}
+                {showSuspendModal && (
+                    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }} onClick={() => setShowSuspendModal(false)}>
+                        <div onClick={e => e.stopPropagation()} style={{ background: 'white', padding: 32, borderRadius: 16, width: 500, maxHeight: '80vh', display: 'flex', flexDirection: 'column', animation: 'fadeUp 0.2s ease' }}>
+                            <h3 style={{ fontWeight: 900, fontSize: 18, marginBottom: 8, color: '#1A202C' }}>Suspend / Hold Bills</h3>
+                            <p style={{ fontSize: 13, color: '#718096', marginBottom: 20 }}>
+                                Suspend the current active bill to serve another customer, or resume a previously suspended bill.
+                            </p>
+
+                            {/* Suspend Current Bill Section */}
+                            {validItems.length > 0 ? (
+                                <div style={{ background: '#F7FAFC', border: '1px solid #E2E8F0', padding: 16, borderRadius: 12, marginBottom: 20 }}>
+                                    <h4 style={{ fontWeight: 800, fontSize: 13, color: '#4A5568', marginBottom: 8 }}>Suspend Active Bill</h4>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <div>
+                                            <span style={{ fontWeight: 700, fontSize: 14 }}>{partyName || 'Walk-in Customer'}</span>
+                                            <span style={{ fontSize: 12, color: '#718096', marginLeft: 8 }}>({validItems.length} items - ₹{grandTotal})</span>
+                                        </div>
+                                        <button onClick={handleSuspend} className="mi-btn" style={{ background: '#DD6B20', color: 'white', border: 'none' }}>
+                                            <PauseCircle size={14} /> Suspend Bill
+                                        </button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#FFF5F5', border: '1px solid #FED7D7', color: '#C53030', padding: '12px 16px', borderRadius: 8, fontSize: 12, fontWeight: 700, marginBottom: 20 }}>
+                                    <AlertCircle size={16} />
+                                    No items in current active bill to suspend.
+                                </div>
+                            )}
+
+                            {/* Suspended Bills List */}
+                            <h4 style={{ fontWeight: 800, fontSize: 13, color: '#4A5568', marginBottom: 10 }}>Suspended Bills ({suspendedBills.length})</h4>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, overflowY: 'auto', flex: 1 }}>
+                                {suspendedBills.length === 0 ? (
+                                    <div style={{ textAlign: 'center', color: '#A0AEC0', padding: '20px 0', fontSize: 13 }}>No suspended bills on hold.</div>
+                                ) : (
+                                    suspendedBills.map((sus: any) => (
+                                        <div key={sus.id} style={{ padding: 14, border: '1px solid #E2E8F0', borderRadius: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#F8FAFC' }}>
+                                            <div style={{ flex: 1 }}>
+                                                <div style={{ fontWeight: 800, fontSize: 14, color: '#2D3748' }}>{sus.label}</div>
+                                                <div style={{ fontSize: 11, color: '#A0AEC0', marginTop: 2 }}>{new Date(sus.suspendedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • {sus.items.length} items</div>
+                                                <div style={{ fontSize: 12, color: '#718096', marginTop: 4 }}>
+                                                    {sus.items.map((it: any) => `${it.name} x${it.qty}`).join(', ')}
+                                                </div>
+                                            </div>
+                                            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                                                <span style={{ fontWeight: 800, color: '#1A202C', fontSize: 14, marginRight: 8 }}>₹{sus.grandTotal}</span>
+                                                <button onClick={() => handleResumeSuspended(sus)} className="mi-btn" style={{ background: '#4285F4', color: 'white', border: 'none', padding: '6px 12px' }}>
+                                                    <PlayCircle size={14} /> Resume
+                                                </button>
+                                                <button onClick={() => handleDeleteSuspended(sus.id)} className="mi-btn" style={{ background: 'transparent', color: '#E53E3E', border: 'none', padding: '6px 8px' }}>
+                                                    <Trash2 size={14} />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+
+                            <div style={{ display: 'flex', gap: 12, marginTop: 24 }}>
+                                <button onClick={() => setShowSuspendModal(false)} style={{ flex: 1, padding: '10px', borderRadius: 8, background: 'white', border: '1px solid #E2E8F0', fontWeight: 700, color: '#4A5568', cursor: 'pointer' }}>Close</button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Balance Modal */}
+                {showBalanceModal && (
+                    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }} onClick={() => setShowBalanceModal(false)}>
+                        <div onClick={e => e.stopPropagation()} style={{ background: 'white', padding: 32, borderRadius: 16, width: 600, maxHeight: '85vh', display: 'flex', flexDirection: 'column', animation: 'fadeUp 0.2s ease' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                                <h3 style={{ fontWeight: 900, fontSize: 18, color: '#1A202C', margin: 0 }}>Customer Balance Tracker</h3>
+                                <span style={{ background: '#E6FFFA', color: '#2C7A7B', padding: '4px 10px', borderRadius: 999, fontSize: 11, fontWeight: 800 }}>
+                                    Total Pending: ₹{parties.filter((p: any) => p.balance > 0).reduce((a: number, p: any) => a + p.balance, 0).toLocaleString('en-IN')}
+                                </span>
+                            </div>
+                            <p style={{ fontSize: 13, color: '#718096', marginBottom: 16 }}>
+                                View pending balance amounts from each customer. Click a customer to quickly auto-populate details.
+                            </p>
+
+                            {/* Search bar */}
+                            <div style={{ position: 'relative', marginBottom: 16 }}>
+                                <input
+                                    type="text"
+                                    placeholder="Search customer by name or phone..."
+                                    value={balanceSearchQuery}
+                                    onChange={e => setBalanceSearchQuery(e.target.value)}
+                                    style={{
+                                        width: '100%',
+                                        padding: '10px 14px 10px 36px',
+                                        borderRadius: 8,
+                                        border: '1px solid #CBD5E0',
+                                        fontSize: 13,
+                                        outline: 'none',
+                                        boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.05)'
+                                    }}
+                                />
+                                <Search size={16} color="#A0AEC0" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)' }} />
+                                {balanceSearchQuery && (
+                                    <button 
+                                        onClick={() => setBalanceSearchQuery('')}
+                                        style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#A0AEC0' }}
+                                    >
+                                        <X size={14} />
+                                    </button>
+                                )}
+                            </div>
+
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, overflowY: 'auto', flex: 1 }}>
+                                {parties.filter((p: any) => {
+                                    if (p.balance <= 0) return false;
+                                    if (!balanceSearchQuery) return true;
+                                    const query = balanceSearchQuery.toLowerCase().trim();
+                                    return p.name.toLowerCase().includes(query) || (p.phone && p.phone.toLowerCase().includes(query)) || (p.mobile && p.mobile.toLowerCase().includes(query));
+                                }).length === 0 ? (
+                                    <div style={{ textAlign: 'center', color: '#A0AEC0', padding: '40px 0', fontSize: 13 }}>No customers found matching the search.</div>
+                                ) : (
+                                    parties.filter((p: any) => {
+                                        if (p.balance <= 0) return false;
+                                        if (!balanceSearchQuery) return true;
+                                        const query = balanceSearchQuery.toLowerCase().trim();
+                                        return p.name.toLowerCase().includes(query) || (p.phone && p.phone.toLowerCase().includes(query)) || (p.mobile && p.mobile.toLowerCase().includes(query));
+                                    }).map((party: any) => (
+                                        <div key={party.id} style={{ padding: 14, border: '1px solid #E2E8F0', borderRadius: 10, display: 'flex', flexDirection: 'column', gap: 10, background: '#F8FAFC' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <div>
+                                                    <div style={{ fontWeight: 800, fontSize: 14, color: '#2D3748' }}>{party.name}</div>
+                                                    <div style={{ fontSize: 11, color: '#A0AEC0', marginTop: 2 }}>{party.phone || 'No phone'}</div>
+                                                </div>
+                                                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                                                    <span style={{ fontWeight: 900, color: '#E53E3E', fontSize: 15 }}>₹{party.balance.toLocaleString('en-IN')}</span>
+                                                    <button onClick={() => {
+                                                        setPartyName(party.name);
+                                                        setPartyPhone(party.phone || '');
+                                                        setBillingAddress(party.billingAddress || party.address || '');
+                                                        setShowBalanceModal(false);
+                                                        toast.success(`Selected customer "${party.name}"`);
+                                                    }} className="mi-btn" style={{ background: '#E6FFFA', color: '#2C7A7B', border: 'none', padding: '6px 12px', fontSize: 12 }}>
+                                                        Select
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div style={{ display: 'flex', gap: 8, alignItems: 'center', borderTop: '1px solid #EDF2F7', paddingTop: 10, flexWrap: 'wrap' }}>
+                                                <span style={{ fontSize: 12, color: '#718096', fontWeight: 600 }}>Amount Paid:</span>
+                                                <input 
+                                                    type="number" 
+                                                    placeholder="0.00" 
+                                                    value={customPayments[party.id] || ''}
+                                                    onChange={e => setCustomPayments(prev => ({ ...prev, [party.id]: e.target.value }))}
+                                                    style={{ width: 90, padding: '4px 8px', border: '1px solid #CBD5E0', borderRadius: 6, fontSize: 12, outline: 'none' }}
+                                                />
+                                                <button onClick={() => {
+                                                    const amt = parseFloat(customPayments[party.id]) || 0;
+                                                    if (amt <= 0) {
+                                                        toast.error('Please enter a valid amount greater than 0');
+                                                        return;
+                                                    }
+                                                    if (amt > party.balance) {
+                                                        toast.error(`Amount exceeds pending balance of ₹${party.balance}`);
+                                                        return;
+                                                    }
+                                                    
+                                                    const newBalance = Math.max(0, party.balance - amt);
+                                                    updateParty(party.id, { balance: newBalance });
+                                                    
+                                                    let remainingPayment = amt;
+                                                    const sortedInvoices = [...invoices].reverse();
+                                                    sortedInvoices.forEach((inv: any) => {
+                                                        if (remainingPayment <= 0) return;
+                                                        if (inv.partyId === party.id || (party.phone && inv.partyPhone === party.phone)) {
+                                                            if (inv.balanceDue > 0) {
+                                                                const deduction = Math.min(inv.balanceDue, remainingPayment);
+                                                                const newPaid = inv.amountPaid + deduction;
+                                                                const newDue = inv.balanceDue - deduction;
+                                                                updateInvoice(inv.id, {
+                                                                    amountPaid: newPaid,
+                                                                    balanceDue: newDue,
+                                                                    paymentStatus: newDue === 0 ? 'paid' : 'partial'
+                                                                });
+                                                                remainingPayment -= deduction;
+                                                            }
+                                                        }
+                                                    });
+                                                    
+                                                    setCustomPayments(prev => ({ ...prev, [party.id]: '' }));
+                                                    toast.success(`Received ₹${amt.toLocaleString('en-IN')} payment from "${party.name}"`);
+                                                }} className="mi-btn" style={{ background: '#EBF8FF', color: '#2B6CB0', border: 'none', padding: '4px 10px', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
+                                                    <Check size={12} /> Record Payment
+                                                </button>
+                                                <button onClick={async () => {
+                                                    const confirmed = await confirm({
+                                                        title: 'Clear Outstanding Balance',
+                                                        message: `Are you sure you want to mark the balance of ₹${party.balance.toLocaleString('en-IN')} as fully paid for "${party.name}"?`,
+                                                        confirmLabel: 'Mark Fully Paid',
+                                                        success: true
+                                                    });
+                                                    if (confirmed) {
+                                                        updateParty(party.id, { balance: 0 });
+                                                        invoices.forEach((inv: any) => {
+                                                            if (inv.partyId === party.id || (party.phone && inv.partyPhone === party.phone)) {
+                                                                if (inv.balanceDue > 0) {
+                                                                    updateInvoice(inv.id, {
+                                                                        paymentStatus: 'paid',
+                                                                        amountPaid: inv.grandTotal,
+                                                                        balanceDue: 0
+                                                                    });
+                                                                }
+                                                            }
+                                                        });
+                                                        toast.success(`Cleared balance for "${party.name}"`);
+                                                    }
+                                                }} className="mi-btn" style={{ background: '#F0FFF4', color: '#38A169', border: 'none', padding: '4px 10px', fontSize: 12, fontWeight: 700, marginLeft: 'auto' }}>
+                                                    Paid Fully
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+
+                            <div style={{ display: 'flex', gap: 12, marginTop: 24 }}>
+                                <button onClick={() => setShowBalanceModal(false)} style={{ flex: 1, padding: '10px', borderRadius: 8, background: 'white', border: '1px solid #E2E8F0', fontWeight: 700, color: '#4A5568', cursor: 'pointer' }}>Close</button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+            <ConfirmDialog />
             </div>
         </div>
     );

@@ -1,12 +1,13 @@
 'use client';
 import { useState, useCallback } from 'react';
-import { AlertTriangle, Trash2, X } from 'lucide-react';
+import { AlertTriangle, Trash2, Check } from 'lucide-react';
 
 interface ConfirmOptions {
     title?: string;
     message: string;
     confirmLabel?: string;
     danger?: boolean;
+    success?: boolean;
 }
 
 // Global singleton state — works without prop drilling
@@ -32,6 +33,24 @@ export function ConfirmDialog() {
 
     if (!opts) return null;
 
+    const getIconColor = () => {
+        if (opts.danger) return '#DC2626';
+        if (opts.success) return '#38A169';
+        return '#D97706';
+    };
+
+    const getIconBg = () => {
+        if (opts.danger) return '#FEF2F2';
+        if (opts.success) return '#F0FFF4';
+        return '#FEF7E0';
+    };
+
+    const getButtonBg = () => {
+        if (opts.danger) return '#DC2626';
+        if (opts.success) return '#38A169';
+        return '#4285F4';
+    };
+
     return (
         <div
             style={{
@@ -52,17 +71,20 @@ export function ConfirmDialog() {
                 <div style={{ textAlign: 'center', marginBottom: 20 }}>
                     <div style={{
                         width: 56, height: 56, borderRadius: '50%',
-                        background: opts.danger ? '#FEF2F2' : '#FEF7E0',
+                        background: getIconBg(),
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         margin: '0 auto 16px',
                     }}>
-                        {opts.danger
-                            ? <Trash2 size={24} color="#DC2626" />
-                            : <AlertTriangle size={24} color="#D97706" />
-                        }
+                        {opts.danger ? (
+                            <Trash2 size={24} color={getIconColor()} />
+                        ) : opts.success ? (
+                            <Check size={24} color={getIconColor()} />
+                        ) : (
+                            <AlertTriangle size={24} color={getIconColor()} />
+                        )}
                     </div>
                     <h3 style={{ fontWeight: 900, fontSize: 17, color: '#1A1A2E', margin: '0 0 8px' }}>
-                        {opts.title || (opts.danger ? 'Confirm Delete' : 'Are you sure?')}
+                        {opts.title || (opts.danger ? 'Confirm Delete' : opts.success ? 'Confirm Action' : 'Are you sure?')}
                     </h3>
                     <p style={{ fontSize: 13, color: '#718096', lineHeight: 1.6, margin: 0 }}>{opts.message}</p>
                 </div>
@@ -77,12 +99,12 @@ export function ConfirmDialog() {
                         onClick={() => handle(true)}
                         style={{
                             flex: 1, padding: '12px',
-                            background: opts.danger ? '#DC2626' : '#4285F4',
+                            background: getButtonBg(),
                             color: 'white', border: 'none', borderRadius: 12,
                             fontWeight: 700, cursor: 'pointer', fontSize: 14,
                         }}
                     >
-                        {opts.confirmLabel || (opts.danger ? 'Delete' : 'Confirm')}
+                        {opts.confirmLabel || (opts.danger ? 'Delete' : opts.success ? 'Settle' : 'Confirm')}
                     </button>
                 </div>
             </div>

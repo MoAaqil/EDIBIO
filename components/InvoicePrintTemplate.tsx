@@ -647,7 +647,45 @@ export const InvoicePrintTemplate = ({ invoice, company, copies = 1, previewMode
         </div>
     );
 
-    const renderCopy = (copyIndex: number) => {
+    const pageSize = company?.templatePageSize || 'A4';
+
+    const getPageSizeStyles = () => {
+        switch (pageSize) {
+            case 'A5':
+                return {
+                    width: '148mm',
+                    minHeight: '210mm',
+                    padding: '20px',
+                    fontSize: '11px',
+                };
+            case 'A6':
+                return {
+                    width: '105mm',
+                    minHeight: '148mm',
+                    padding: '12px',
+                    fontSize: '9px',
+                };
+            case '3inch':
+                return {
+                    width: '80mm',
+                    minHeight: 'auto',
+                    padding: '8px',
+                    fontSize: '10px',
+                };
+            case 'A4':
+            default:
+                return {
+                    width: '210mm',
+                    minHeight: '297mm',
+                    padding: '40px',
+                    fontSize: '13px',
+                };
+        }
+    };
+
+    const sizeConfig = getPageSizeStyles();
+
+    const renderCopyRaw = (copyIndex: number) => {
         switch (theme) {
             case 'quick_bill': return renderQuickBill(copyIndex);
             case 'minimalist': return renderMinimalist(copyIndex);
@@ -665,6 +703,31 @@ export const InvoicePrintTemplate = ({ invoice, company, copies = 1, previewMode
             case 'creative':
             default: return renderCreative(copyIndex);
         }
+    };
+
+    const renderCopy = (copyIndex: number) => {
+        const element = renderCopyRaw(copyIndex);
+        if (!element) return null;
+
+        const mergedStyle = {
+            ...element.props.style,
+            maxWidth: sizeConfig.width,
+            width: '100%',
+            minHeight: sizeConfig.minHeight,
+        };
+
+        if (pageSize === 'A5') {
+            mergedStyle.padding = '20px';
+        } else if (pageSize === 'A6') {
+            mergedStyle.padding = '12px';
+        } else if (pageSize === '3inch') {
+            mergedStyle.padding = '8px';
+        }
+
+        return React.cloneElement(element, {
+            style: mergedStyle,
+            className: `${element.props.className || ''} page-size-${pageSize.toLowerCase()}`
+        });
     };
 
     const renderBeigeDark = (copyIndex: number) => (
@@ -1085,6 +1148,60 @@ export const InvoicePrintTemplate = ({ invoice, company, copies = 1, previewMode
                 }
                 @media print {
                    .invoice-footer { position: fixed; bottom: 10px; left: 40px; right: 40px; background: white !important; }
+                   @page {
+                      size: ${pageSize === '3inch' ? '80mm auto' : pageSize};
+                      margin: 0;
+                   }
+                   body {
+                      margin: 0;
+                      padding: 0;
+                   }
+                }
+                
+                /* Size overrides */
+                .page-size-a5 {
+                    font-size: 11px !important;
+                }
+                .page-size-a5 td, .page-size-a5 th {
+                    padding: 8px 6px !important;
+                }
+                .page-size-a5 h1 {
+                    font-size: 24px !important;
+                }
+                
+                .page-size-a6 {
+                    font-size: 9px !important;
+                }
+                .page-size-a6 td, .page-size-a6 th {
+                    padding: 4px 2px !important;
+                }
+                .page-size-a6 h1 {
+                    font-size: 18px !important;
+                }
+                .page-size-a6 img, .page-size-a6 svg {
+                    max-height: 40px !important;
+                }
+                
+                .page-size-3inch {
+                    font-size: 10px !important;
+                    font-family: monospace !important;
+                }
+                .page-size-3inch td, .page-size-3inch th {
+                    padding: 4px 2px !important;
+                }
+                .page-size-3inch h1 {
+                    font-size: 16px !important;
+                }
+                .page-size-3inch img, .page-size-3inch svg {
+                    max-height: 35px !important;
+                }
+                .page-size-3inch .creative-layout, .page-size-3inch .elegant-layout {
+                    flex-direction: column !important;
+                }
+                .page-size-3inch .creative-sidebar {
+                    width: 100% !important;
+                    padding: 10px !important;
+                    margin-bottom: 10px !important;
                 }
             `}</style>
         </div>

@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Save, FileText, Check, LayoutTemplate, X, Columns } from 'lucide-react';
+import { Save, FileText, Check, LayoutTemplate, X, Columns, Minimize2, Scaling } from 'lucide-react';
 import { useStore, useActiveCompany } from '@/lib/store';
 import { InvoicePrintTemplate } from '@/components/InvoicePrintTemplate';
 import toast from 'react-hot-toast';
@@ -38,6 +38,13 @@ const THEMES = [
     { id: 'formal_quote', label: 'Formal Quote' },
 ];
 
+const PAGE_SIZE_OPTIONS = [
+    { key: 'A4', label: 'A4 Standard' },
+    { key: 'A5', label: 'A5 Medium' },
+    { key: 'A6', label: 'A6 Small' },
+    { key: '3inch', label: '3-Inch POS' },
+];
+
 const COLUMN_OPTIONS = [
     { key: 'sn', label: 'S.No' },
     { key: 'hsn', label: 'HSN' },
@@ -59,6 +66,7 @@ export default function TemplateSettingsPage() {
         discount: true,
         tax: true,
     });
+    const [pageSize, setPageSize] = useState('A4');
     
     const containerRef = useRef<HTMLDivElement>(null);
     const [scale, setScale] = useState(0.48);
@@ -69,6 +77,7 @@ export default function TemplateSettingsPage() {
             if (company.templateColumns) {
                 setColumns(company.templateColumns);
             }
+            setPageSize(company.templatePageSize || 'A4');
         }
     }, [company]);
 
@@ -89,6 +98,7 @@ export default function TemplateSettingsPage() {
         updateCompany(company.id, {
             templateTheme: theme,
             templateColumns: columns,
+            templatePageSize: pageSize,
         });
         toast.success('Invoice template settings saved successfully.');
         router.push('/company/settings');
@@ -178,6 +188,37 @@ export default function TemplateSettingsPage() {
                             })}
                         </div>
                     </div>
+
+                    {/* Page Size Selector */}
+                    <div className="card" style={{ padding: 24 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+                            <div style={{ width: 40, height: 40, borderRadius: 12, background: 'linear-gradient(135deg, #FFF5F5, #FED7D7)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <Scaling size={20} color="#C53030" />
+                            </div>
+                            <div>
+                                <h3 style={{ fontSize: 16, fontWeight: 800, color: '#1A1A2E', margin: 0 }}>Print Paper Size</h3>
+                                <p style={{ fontSize: 12, color: '#718096', margin: 0 }}>Select paper dimensions for printing</p>
+                            </div>
+                        </div>
+
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+                            {PAGE_SIZE_OPTIONS.map(opt => {
+                                const active = pageSize === opt.key;
+                                return (
+                                    <div 
+                                        key={opt.key}
+                                        onClick={() => setPageSize(opt.key)}
+                                        className={`column-toggle ${active ? 'active' : ''}`}
+                                    >
+                                        <div className="checkbox-box">
+                                            {active && <Check size={10} />}
+                                        </div>
+                                        <span>{opt.label}</span>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
                 </div>
 
                 {/* Right: Preview */}
@@ -194,7 +235,7 @@ export default function TemplateSettingsPage() {
                             <div className="preview-content" style={{ transform: `scale(${scale})` }}>
                                 <InvoicePrintTemplate
                                     invoice={mockInvoice}
-                                    company={{ ...company, templateTheme: theme, templateColumns: columns }}
+                                    company={{ ...company, templateTheme: theme, templateColumns: columns, templatePageSize: pageSize }}
                                     copies={1}
                                     previewMode={true}
                                 />

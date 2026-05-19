@@ -4,7 +4,7 @@ import AppLayout from '@/components/AppLayout';
 import FeatureGate from '@/components/FeatureGate';
 import { useCompanyData, useActiveCompany } from '@/lib/store';
 import { formatDate } from '@/lib/utils';
-import { TrendingUp, TrendingDown, BarChart3, PackageSearch, AlertTriangle, Lightbulb, Activity, Download, Zap, PieChart as PieIcon } from 'lucide-react';
+import { TrendingUp, TrendingDown, BarChart3, PackageSearch, AlertTriangle, Lightbulb, Activity, Download, Zap, PieChart as PieIcon, ChevronDown, ChevronUp } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 
 export default function AnalyticsReportsPage() {
@@ -14,6 +14,7 @@ export default function AnalyticsReportsPage() {
     const products = useCompanyData('products') as any[];
     
     const [isCustomHistory, setIsCustomHistory] = useState(false);
+    const [showDailyHistory, setShowDailyHistory] = useState(false);
     const [startDate, setStartDate] = useState(() => {
         const d = new Date();
         d.setDate(d.getDate() - 30);
@@ -271,54 +272,127 @@ export default function AnalyticsReportsPage() {
 
                     {/* Daily History Table */}
                     <div style={{ background: 'white', borderRadius: 24, border: '1px solid #E2E8F0', overflow: 'hidden', boxShadow: '0 4px 12px rgba(0,0,0,0.02)' }}>
-                        <div style={{ padding: '24px 32px', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+                        <div style={{ padding: '20px 28px', borderBottom: showDailyHistory ? '1px solid #E2E8F0' : 'none', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                                <div style={{ background: '#F3E8FF', width: 40, height: 40, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <div style={{ background: '#F3E8FF', width: 40, height: 40, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                                     <Activity size={20} color="#9333EA" />
                                 </div>
                                 <div>
-                                    <h3 style={{ fontSize: 18, fontWeight: 900, margin: 0, color: '#1A202C' }}>Daily Sales History</h3>
+                                    <h3 style={{ fontSize: 16, fontWeight: 900, margin: 0, color: '#1A202C' }}>Daily Sales History</h3>
                                     <p style={{ fontSize: 12, color: '#718096', margin: 0, fontWeight: 600 }}>{isCustomHistory ? 'Custom Date Range' : 'Performance over the last 30 days'}</p>
                                 </div>
                             </div>
                             
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-                                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 700, color: '#4A5568', cursor: 'pointer' }}>
-                                    <input type="checkbox" checked={isCustomHistory} onChange={e => setIsCustomHistory(e.target.checked)} style={{ width: 16, height: 16, accentColor: '#9333EA' }} />
-                                    Custom Range
-                                </label>
-                                
-                                {isCustomHistory && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                                {/* Show date range controls only when expanded */}
+                                {showDailyHistory && (
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 700, color: '#4A5568', cursor: 'pointer' }}>
+                                        <input type="checkbox" checked={isCustomHistory} onChange={e => setIsCustomHistory(e.target.checked)} style={{ width: 16, height: 16, accentColor: '#9333EA' }} />
+                                        Custom Range
+                                    </label>
+                                )}
+                                {showDailyHistory && isCustomHistory && (
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                        <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} style={{ padding: '6px 12px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 12, fontWeight: 600, color: '#1A202C' }} />
+                                        <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} style={{ padding: '6px 10px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 12, fontWeight: 600, color: '#1A202C' }} />
                                         <span style={{ fontSize: 12, color: '#A0AEC0', fontWeight: 600 }}>to</span>
-                                        <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} style={{ padding: '6px 12px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 12, fontWeight: 600, color: '#1A202C' }} />
+                                        <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} style={{ padding: '6px 10px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 12, fontWeight: 600, color: '#1A202C' }} />
                                     </div>
                                 )}
+                                {/* Toggle button */}
+                                <button
+                                    onClick={() => setShowDailyHistory(v => !v)}
+                                    style={{
+                                        display: 'flex', alignItems: 'center', gap: 6,
+                                        padding: '8px 16px', borderRadius: 10,
+                                        border: '1.5px solid #E2E8F0',
+                                        background: showDailyHistory ? '#F3E8FF' : 'white',
+                                        color: showDailyHistory ? '#9333EA' : '#718096',
+                                        fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                                        transition: 'all 0.18s'
+                                    }}
+                                >
+                                    {showDailyHistory ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                    {showDailyHistory ? 'Hide History' : 'Show History'}
+                                </button>
                             </div>
                         </div>
-                        <div style={{ overflowX: 'auto' }}>
-                            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: 13 }}>
-                                <thead>
-                                    <tr style={{ background: '#F8FAFC', color: '#64748B' }}>
-                                        <th style={{ padding: '16px 32px', fontWeight: 800 }}>Date</th>
-                                        <th style={{ padding: '16px 32px', fontWeight: 800 }}>Invoices</th>
-                                        <th style={{ padding: '16px 32px', fontWeight: 800 }}>Total Sales</th>
-                                        <th style={{ padding: '16px 32px', fontWeight: 800 }}>Est. Profit</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {dailyHistory.map((day, i) => (
-                                        <tr key={i} style={{ borderBottom: '1px solid #F1F5F9' }}>
-                                            <td style={{ padding: '14px 32px', fontWeight: 700, color: '#1E293B' }}>{day.dateLabel}</td>
-                                            <td style={{ padding: '14px 32px', color: '#64748B', fontWeight: 600 }}>{day.invoices} bills</td>
-                                            <td style={{ padding: '14px 32px', fontWeight: 800, color: '#1E293B' }}>₹{day.sales.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
-                                            <td style={{ padding: '14px 32px', fontWeight: 800, color: day.profit >= 0 ? '#16A34A' : '#DC2626' }}>₹{day.profit.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
+                        {showDailyHistory && (() => {
+                            const totalInvoices = dailyHistory.reduce((a, d) => a + d.invoices, 0);
+                            const totalSalesAmt = dailyHistory.reduce((a, d) => a + d.sales, 0);
+                            const totalProfitAmt = dailyHistory.reduce((a, d) => a + d.profit, 0);
+                            const activeDays = dailyHistory.filter(d => d.invoices > 0).length;
+                            return (
+                                <>
+                                    {/* Period Summary Cards */}
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, padding: '16px 20px', background: '#FAFBFF', borderBottom: '1px solid #E2E8F0' }}>
+                                        {[
+                                            {
+                                                label: 'Total Bills',
+                                                value: totalInvoices.toLocaleString('en-IN'),
+                                                sub: `${activeDays} active day${activeDays !== 1 ? 's' : ''}`,
+                                                color: '#9333EA', bg: '#F3E8FF'
+                                            },
+                                            {
+                                                label: 'Total Sales',
+                                                value: `₹${totalSalesAmt.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`,
+                                                sub: activeDays > 0 ? `Avg ₹${Math.round(totalSalesAmt / activeDays).toLocaleString('en-IN')}/day` : 'No sales yet',
+                                                color: '#1967D2', bg: '#E8F0FE'
+                                            },
+                                            {
+                                                label: 'Est. Profit',
+                                                value: `₹${totalProfitAmt.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`,
+                                                sub: totalSalesAmt > 0 ? `${((totalProfitAmt / totalSalesAmt) * 100).toFixed(1)}% margin` : '—',
+                                                color: totalProfitAmt >= 0 ? '#16A34A' : '#DC2626',
+                                                bg: totalProfitAmt >= 0 ? '#F0FDF4' : '#FEF2F2'
+                                            },
+                                        ].map(({ label, value, sub, color, bg }) => (
+                                            <div key={label} style={{ background: bg, borderRadius: 14, padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                                <p style={{ fontSize: 10, fontWeight: 800, color, textTransform: 'uppercase', letterSpacing: '0.06em', margin: 0 }}>{label}</p>
+                                                <p style={{ fontSize: 20, fontWeight: 900, color, margin: 0, letterSpacing: '-0.5px' }}>{value}</p>
+                                                <p style={{ fontSize: 11, color: '#718096', fontWeight: 600, margin: 0 }}>{sub}</p>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    {/* Daily Table */}
+                                    <div style={{ overflowX: 'auto' }}>
+                                        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: 13 }}>
+                                            <thead>
+                                                <tr style={{ background: '#F8FAFC', color: '#64748B' }}>
+                                                    <th style={{ padding: '13px 24px', fontWeight: 800 }}>Date</th>
+                                                    <th style={{ padding: '13px 24px', fontWeight: 800 }}>Invoices</th>
+                                                    <th style={{ padding: '13px 24px', fontWeight: 800 }}>Total Sales</th>
+                                                    <th style={{ padding: '13px 24px', fontWeight: 800 }}>Est. Profit</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {dailyHistory.map((day, i) => (
+                                                    <tr key={i} style={{ borderBottom: '1px solid #F1F5F9', opacity: day.invoices === 0 ? 0.45 : 1 }}>
+                                                        <td style={{ padding: '11px 24px', fontWeight: 700, color: '#1E293B' }}>{day.dateLabel}</td>
+                                                        <td style={{ padding: '11px 24px', color: '#64748B', fontWeight: 600 }}>
+                                                            {day.invoices === 0 ? <span style={{ color: '#CBD5E0' }}>—</span> : `${day.invoices} bill${day.invoices !== 1 ? 's' : ''}`}
+                                                        </td>
+                                                        <td style={{ padding: '11px 24px', fontWeight: 800, color: '#1E293B' }}>₹{day.sales.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
+                                                        <td style={{ padding: '11px 24px', fontWeight: 800, color: day.profit >= 0 ? '#16A34A' : '#DC2626' }}>₹{day.profit.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                            {/* Pinned totals footer row */}
+                                            <tfoot>
+                                                <tr style={{ background: 'linear-gradient(135deg, #1E293B, #0F172A)', color: 'white' }}>
+                                                    <td style={{ padding: '14px 24px', fontWeight: 900, fontSize: 13 }}>
+                                                        Period Total <span style={{ fontSize: 10, opacity: 0.6, fontWeight: 600 }}>({dailyHistory.length} days)</span>
+                                                    </td>
+                                                    <td style={{ padding: '14px 24px', fontWeight: 900 }}>{totalInvoices} bills</td>
+                                                    <td style={{ padding: '14px 24px', fontWeight: 900, fontSize: 15 }}>₹{totalSalesAmt.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
+                                                    <td style={{ padding: '14px 24px', fontWeight: 900, fontSize: 15, color: totalProfitAmt >= 0 ? '#4ADE80' : '#F87171' }}>₹{totalProfitAmt.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
+                                                </tr>
+                                            </tfoot>
+                                        </table>
+                                    </div>
+                                </>
+                            );
+                        })()}
                     </div>
 
                     {/* Next-Gen Strategy Framework */}
