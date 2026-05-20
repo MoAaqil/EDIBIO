@@ -37,11 +37,15 @@ export default function BillingListPage() {
         return () => window.removeEventListener('popstate', handlePopState);
     }, []);
 
-    const gstInvoices = allInvoices.filter(i => i.isGstBill && !i.isPrivate);
+    // All non-private, non-hidden invoices — shown in list
+    const allVisibleInvoices = allInvoices.filter(i => !i.isPrivate && !i.isHidden);
+    // GST bills only — for 'All GST Bills' tab and revenue totals
+    const gstOnlyInvoices = allInvoices.filter(i => i.isGstBill && !i.isPrivate);
     const hiddenInvoices = allInvoices.filter(i => i.isHidden);
 
     const filtered = useMemo(() => {
-        let list = gstInvoices;
+        // 'All GST Bills' tab shows only GST invoices; all other tabs use full visible list
+        let list = tab === 'All GST Bills' ? gstOnlyInvoices : allVisibleInvoices;
         if (tab === 'Sale') list = list.filter(i => i.invoiceType === 'sale');
         else if (tab === 'Purchase') list = list.filter(i => i.invoiceType === 'purchase');
         else if (tab === 'Estimate') list = list.filter(i => ['estimate', 'proforma'].includes(i.invoiceType));
@@ -53,11 +57,11 @@ export default function BillingListPage() {
             i.invoiceNumber.toLowerCase().includes(search.toLowerCase())
         );
         return list;
-    }, [gstInvoices, tab, search]);
+    }, [allVisibleInvoices, gstOnlyInvoices, tab, search]);
 
     // Estimate / Proforma / Delivery Challan are NOT confirmed — exclude from revenue totals
     const DRAFT_TYPES = ['estimate', 'proforma', 'delivery_challan'];
-    const confirmedSales = gstInvoices.filter(i => i.invoiceType === 'sale' && !DRAFT_TYPES.includes(i.invoiceType));
+    const confirmedSales = allVisibleInvoices.filter(i => i.invoiceType === 'sale' && !DRAFT_TYPES.includes(i.invoiceType));
     const totalSales = confirmedSales.reduce((a: number, i: any) => a + i.grandTotal, 0);
     const totalReceived = confirmedSales.reduce((a: number, i: any) => a + i.amountPaid, 0);
     const totalDue = confirmedSales.reduce((a: number, i: any) => a + i.balanceDue, 0);
@@ -181,7 +185,9 @@ export default function BillingListPage() {
                         <div style={{ textAlign: 'center', padding: '56px 20px' }}>
                             <FileText size={44} style={{ color: '#E1E4E8', margin: '0 auto 12px' }} />
                             <p style={{ color: '#A0AEC0', fontWeight: 600, fontSize: 14 }}>No invoices found</p>
-                            <p style={{ color: '#CBD5E0', fontSize: 12, marginTop: 4 }}>Only GST bills appear here. Use "View Hidden" to see 0-GST bills.</p>
+                            <p style={{ color: '#CBD5E0', fontSize: 12, marginTop: 4 }}>
+                                {tab === 'All GST Bills' ? 'No GST bills yet. Switch tabs to see all bills.' : `No ${tab.toLowerCase()} found yet.`}
+                            </p>
                             <Link href={`/company/billing/new?type=sale`} className="btn btn-blue btn-sm" style={{ marginTop: 16, display: 'inline-flex', textDecoration: 'none' }}>
                                 <Plus size={13} /> Create Invoice
                             </Link>
