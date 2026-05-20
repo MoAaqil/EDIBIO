@@ -6,13 +6,14 @@ import type { Party } from '@/lib/types';
 import Link from 'next/link';
 import {
     Plus, Search, Users, Trash2, Edit2, Phone, MessageSquare,
-    Download, Upload, X, TrendingUp, TrendingDown
+    Download, Upload, X, TrendingUp, TrendingDown,
+    IndianRupee, History, ChevronRight, CheckCircle2
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { confirm } from '@/components/ConfirmDialog';
 
 export default function PartiesPage() {
-    const { activeCompanyId, addParty, updateParty, deleteParty } = useStore();
+    const { activeCompanyId, addParty, updateParty, deleteParty, addBalancePayment, deleteBalancePayment } = useStore();
     const companyId = activeCompanyId;
     const parties = useCompanyData('parties') as Party[];
 
@@ -20,6 +21,10 @@ export default function PartiesPage() {
     const [typeFilter, setTypeFilter] = useState<'all' | 'customer' | 'supplier'>('all');
     const [showAdd, setShowAdd] = useState(false);
     const [editParty, setEditParty] = useState<Party | null>(null);
+
+    const [paymentParty, setPaymentParty] = useState<Party | null>(null);
+    const [payForm, setPayForm] = useState({ amount: '', method: 'cash', date: new Date().toLocaleDateString('en-CA'), note: '' });
+    const [historyParty, setHistoryParty] = useState<Party | null>(null);
 
     const emptyForm = { name: '', phone: '', email: '', gstNumber: '', address: '', city: '', state: 'Tamil Nadu', type: 'customer', openingBalance: '', creditLimit: '', creditDays: '' };
     const [form, setForm] = useState<any>(emptyForm);
@@ -55,6 +60,16 @@ export default function PartiesPage() {
         setForm({ ...p, openingBalance: String(p.openingBalance), creditLimit: String(p.creditLimit || ''), creditDays: String(p.creditDays || '') });
         setShowAdd(true);
     };
+    const handleAddPayment = () => {
+        if (!paymentParty) return;
+        const amt = parseFloat(payForm.amount);
+        if (!amt || amt <= 0) { toast.error('Enter a valid amount'); return; }
+        addBalancePayment(paymentParty.id, { amount: amt, method: payForm.method as any, date: payForm.date, note: payForm.note || undefined });
+        toast.success(`Payment of ₹${amt.toLocaleString('en-IN')} recorded`);
+        setPaymentParty(null);
+        setPayForm({ amount: '', method: 'cash', date: new Date().toLocaleDateString('en-CA'), note: '' });
+    };
+
     const handleDelete = async (id: string) => {
         const yes = await confirm({ message: 'This party and all their ledger data will be removed.', danger: true });
         if (yes) { deleteParty(id); toast.success('Party deleted'); }
@@ -159,6 +174,8 @@ export default function PartiesPage() {
                                                     <div style={{ display: 'flex', gap: 6 }}>
                                                         <a href={`tel:${p.phone}`} className="btn btn-ghost btn-icon" style={{ padding: 6 }}><Phone size={13} color="#34A853" /></a>
                                                         <a href={`https://wa.me/91${p.phone.replace(/\D/g, '')}`} target="_blank" className="btn btn-ghost btn-icon" style={{ padding: 6 }}><MessageSquare size={13} color="#25D366" /></a>
+                                                        <button onClick={() => { setPaymentParty(p); }} className="btn btn-ghost btn-icon" style={{ padding: 6 }} title="Record Payment"><IndianRupee size={13} color="#9333EA" /></button>
+                                                        <button onClick={() => setHistoryParty(p)} className="btn btn-ghost btn-icon" style={{ padding: 6 }} title="Payment History"><History size={13} color="#F59E0B" /></button>
                                                         <button onClick={() => openEdit(p)} className="btn btn-ghost btn-icon" style={{ padding: 6 }}><Edit2 size={13} color="#4285F4" /></button>
                                                         <button onClick={() => handleDelete(p.id)} className="btn btn-ghost btn-icon" style={{ padding: 6 }}><Trash2 size={13} color="#EA4335" /></button>
                                                     </div>
@@ -185,6 +202,8 @@ export default function PartiesPage() {
                                             <div style={{ display: 'flex', gap: 6, marginTop: 4, justifyContent: 'flex-end' }}>
                                                 <a href={`tel:${p.phone}`} style={{ display: 'flex', alignItems: 'center', background: 'none', border: 'none' }}><Phone size={13} color="#34A853" /></a>
                                                 <a href={`https://wa.me/91${p.phone.replace(/\D/g, '')}`} target="_blank" style={{ display: 'flex', alignItems: 'center', background: 'none', border: 'none' }}><MessageSquare size={13} color="#25D366" /></a>
+                                                <button onClick={() => setPaymentParty(p)} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center' }}><IndianRupee size={13} color="#9333EA" /></button>
+                                                <button onClick={() => setHistoryParty(p)} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center' }}><History size={13} color="#F59E0B" /></button>
                                                 <button onClick={() => openEdit(p)} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center' }}><Edit2 size={13} color="#4285F4" /></button>
                                             </div>
                                         </div>
@@ -195,6 +214,119 @@ export default function PartiesPage() {
                     )}
                 </div>
             </div>
+
+            {/* ── Record Payment Modal ── */}
+            {paymentParty && (
+                <div className="modal-overlay" onClick={() => setPaymentParty(null)}>
+                    <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 420 }}>
+                        <div style={{ padding: '16px 20px 12px', borderBottom: '1px solid #E1E4E8', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div>
+                                <h3 style={{ fontWeight: 900, fontSize: 16, color: '#1A1A2E', margin: 0 }}>Record Payment</h3>
+                                <p style={{ fontSize: 12, color: '#718096', margin: '2px 0 0' }}>
+                                    {paymentParty.name} — Balance: <strong style={{ color: paymentParty.balance > 0 ? '#34A853' : '#EA4335' }}>₹{Math.abs(paymentParty.balance).toLocaleString('en-IN')}</strong>
+                                </p>
+                            </div>
+                            <button onClick={() => setPaymentParty(null)} className="btn btn-ghost btn-icon"><X size={16} /></button>
+                        </div>
+                        <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                                <div>
+                                    <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', textTransform: 'uppercase', display: 'block', marginBottom: 5 }}>Amount ₹ *</label>
+                                    <input type="number" className="e-input" placeholder="0.00" value={payForm.amount} onChange={e => setPayForm(f => ({ ...f, amount: e.target.value }))} style={{ padding: '10px 12px' }} autoFocus />
+                                </div>
+                                <div>
+                                    <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', textTransform: 'uppercase', display: 'block', marginBottom: 5 }}>Date *</label>
+                                    <input type="date" className="e-input" value={payForm.date} onChange={e => setPayForm(f => ({ ...f, date: e.target.value }))} style={{ padding: '10px 12px' }} />
+                                </div>
+                            </div>
+                            <div>
+                                <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Method</label>
+                                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                    {['cash','upi','bank','cheque','neft','rtgs','other'].map(m => (
+                                        <button key={m} onClick={() => setPayForm(f => ({ ...f, method: m }))}
+                                            style={{ padding: '6px 12px', borderRadius: 8, border: '1.5px solid', fontSize: 11, fontWeight: 700, cursor: 'pointer', textTransform: 'uppercase', background: payForm.method === m ? '#9333EA' : 'white', color: payForm.method === m ? 'white' : '#718096', borderColor: payForm.method === m ? '#9333EA' : '#E2E8F0' }}>
+                                            {m}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                            <div>
+                                <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', textTransform: 'uppercase', display: 'block', marginBottom: 5 }}>Note</label>
+                                <input className="e-input" placeholder="e.g. Cheque no. 123456" value={payForm.note} onChange={e => setPayForm(f => ({ ...f, note: e.target.value }))} style={{ padding: '10px 12px' }} />
+                            </div>
+                        </div>
+                        <div style={{ padding: '12px 20px 16px', borderTop: '1px solid #E1E4E8', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                            <button onClick={() => setPaymentParty(null)} className="btn btn-outline">Cancel</button>
+                            <button onClick={handleAddPayment} style={{ background: 'linear-gradient(135deg,#7C3AED,#9333EA)', color: 'white', border: 'none', borderRadius: 10, padding: '10px 20px', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <CheckCircle2 size={14} /> Save Payment
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── Payment History Drawer ── */}
+            {historyParty && (
+                <div className="modal-overlay" onClick={() => setHistoryParty(null)}>
+                    <div onClick={e => e.stopPropagation()} style={{ position: 'fixed', right: 0, top: 0, bottom: 0, width: '100%', maxWidth: 460, background: 'white', boxShadow: '-8px 0 40px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column', zIndex: 60 }}>
+                        <div style={{ padding: '20px 24px 16px', background: 'linear-gradient(135deg,#1E293B,#0F172A)', color: 'white' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+                                <div>
+                                    <p style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 4px' }}>Repayment Ledger</p>
+                                    <h2 style={{ fontSize: 20, fontWeight: 900, margin: '0 0 2px' }}>{historyParty.name}</h2>
+                                    <p style={{ fontSize: 12, color: '#94A3B8', margin: 0 }}>{historyParty.phone}</p>
+                                </div>
+                                <button onClick={() => setHistoryParty(null)} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: 8, padding: 8, cursor: 'pointer', color: 'white', display: 'flex' }}><X size={16} /></button>
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                                {[{ label: 'Current Balance', value: `₹${Math.abs(historyParty.balance).toLocaleString('en-IN')}`, sub: historyParty.balance > 0 ? 'To Receive' : historyParty.balance < 0 ? 'To Pay' : 'Settled', color: historyParty.balance > 0 ? '#4ADE80' : historyParty.balance < 0 ? '#F87171' : '#94A3B8' }, { label: 'Total Repaid', value: `₹${(historyParty.paymentHistory || []).reduce((a, h) => a + h.amount, 0).toLocaleString('en-IN')}`, sub: `${(historyParty.paymentHistory || []).length} entries`, color: '#4ADE80' }].map(s => (
+                                    <div key={s.label} style={{ background: 'rgba(255,255,255,0.08)', borderRadius: 12, padding: '10px 14px' }}>
+                                        <p style={{ fontSize: 10, color: '#94A3B8', fontWeight: 700, textTransform: 'uppercase', margin: '0 0 3px' }}>{s.label}</p>
+                                        <p style={{ fontSize: 18, fontWeight: 900, margin: 0, color: s.color }}>{s.value}</p>
+                                        <p style={{ fontSize: 10, color: '#64748B', margin: '2px 0 0', fontWeight: 600 }}>{s.sub}</p>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                        <div style={{ padding: '10px 16px', borderBottom: '1px solid #F1F5F9', background: '#FAFBFF' }}>
+                            <button onClick={() => { setPaymentParty(historyParty); setHistoryParty(null); }} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 10, background: '#9333EA', color: 'white', border: 'none', fontWeight: 800, fontSize: 12, cursor: 'pointer' }}>
+                                <IndianRupee size={13} /> Record New Payment
+                            </button>
+                        </div>
+                        <div style={{ flex: 1, overflowY: 'auto' }}>
+                            {(historyParty.paymentHistory || []).length === 0 ? (
+                                <div style={{ textAlign: 'center', padding: '60px 20px' }}>
+                                    <History size={40} style={{ color: '#E2E8F0', margin: '0 auto 12px' }} />
+                                    <p style={{ color: '#A0AEC0', fontSize: 14, fontWeight: 600, margin: '0 0 4px' }}>No payment history yet</p>
+                                    <p style={{ color: '#CBD5E0', fontSize: 12 }}>Record the first payment above</p>
+                                </div>
+                            ) : (historyParty.paymentHistory || []).map((entry, idx, arr) => (
+                                <div key={entry.id} style={{ padding: '14px 20px', borderBottom: '1px solid #F8FAFC', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 3, flexShrink: 0 }}>
+                                        <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#10B981' }} />
+                                        {idx < arr.length - 1 && <div style={{ width: 2, background: '#F1F5F9', flex: 1, minHeight: 28, marginTop: 4 }} />}
+                                    </div>
+                                    <div style={{ flex: 1 }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                            <div>
+                                                <p style={{ fontSize: 16, fontWeight: 900, color: '#059669', margin: '0 0 2px' }}>+₹{entry.amount.toLocaleString('en-IN')}</p>
+                                                <p style={{ fontSize: 12, color: '#64748B', margin: '0 0 5px', fontWeight: 600 }}>{new Date(entry.date).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                                                <span style={{ background: '#F3E8FF', color: '#7C3AED', fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 6, textTransform: 'uppercase' }}>{entry.method}</span>
+                                                {entry.note && <p style={{ fontSize: 11, color: '#94A3B8', margin: '5px 0 0', fontStyle: 'italic' }}>"{entry.note}"</p>}
+                                            </div>
+                                            <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                                                <p style={{ fontSize: 10, color: '#CBD5E0', fontWeight: 600, margin: '0 0 1px' }}>Balance after</p>
+                                                <p style={{ fontSize: 13, fontWeight: 800, color: '#1E293B', margin: '0 0 4px' }}>₹{Math.abs(entry.balanceAfter).toLocaleString('en-IN')}</p>
+                                                <button onClick={async () => { const { confirm } = await import('@/components/ConfirmDialog'); const ok = await confirm({ message: 'Delete entry? Balance will be reversed.', danger: true }); if (ok) { deleteBalancePayment(historyParty.id, entry.id); setHistoryParty(prev => prev ? { ...prev, balance: prev.balance + entry.amount, paymentHistory: (prev.paymentHistory || []).filter(h => h.id !== entry.id) } : null); toast.success('Entry deleted'); }}} style={{ background: 'none', border: 'none', cursor: 'pointer', opacity: 0.45, padding: 2 }}><Trash2 size={11} color="#EA4335" /></button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Add/Edit Party Modal */}
             {showAdd && (

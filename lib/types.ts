@@ -74,6 +74,18 @@ export interface Godown {
     address?: string;
 }
 
+// ── Balance Payment History ───────────────────────────────────────────────────
+export interface BalancePayment {
+    id: string;
+    date: string;           // YYYY-MM-DD
+    amount: number;         // positive = received from party, negative = paid to party
+    method: 'cash' | 'upi' | 'bank' | 'cheque' | 'neft' | 'rtgs' | 'other';
+    note?: string;
+    balanceBefore: number;  // party balance before this payment
+    balanceAfter: number;   // party balance after this payment
+    recordedAt: string;     // ISO timestamp
+}
+
 // ── Party (Customer / Supplier) ───────────────────────────────────────────────
 export type PartyType = 'customer' | 'supplier' | 'both';
 
@@ -89,10 +101,11 @@ export interface Party {
     city?: string;
     state?: string;
     openingBalance: number;  // + = receivable, - = payable
-    balance: number;         // current
+    balance: number;         // current running balance
     creditLimit?: number;
     creditDays?: number;
     assignedProductIds?: string[]; // IDs of products this supplier provides
+    paymentHistory?: BalancePayment[]; // repayment ledger
 }
 
 // ── Product / Item ────────────────────────────────────────────────────────────

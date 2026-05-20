@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import type {
     EdibioUser, Company, Party, Product, Invoice, Expense,
-    InvoiceTemplate, HsnCode, Godown, AgencyClient, AgencyProject, AuditLog
+    InvoiceTemplate, HsnCode, Godown, AgencyClient, AgencyProject, AuditLog, BalancePayment
 } from './types';
 import { get, set as idbSet, del } from 'idb-keyval';
 import toast from 'react-hot-toast';
@@ -188,6 +188,8 @@ interface EdibioState {
     addParty: (p: Omit<Party, 'id'>) => Party;
     updateParty: (id: string, upd: Partial<Party>) => void;
     deleteParty: (id: string) => void;
+    addBalancePayment: (partyId: string, payment: Omit<BalancePayment, 'id' | 'balanceBefore' | 'balanceAfter' | 'recordedAt'>) => void;
+    deleteBalancePayment: (partyId: string, paymentId: string) => void;
 
     // Products
     products: Product[];
@@ -514,6 +516,44 @@ export const useStore = create<EdibioState>()(
                 set(s => ({ parties: s.parties.map(p => p.id === id ? { ...p, ...upd } : p), lastModified: Date.now() })),
             deleteParty: (id) =>
                 set(s => ({ parties: s.parties.filter(p => p.id !== id), lastModified: Date.now() })),
+
+            addBalancePayment: (partyId, payment) =>
+                set(s => ({
+                    parties: s.parties.map(p => {
+                        if (p.id !== partyId) return p;
+                        const balanceBefore = p.balance;
+                        const balanceAfter = balanceBefore - payment.amount; // receiving reduces receivable
+                        const entry: BalancePayment = {
+                            ...payment,
+                            id: uid(),
+                            balanceBefore,
+                            balanceAfter,
+                            recordedAt: new Date().toISOString(),
+                        };
+                        return {
+                            ...p,
+                            balance: balanceAfter,
+                            paymentHistory: [entry, ...(p.paymentHistory || [])],
+                        };
+                    }),
+                    lastModified: Date.now()
+                })),
+
+            deleteBalancePayment: (partyId, paymentId) =>
+                set(s => ({
+                    parties: s.parties.map(p => {
+                        if (p.id !== partyId) return p;
+                        const entry = (p.paymentHistory || []).find(h => h.id === paymentId);
+                        if (!entry) return p;
+                        // Reverse the balance change
+                        return {
+                            ...p,
+                            balance: p.balance + entry.amount,
+                            paymentHistory: (p.paymentHistory || []).filter(h => h.id !== paymentId),
+                        };
+                    }),
+                    lastModified: Date.now()
+                })),
 
             products: [],
             addProduct: (p) => {
