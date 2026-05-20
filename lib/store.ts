@@ -522,7 +522,9 @@ export const useStore = create<EdibioState>()(
                     parties: s.parties.map(p => {
                         if (p.id !== partyId) return p;
                         const balanceBefore = p.balance;
-                        const balanceAfter = balanceBefore - payment.amount; // receiving reduces receivable
+                        const balanceAfter = payment.type === 'received'
+                            ? balanceBefore - payment.amount
+                            : balanceBefore + payment.amount;
                         const entry: BalancePayment = {
                             ...payment,
                             id: uid(),
@@ -546,9 +548,12 @@ export const useStore = create<EdibioState>()(
                         const entry = (p.paymentHistory || []).find(h => h.id === paymentId);
                         if (!entry) return p;
                         // Reverse the balance change
+                        const revertedBalance = entry.type === 'received'
+                            ? p.balance + entry.amount
+                            : p.balance - entry.amount;
                         return {
                             ...p,
-                            balance: p.balance + entry.amount,
+                            balance: revertedBalance,
                             paymentHistory: (p.paymentHistory || []).filter(h => h.id !== paymentId),
                         };
                     }),

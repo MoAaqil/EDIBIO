@@ -77,8 +77,9 @@ export interface Godown {
 // ── Balance Payment History ───────────────────────────────────────────────────
 export interface BalancePayment {
     id: string;
+    type: 'received' | 'paid';
     date: string;           // YYYY-MM-DD
-    amount: number;         // positive = received from party, negative = paid to party
+    amount: number;         // amount of repayment
     method: 'cash' | 'upi' | 'bank' | 'cheque' | 'neft' | 'rtgs' | 'other';
     note?: string;
     balanceBefore: number;  // party balance before this payment

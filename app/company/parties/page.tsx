@@ -23,12 +23,30 @@ export default function PartiesPage() {
     const [editParty, setEditParty] = useState<Party | null>(null);
 
     const [paymentParty, setPaymentParty] = useState<Party | null>(null);
-    const [payForm, setPayForm] = useState({ amount: '', method: 'cash', date: new Date().toLocaleDateString('en-CA'), note: '' });
+    const [payForm, setPayForm] = useState({ amount: '', type: 'received' as 'received' | 'paid', method: 'cash', date: new Date().toLocaleDateString('en-CA'), note: '' });
     const [historyParty, setHistoryParty] = useState<Party | null>(null);
 
-    const emptyForm = { name: '', phone: '', email: '', gstNumber: '', address: '', city: '', state: 'Tamil Nadu', type: 'customer', openingBalance: '', creditLimit: '', creditDays: '' };
+    const openPaymentModal = (p: Party) => {
+        const defaultType = p.balance < 0 ? 'paid' : 'received';
+        setPayForm({
+            amount: '',
+            type: defaultType,
+            method: 'cash',
+            date: new Date().toLocaleDateString('en-CA'),
+            note: ''
+        });
+        setPaymentParty(p);
+    };
+
+    const emptyForm = { name: '', phone: '', email: '', gstNumber: '', address: '', city: '', state: 'Tamil Nadu', type: 'customer', openingBalance: '', balance: '', creditLimit: '', creditDays: '' };
     const [form, setForm] = useState<any>(emptyForm);
-    const up = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }));
+    const up = (k: string, v: any) => setForm((f: any) => {
+        const next = { ...f, [k]: v };
+        if (k === 'openingBalance' && !editParty) {
+            next.balance = v;
+        }
+        return next;
+    });
 
     const filtered = parties.filter(p => {
         if (typeFilter !== 'all' && p.type !== typeFilter && p.type !== 'both') return false;
@@ -41,12 +59,14 @@ export default function PartiesPage() {
 
     const handleSave = () => {
         if (!form.name || !form.phone) { toast.error('Name and phone are required'); return; }
+        const balanceValue = parseFloat(form.balance) || 0;
+        const openingBalanceValue = parseFloat(form.openingBalance) || 0;
         const data: Omit<Party, 'id'> = {
             companyId: companyId!, type: form.type as any,
             name: form.name, phone: form.phone, email: form.email, gstNumber: form.gstNumber,
             address: form.address, city: form.city, state: form.state,
-            openingBalance: parseFloat(form.openingBalance) || 0,
-            balance: editParty ? editParty.balance + ((parseFloat(form.openingBalance) || 0) - editParty.openingBalance) : parseFloat(form.openingBalance) || 0,
+            openingBalance: openingBalanceValue,
+            balance: editParty ? balanceValue : openingBalanceValue,
             creditLimit: parseFloat(form.creditLimit) || undefined,
             creditDays: parseFloat(form.creditDays) || undefined,
         };
@@ -57,17 +77,29 @@ export default function PartiesPage() {
 
     const openEdit = (p: Party) => {
         setEditParty(p);
-        setForm({ ...p, openingBalance: String(p.openingBalance), creditLimit: String(p.creditLimit || ''), creditDays: String(p.creditDays || '') });
+        setForm({ 
+            ...p, 
+            openingBalance: String(p.openingBalance), 
+            balance: String(p.balance),
+            creditLimit: String(p.creditLimit || ''), 
+            creditDays: String(p.creditDays || '') 
+        });
         setShowAdd(true);
     };
     const handleAddPayment = () => {
         if (!paymentParty) return;
         const amt = parseFloat(payForm.amount);
         if (!amt || amt <= 0) { toast.error('Enter a valid amount'); return; }
-        addBalancePayment(paymentParty.id, { amount: amt, method: payForm.method as any, date: payForm.date, note: payForm.note || undefined });
+        addBalancePayment(paymentParty.id, { 
+            type: payForm.type,
+            amount: amt, 
+            method: payForm.method as any, 
+            date: payForm.date, 
+            note: payForm.note || undefined 
+        });
         toast.success(`Payment of ₹${amt.toLocaleString('en-IN')} recorded`);
         setPaymentParty(null);
-        setPayForm({ amount: '', method: 'cash', date: new Date().toLocaleDateString('en-CA'), note: '' });
+        setPayForm({ amount: '', type: 'received', method: 'cash', date: new Date().toLocaleDateString('en-CA'), note: '' });
     };
 
     const handleDelete = async (id: string) => {
@@ -172,12 +204,12 @@ export default function PartiesPage() {
                                                 </td>
                                                 <td>
                                                     <div style={{ display: 'flex', gap: 8 }}>
-                                                        <a href={`tel:${p.phone}`} className="btn btn-ghost btn-icon" style={{ padding: 8, width: 32, height: 32, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} title="Call"><Phone size={15} color="#34A853" /></a>
-                                                        <a href={`https://wa.me/91${p.phone.replace(/\D/g, '')}`} target="_blank" className="btn btn-ghost btn-icon" style={{ padding: 8, width: 32, height: 32, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} title="WhatsApp"><MessageSquare size={15} color="#25D366" /></a>
-                                                        <button onClick={() => { setPaymentParty(p); }} className="btn btn-ghost btn-icon" style={{ padding: 8, width: 32, height: 32, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} title="Record Payment"><IndianRupee size={15} color="#9333EA" /></button>
-                                                        <button onClick={() => setHistoryParty(p)} className="btn btn-ghost btn-icon" style={{ padding: 8, width: 32, height: 32, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} title="Payment History"><History size={15} color="#F59E0B" /></button>
-                                                        <button onClick={() => openEdit(p)} className="btn btn-ghost btn-icon" style={{ padding: 8, width: 32, height: 32, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} title="Edit"><Edit2 size={15} color="#4285F4" /></button>
-                                                        <button onClick={() => handleDelete(p.id)} className="btn btn-ghost btn-icon" style={{ padding: 8, width: 32, height: 32, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} title="Delete"><Trash2 size={15} color="#EA4335" /></button>
+                                                        <a href={`tel:${p.phone}`} className="btn btn-ghost" style={{ padding: 0, width: 36, height: 36, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#E6F4EA', borderRadius: '50%', minWidth: 'auto' }} title="Call"><Phone size={16} color="#34A853" /></a>
+                                                        <a href={`https://wa.me/91${p.phone.replace(/\D/g, '')}`} target="_blank" className="btn btn-ghost" style={{ padding: 0, width: 36, height: 36, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#E6F4EA', borderRadius: '50%', minWidth: 'auto' }} title="WhatsApp"><MessageSquare size={16} color="#25D366" /></a>
+                                                        <button onClick={() => openPaymentModal(p)} className="btn btn-ghost" style={{ padding: 0, width: 36, height: 36, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#F3E8FF', borderRadius: '50%', minWidth: 'auto' }} title="Record Payment"><IndianRupee size={16} color="#9333EA" /></button>
+                                                        <button onClick={() => setHistoryParty(p)} className="btn btn-ghost" style={{ padding: 0, width: 36, height: 36, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#FEF3C7', borderRadius: '50%', minWidth: 'auto' }} title="Payment History"><History size={16} color="#F59E0B" /></button>
+                                                        <button onClick={() => openEdit(p)} className="btn btn-ghost" style={{ padding: 0, width: 36, height: 36, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#E8F0FE', borderRadius: '50%', minWidth: 'auto' }} title="Edit"><Edit2 size={16} color="#4285F4" /></button>
+                                                        <button onClick={() => handleDelete(p.id)} className="btn btn-ghost" style={{ padding: 0, width: 36, height: 36, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#FCE8E6', borderRadius: '50%', minWidth: 'auto' }} title="Delete"><Trash2 size={16} color="#EA4335" /></button>
                                                     </div>
                                                 </td>
                                             </tr>
@@ -200,11 +232,11 @@ export default function PartiesPage() {
                                                 {p.balance !== 0 ? `₹${Math.abs(p.balance).toLocaleString('en-IN')}` : '—'}
                                             </p>
                                             <div style={{ display: 'flex', gap: 8, marginTop: 6, justifyContent: 'flex-end', alignItems: 'center' }}>
-                                                <a href={`tel:${p.phone}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F1F5F9', border: 'none', padding: 8, borderRadius: 8, width: 32, height: 32 }} title="Call"><Phone size={15} color="#34A853" /></a>
-                                                <a href={`https://wa.me/91${p.phone.replace(/\D/g, '')}`} target="_blank" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F1F5F9', border: 'none', padding: 8, borderRadius: 8, width: 32, height: 32 }} title="WhatsApp"><MessageSquare size={15} color="#25D366" /></a>
-                                                <button onClick={() => setPaymentParty(p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F1F5F9', border: 'none', cursor: 'pointer', padding: 8, borderRadius: 8, width: 32, height: 32 }} title="Record Payment"><IndianRupee size={15} color="#9333EA" /></button>
-                                                <button onClick={() => setHistoryParty(p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F1F5F9', border: 'none', cursor: 'pointer', padding: 8, borderRadius: 8, width: 32, height: 32 }} title="Payment History"><History size={15} color="#F59E0B" /></button>
-                                                <button onClick={() => openEdit(p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F1F5F9', border: 'none', cursor: 'pointer', padding: 8, borderRadius: 8, width: 32, height: 32 }} title="Edit"><Edit2 size={15} color="#4285F4" /></button>
+                                                <a href={`tel:${p.phone}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#E6F4EA', border: 'none', padding: 0, borderRadius: '50%', width: 32, height: 32 }} title="Call"><Phone size={15} color="#34A853" /></a>
+                                                <a href={`https://wa.me/91${p.phone.replace(/\D/g, '')}`} target="_blank" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#E6F4EA', border: 'none', padding: 0, borderRadius: '50%', width: 32, height: 32 }} title="WhatsApp"><MessageSquare size={15} color="#25D366" /></a>
+                                                <button onClick={() => openPaymentModal(p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F3E8FF', border: 'none', cursor: 'pointer', padding: 0, borderRadius: '50%', width: 32, height: 32 }} title="Record Payment"><IndianRupee size={15} color="#9333EA" /></button>
+                                                <button onClick={() => setHistoryParty(p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#FEF3C7', border: 'none', cursor: 'pointer', padding: 0, borderRadius: '50%', width: 32, height: 32 }} title="Payment History"><History size={15} color="#F59E0B" /></button>
+                                                <button onClick={() => openEdit(p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#E8F0FE', border: 'none', cursor: 'pointer', padding: 0, borderRadius: '50%', width: 32, height: 32 }} title="Edit"><Edit2 size={15} color="#4285F4" /></button>
                                             </div>
                                         </div>
                                     </div>
@@ -223,12 +255,25 @@ export default function PartiesPage() {
                             <div>
                                 <h3 style={{ fontWeight: 900, fontSize: 16, color: '#1A1A2E', margin: 0 }}>Record Payment</h3>
                                 <p style={{ fontSize: 12, color: '#718096', margin: '2px 0 0' }}>
-                                    {paymentParty.name} — Balance: <strong style={{ color: paymentParty.balance > 0 ? '#34A853' : '#EA4335' }}>₹{Math.abs(paymentParty.balance).toLocaleString('en-IN')}</strong>
+                                    {paymentParty.name} — Balance: <strong style={{ color: paymentParty.balance > 0 ? '#34A853' : paymentParty.balance < 0 ? '#EA4335' : '#718096' }}>{paymentParty.balance > 0 ? `↑ ₹${paymentParty.balance.toLocaleString('en-IN')}` : paymentParty.balance < 0 ? `↓ ₹${Math.abs(paymentParty.balance).toLocaleString('en-IN')}` : 'Settled'}</strong>
                                 </p>
                             </div>
                             <button onClick={() => setPaymentParty(null)} className="btn btn-ghost btn-icon"><X size={16} /></button>
                         </div>
                         <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+                            <div>
+                                <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Payment Type</label>
+                                <div style={{ display: 'flex', gap: 8, background: '#EDF2F7', padding: 4, borderRadius: 10 }}>
+                                    <button onClick={() => setPayForm(f => ({ ...f, type: 'received' }))}
+                                        style={{ flex: 1, padding: '8px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 800, fontSize: 12, background: payForm.type === 'received' ? '#10B981' : 'transparent', color: payForm.type === 'received' ? 'white' : '#718096', transition: 'all 0.15s' }}>
+                                        Received (Cash In)
+                                    </button>
+                                    <button onClick={() => setPayForm(f => ({ ...f, type: 'paid' }))}
+                                        style={{ flex: 1, padding: '8px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 800, fontSize: 12, background: payForm.type === 'paid' ? '#EF4444' : 'transparent', color: payForm.type === 'paid' ? 'white' : '#718096', transition: 'all 0.15s' }}>
+                                        Paid (Cash Out)
+                                    </button>
+                                </div>
+                            </div>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                                 <div>
                                     <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', textTransform: 'uppercase', display: 'block', marginBottom: 5 }}>Amount ₹ *</label>
@@ -289,7 +334,7 @@ export default function PartiesPage() {
                             </div>
                         </div>
                         <div style={{ padding: '10px 16px', borderBottom: '1px solid #F1F5F9', background: '#FAFBFF' }}>
-                            <button onClick={() => { setPaymentParty(historyParty); setHistoryParty(null); }} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 10, background: '#9333EA', color: 'white', border: 'none', fontWeight: 800, fontSize: 12, cursor: 'pointer' }}>
+                            <button onClick={() => { openPaymentModal(historyParty); setHistoryParty(null); }} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 10, background: '#9333EA', color: 'white', border: 'none', fontWeight: 800, fontSize: 12, cursor: 'pointer' }}>
                                 <IndianRupee size={13} /> Record New Payment
                             </button>
                         </div>
@@ -303,13 +348,18 @@ export default function PartiesPage() {
                             ) : (historyParty.paymentHistory || []).map((entry, idx, arr) => (
                                 <div key={entry.id} style={{ padding: '14px 20px', borderBottom: '1px solid #F8FAFC', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
                                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 3, flexShrink: 0 }}>
-                                        <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#10B981' }} />
+                                        <div style={{ width: 10, height: 10, borderRadius: '50%', background: (entry.type || 'received') === 'received' ? '#10B981' : '#EF4444' }} />
                                         {idx < arr.length - 1 && <div style={{ width: 2, background: '#F1F5F9', flex: 1, minHeight: 28, marginTop: 4 }} />}
                                     </div>
                                     <div style={{ flex: 1 }}>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                                             <div>
-                                                <p style={{ fontSize: 16, fontWeight: 900, color: '#059669', margin: '0 0 2px' }}>+₹{entry.amount.toLocaleString('en-IN')}</p>
+                                                <p style={{ fontSize: 16, fontWeight: 900, color: (entry.type || 'received') === 'received' ? '#059669' : '#DC2626', margin: '0 0 2px' }}>
+                                                    {(entry.type || 'received') === 'received' ? '+' : '-'}₹{entry.amount.toLocaleString('en-IN')}
+                                                </p>
+                                                <p style={{ fontSize: 11, fontWeight: 800, color: (entry.type || 'received') === 'received' ? '#10B981' : '#EF4444', textTransform: 'uppercase', margin: '0 0 4px', letterSpacing: '0.03em' }}>
+                                                    {(entry.type || 'received') === 'received' ? 'Received (Cash In)' : 'Paid (Cash Out)'}
+                                                </p>
                                                 <p style={{ fontSize: 12, color: '#64748B', margin: '0 0 5px', fontWeight: 600 }}>{new Date(entry.date).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</p>
                                                 <span style={{ background: '#F3E8FF', color: '#7C3AED', fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 6, textTransform: 'uppercase' }}>{entry.method}</span>
                                                 {entry.note && <p style={{ fontSize: 11, color: '#94A3B8', margin: '5px 0 0', fontStyle: 'italic' }}>"{entry.note}"</p>}
@@ -317,7 +367,7 @@ export default function PartiesPage() {
                                             <div style={{ textAlign: 'right', flexShrink: 0 }}>
                                                 <p style={{ fontSize: 10, color: '#CBD5E0', fontWeight: 600, margin: '0 0 1px' }}>Balance after</p>
                                                 <p style={{ fontSize: 13, fontWeight: 800, color: '#1E293B', margin: '0 0 4px' }}>₹{Math.abs(entry.balanceAfter).toLocaleString('en-IN')}</p>
-                                                <button onClick={async () => { const { confirm } = await import('@/components/ConfirmDialog'); const ok = await confirm({ message: 'Delete entry? Balance will be reversed.', danger: true }); if (ok) { deleteBalancePayment(historyParty.id, entry.id); setHistoryParty(prev => prev ? { ...prev, balance: prev.balance + entry.amount, paymentHistory: (prev.paymentHistory || []).filter(h => h.id !== entry.id) } : null); toast.success('Entry deleted'); }}} style={{ background: 'none', border: 'none', cursor: 'pointer', opacity: 0.45, padding: 2 }}><Trash2 size={11} color="#EA4335" /></button>
+                                                <button onClick={async () => { const { confirm } = await import('@/components/ConfirmDialog'); const ok = await confirm({ message: 'Delete entry? Balance will be reversed.', danger: true }); if (ok) { deleteBalancePayment(historyParty.id, entry.id); const adjusted = (entry.type || 'received') === 'received' ? historyParty.balance + entry.amount : historyParty.balance - entry.amount; setHistoryParty(prev => prev ? { ...prev, balance: adjusted, paymentHistory: (prev.paymentHistory || []).filter(h => h.id !== entry.id) } : null); toast.success('Entry deleted'); }}} style={{ background: 'none', border: 'none', cursor: 'pointer', opacity: 0.45, padding: 2 }}><Trash2 size={11} color="#EA4335" /></button>
                                             </div>
                                         </div>
                                     </div>
@@ -382,6 +432,12 @@ export default function PartiesPage() {
                                         <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', display: 'block', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Opening Balance ₹</label>
                                         <input type="number" className="e-input" placeholder="0.00 (+ rec, - pay)" value={form.openingBalance} onChange={e => up('openingBalance', e.target.value)} style={{ padding: '10px 14px' }} />
                                     </div>
+                                    {editParty && (
+                                        <div>
+                                            <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', display: 'block', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Current Running Balance ₹</label>
+                                            <input type="number" className="e-input" placeholder="0.00 (+ rec, - pay)" value={form.balance} onChange={e => up('balance', e.target.value)} style={{ padding: '10px 14px' }} />
+                                        </div>
+                                    )}
                                     <div>
                                         <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', display: 'block', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Credit Limit ₹</label>
                                         <input type="number" className="e-input" placeholder="Optional" value={form.creditLimit} onChange={e => up('creditLimit', e.target.value)} style={{ padding: '10px 14px' }} />
