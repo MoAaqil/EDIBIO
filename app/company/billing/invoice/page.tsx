@@ -3,7 +3,7 @@ import { useState, Suspense, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useStore, useActiveCompany } from '@/lib/store';
 import { formatDate, amountInWords } from '@/lib/utils';
-import { ArrowLeft, Share2, Printer, Trash2, MessageSquare, EyeOff, Check, Phone, ChevronRight, Copy, Settings2 } from 'lucide-react';
+import { ArrowLeft, Share2, Printer, Trash2, MessageSquare, EyeOff, Check, Phone, ChevronRight, Copy, Settings2, X } from 'lucide-react';
 import Link from 'next/link';
 import { InvoicePrintTemplate } from '@/components/InvoicePrintTemplate';
 import toast from 'react-hot-toast';
@@ -25,6 +25,7 @@ function InvoiceDetailInner() {
     const [overrideTheme, setOverrideTheme] = useState(company?.templateTheme || 'classic');
     const [overrideCols, setOverrideCols] = useState<any>({ sn: true, hsn: true, rate: true, discount: true, tax: true, showQrCode: true, amountInWords: true, ...company?.templateColumns });
     const [showOptions, setShowOptions] = useState(false);
+    const [showSharePdfModal, setShowSharePdfModal] = useState(false);
 
     useEffect(() => {
         if (autoPrint && unlocked && inv) {
@@ -76,16 +77,7 @@ function InvoiceDetailInner() {
     const handleWhatsAppPDF = () => {
         const rawPhone = inv.partyPhone?.replace(/\D/g, '');
         if (!rawPhone) { toast.error('Customer phone number required for WhatsApp'); return; }
-        const phone = rawPhone.startsWith('91') && rawPhone.length === 12 ? rawPhone : '91' + rawPhone.slice(-10);
-        if (typeof navigator.share !== 'undefined' && (navigator.userAgent.includes('Mobile') || navigator.userAgent.includes('Android'))) {
-            toast.success("Step 1: Save as PDF in next screen.\nStep 2: Share to WhatsApp.");
-            window.print();
-        } else {
-            toast.success("1. Click OK to open Print.\n2. Select 'Save as PDF'.\n3. Attach the file in the WhatsApp chat.");
-            const url = `https://wa.me/${phone}`;
-            window.open(url, '_blank');
-            window.print();
-        }
+        setShowSharePdfModal(true);
     };
 
     if (showPwPrompt && !unlocked) {
@@ -210,6 +202,48 @@ function InvoiceDetailInner() {
                     <InvoicePrintTemplate invoice={inv} company={{ ...company, templateTheme: overrideTheme, templateColumns: { ...company?.templateColumns, ...overrideCols } }} copies={1} />
                 </div>
             </div>
+
+            {showSharePdfModal && (
+                <div className="no-print modal-overlay" onClick={() => setShowSharePdfModal(false)}>
+                    <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 440, padding: 0, borderRadius: 16, overflow: 'hidden' }}>
+                        <div style={{ padding: '18px 24px 14px', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'linear-gradient(135deg,#1E293B,#0F172A)', color: 'white' }}>
+                            <h3 style={{ fontWeight: 900, fontSize: 16, margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <Share2 size={16} /> Share Bill as PDF
+                            </h3>
+                            <button onClick={() => setShowSharePdfModal(false)} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 8, padding: 6, cursor: 'pointer', color: 'white', display: 'flex' }}><X size={16} /></button>
+                        </div>
+                        <div style={{ padding: '20px 24px' }}>
+                            <p style={{ color: '#4A5568', fontSize: 13, fontWeight: 700, margin: '0 0 16px' }}>Follow these simple steps to share this bill:</p>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 24 }}>
+                                {[
+                                    { step: 1, text: "Click 'Save Invoice PDF' to download or generate the PDF file on your device." },
+                                    { step: 2, text: `Click 'Open WhatsApp Chat' to start the message with ${inv.partyName || 'the customer'}.` },
+                                    { step: 3, text: "Attach or drag & drop the saved PDF bill into the WhatsApp conversation." }
+                                ].map(s => (
+                                    <div key={s.step} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                                        <div style={{ width: 22, height: 22, borderRadius: '50%', background: '#E8F0FE', color: '#1A73E8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, flexShrink: 0 }}>
+                                            {s.step}
+                                        </div>
+                                        <p style={{ fontSize: 13, color: '#4A5568', margin: 0, lineHeight: '1.45', fontWeight: 600 }}>{s.text}</p>
+                                    </div>
+                                ))}
+                            </div>
+                            <div style={{ display: 'flex', gap: 10 }}>
+                                <button onClick={() => { window.print(); }} className="btn btn-blue" style={{ flex: 1, gap: 6, fontWeight: 800 }}>
+                                    <Printer size={14} /> Save Invoice PDF
+                                </button>
+                                <button onClick={() => {
+                                    const rawPhone = inv.partyPhone?.replace(/\D/g, '');
+                                    const phone = rawPhone.startsWith('91') && rawPhone.length === 12 ? rawPhone : '91' + rawPhone.slice(-10);
+                                    window.open(`https://wa.me/${phone}`, '_blank');
+                                }} style={{ flex: 1, gap: 6, background: '#25D366', color: 'white', border: 'none', borderRadius: 10, padding: '10px 16px', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    <MessageSquare size={14} /> Open WhatsApp Chat
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <style>{`
                 @media print {
