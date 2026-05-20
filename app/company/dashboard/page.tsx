@@ -42,8 +42,11 @@ export default function DashboardPage() {
     const parties = useCompanyData('parties') as Party[];
     const products = useCompanyData('products') as Product[];
 
+    // These types are NOT real confirmed sales — exclude from all revenue stats
+    const DRAFT_TYPES = ['estimate', 'proforma', 'delivery_challan'];
+
     const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
-    const todayInv = invoices.filter(i => i.date === today && i.invoiceType === 'sale' && (i.isGstBill || i.grandTotal > 0));
+    const todayInv = invoices.filter(i => i.date === today && i.invoiceType === 'sale' && !DRAFT_TYPES.includes(i.invoiceType) && (i.isGstBill || i.grandTotal > 0));
     const recentInvoices = invoices.filter(i => i.isGstBill).length > 0
         ? invoices.filter(i => i.isGstBill).slice(0, 6)
         : invoices.slice(0, 6);
@@ -55,7 +58,7 @@ export default function DashboardPage() {
             date.setDate(date.getDate() - i);
             const dateStr = date.toISOString().slice(0, 10);
             const dayTotal = invoices
-                .filter(inv => inv.date === dateStr && inv.invoiceType === 'sale')
+                .filter(inv => inv.date === dateStr && inv.invoiceType === 'sale' && !DRAFT_TYPES.includes(inv.invoiceType))
                 .reduce((sum, inv) => sum + (inv.grandTotal || 0), 0);
             data.push({
                 name: date.toLocaleDateString('en-IN', { weekday: 'short' }),
@@ -79,7 +82,7 @@ export default function DashboardPage() {
 
     const insights = useMemo(() => {
         const calculated: { emoji: string; text: string; color: string }[] = [];
-        const saleInvs = invoices.filter((i: any) => i.invoiceType === 'sale');
+        const saleInvs = invoices.filter((i: any) => i.invoiceType === 'sale' && !DRAFT_TYPES.includes(i.invoiceType));
         const itemMap: Record<string, { qty: number; name: string }> = {};
         saleInvs.forEach((inv: any) => (inv.items || []).forEach((it: any) => { if (!itemMap[it.name]) itemMap[it.name] = { qty: 0, name: it.name }; itemMap[it.name].qty += it.qty; }));
         const topItem = Object.values(itemMap).sort((a, b) => b.qty - a.qty)[0];

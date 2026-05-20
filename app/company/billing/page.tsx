@@ -55,9 +55,12 @@ export default function BillingListPage() {
         return list;
     }, [gstInvoices, tab, search]);
 
-    const totalSales = gstInvoices.filter(i => i.invoiceType === 'sale').reduce((a: number, i: any) => a + i.grandTotal, 0);
-    const totalReceived = gstInvoices.filter(i => i.invoiceType === 'sale').reduce((a: number, i: any) => a + i.amountPaid, 0);
-    const totalDue = gstInvoices.filter(i => i.invoiceType === 'sale').reduce((a: number, i: any) => a + i.balanceDue, 0);
+    // Estimate / Proforma / Delivery Challan are NOT confirmed — exclude from revenue totals
+    const DRAFT_TYPES = ['estimate', 'proforma', 'delivery_challan'];
+    const confirmedSales = gstInvoices.filter(i => i.invoiceType === 'sale' && !DRAFT_TYPES.includes(i.invoiceType));
+    const totalSales = confirmedSales.reduce((a: number, i: any) => a + i.grandTotal, 0);
+    const totalReceived = confirmedSales.reduce((a: number, i: any) => a + i.amountPaid, 0);
+    const totalDue = confirmedSales.reduce((a: number, i: any) => a + i.balanceDue, 0);
 
     const typeIcon = (type: string) => {
         if (type === 'purchase') return ShoppingCart;

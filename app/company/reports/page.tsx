@@ -26,7 +26,8 @@ export default function ReportsPage() {
     const thisMonthKey = now.toISOString().slice(0, 7);
     const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().slice(0, 7);
 
-    const saleInvoices = invoices.filter(i => i.invoiceType === 'sale' && i.isGstBill);
+    const DRAFT_TYPES = ['estimate', 'proforma', 'delivery_challan'];
+    const saleInvoices = invoices.filter(i => i.invoiceType === 'sale' && !DRAFT_TYPES.includes(i.invoiceType) && i.isGstBill);
     const purchaseInvoices = invoices.filter(i => i.invoiceType === 'purchase');
 
     const totalSales = saleInvoices.reduce((a: number, i: any) => a + i.grandTotal, 0);
