@@ -3,7 +3,7 @@ import { useState, Suspense, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useStore, useActiveCompany } from '@/lib/store';
 import { formatDate, amountInWords } from '@/lib/utils';
-import { ArrowLeft, Share2, Printer, Trash2, MessageSquare, EyeOff, Check, Phone, ChevronRight, Copy, Settings2, X } from 'lucide-react';
+import { ArrowLeft, Share2, Printer, Trash2, MessageSquare, EyeOff, Check, Phone, ChevronRight, Copy, Settings2, X, Download } from 'lucide-react';
 import Link from 'next/link';
 import { InvoicePrintTemplate } from '@/components/InvoicePrintTemplate';
 import toast from 'react-hot-toast';
@@ -74,6 +74,39 @@ function InvoiceDetailInner() {
         window.open(url, '_blank');
     };
 
+    const handleDownloadPDF = async () => {
+        const loadToast = toast.loading('Generating PDF...');
+        try {
+            const html2pdf = (await import('html2pdf.js')).default;
+            const element = document.getElementById('invoice-print');
+            if (!element) throw new Error('Invoice container not found');
+            
+            const originalStyle = element.getAttribute('style') || '';
+            element.setAttribute('style', originalStyle + '; background: white; width: 800px; padding: 20px; box-shadow: none;');
+
+            const opt = {
+                margin: [10, 10, 10, 10],
+                filename: `${inv.invoiceNumber || 'Invoice'}.pdf`,
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { 
+                    scale: 2, 
+                    useCORS: true, 
+                    logging: false,
+                    letterRendering: true
+                },
+                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            };
+
+            await html2pdf().set(opt).from(element).save();
+            element.setAttribute('style', originalStyle);
+            toast.success('PDF downloaded successfully!', { id: loadToast });
+        } catch (err) {
+            console.error('PDF generation failed:', err);
+            toast.error('Failed to generate PDF. Opening print...', { id: loadToast });
+            window.print();
+        }
+    };
+
     const handleWhatsAppPDF = () => {
         const rawPhone = inv.partyPhone?.replace(/\D/g, '');
         if (!rawPhone) { toast.error('Customer phone number required for WhatsApp'); return; }
@@ -132,6 +165,9 @@ function InvoiceDetailInner() {
                         </div>
                         <button onClick={handleDuplicate} className="btn btn-outline btn-sm" style={{ gap: 5 }}>
                             <Copy size={13} /> Duplicate Bill
+                        </button>
+                        <button onClick={handleDownloadPDF} className="btn btn-outline btn-sm" style={{ gap: 5, borderColor: '#4285F4', color: '#1A73E8' }}>
+                            <Download size={13} /> Download PDF
                         </button>
                         <button onClick={handlePrint} className="btn btn-blue btn-sm" style={{ gap: 5, boxShadow: '0 4px 12px rgba(66,133,244,0.3)' }}>
                             <Printer size={13} /> Print / PDF
@@ -216,7 +252,7 @@ function InvoiceDetailInner() {
                             <p style={{ color: '#4A5568', fontSize: 13, fontWeight: 700, margin: '0 0 16px' }}>Follow these simple steps to share this bill:</p>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 24 }}>
                                 {[
-                                    { step: 1, text: "Click 'Save Invoice PDF' to download or generate the PDF file on your device." },
+                                    { step: 1, text: "Click 'Download PDF File' to download the PDF file directly to your system." },
                                     { step: 2, text: `Click 'Open WhatsApp Chat' to start the message with ${inv.partyName || 'the customer'}.` },
                                     { step: 3, text: "Attach or drag & drop the saved PDF bill into the WhatsApp conversation." }
                                 ].map(s => (
@@ -229,8 +265,8 @@ function InvoiceDetailInner() {
                                 ))}
                             </div>
                             <div style={{ display: 'flex', gap: 10 }}>
-                                <button onClick={() => { window.print(); }} className="btn btn-blue" style={{ flex: 1, gap: 6, fontWeight: 800 }}>
-                                    <Printer size={14} /> Save Invoice PDF
+                                <button onClick={handleDownloadPDF} className="btn btn-blue" style={{ flex: 1, gap: 6, fontWeight: 800 }}>
+                                    <Download size={14} /> Download PDF File
                                 </button>
                                 <button onClick={() => {
                                     const rawPhone = inv.partyPhone?.replace(/\D/g, '');
