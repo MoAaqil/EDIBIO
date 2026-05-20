@@ -182,19 +182,71 @@ function InvoiceDetailInner() {
     };
 
     const handleDownloadPDF = () => handleShareOrDownloadPDF('download');
-    const handleWhatsAppPDF = () => {
+    const handleWhatsAppPDF = async () => {
         const rawPhone = inv.partyPhone?.replace(/\D/g, '');
-        if (!rawPhone) { toast.error('Customer phone number required for WhatsApp'); return; }
-        
-        let waWindow: Window | null = null;
-        // Check if Web Share API is available for files, otherwise open WhatsApp chat instantly
-        const isShareSupported = typeof navigator !== 'undefined' && navigator.share && navigator.canShare;
-        if (!isShareSupported) {
-            waWindow = window.open(getWhatsAppLink(rawPhone), '_blank');
+        if (!rawPhone) { toast.error('No phone number on this invoice. Please add it first.'); return; }
+
+        const waUrl = getWhatsAppLink(rawPhone);
+
+        // On mobile — use native share if supported
+        if (typeof navigator !== 'undefined' && navigator.share && navigator.canShare) {
+            const loadToast = toast.loading('Preparing PDF...');
+            try {
+                const html2pdf = (await import('html2pdf.js')).default;
+                const element = document.getElementById('invoice-print');
+                if (!element) throw new Error('Invoice not found');
+                const originalStyle = element.getAttribute('style') || '';
+                element.setAttribute('style', originalStyle + '; background:white;width:794px;padding:0;margin:0;box-shadow:none;overflow:visible;');
+                const vhEls = element.querySelectorAll('[style*="min-height"],[style*="minHeight"]');
+                const saved: {el:Element;s:string|null}[] = [];
+                vhEls.forEach(el => { saved.push({el,s:el.getAttribute('style')}); el.setAttribute('style',(el.getAttribute('style')||'').replace(/min-height\s*:\s*[^;]+/gi,'min-height:auto')); });
+                const opt = { margin:0, filename:`${inv.invoiceNumber||'Invoice'}.pdf`, image:{type:'jpeg',quality:0.98}, html2canvas:{scale:2,useCORS:true,logging:false,scrollX:0,scrollY:0}, jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}, pagebreak:{mode:['avoid-all','css','legacy']} };
+                const pdfBlob = await html2pdf().set(opt).from(element).output('blob');
+                element.setAttribute('style', originalStyle);
+                saved.forEach(({el,s}) => s!==null ? el.setAttribute('style',s) : el.removeAttribute('style'));
+                toast.dismiss(loadToast);
+                const file = new File([pdfBlob], `${inv.invoiceNumber||'Invoice'}.pdf`, {type:'application/pdf'});
+                if (navigator.canShare({files:[file]})) {
+                    await navigator.share({ files:[file], title:`Invoice ${inv.invoiceNumber}`, text:`Invoice from ${company?.name||'Store'}` });
+                    toast.success('Shared!');
+                } else {
+                    // Fallback: download + open WhatsApp
+                    const url = URL.createObjectURL(pdfBlob);
+                    const a = document.createElement('a'); a.href=url; a.download=`${inv.invoiceNumber||'Invoice'}.pdf`; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+                    window.open(waUrl, '_blank');
+                    toast.success('PDF downloaded! Attach it in the WhatsApp chat that just opened.', {duration:6000});
+                }
+            } catch(e) { toast.error('Failed to generate PDF', {id:loadToast}); }
+            return;
         }
+
+        // Desktop flow: open WhatsApp immediately (user gesture = no popup block), then download PDF
+        const waWindow = window.open(waUrl, '_blank');
         
-        handleShareOrDownloadPDF('share', waWindow);
+        const loadToast = toast.loading('Generating PDF...');
+        try {
+            const html2pdf = (await import('html2pdf.js')).default;
+            const element = document.getElementById('invoice-print');
+            if (!element) throw new Error('Invoice not found');
+            const originalStyle = element.getAttribute('style') || '';
+            element.setAttribute('style', originalStyle + '; background:white;width:794px;padding:0;margin:0;box-shadow:none;overflow:visible;');
+            const vhEls = element.querySelectorAll('[style*="min-height"],[style*="minHeight"]');
+            const saved: {el:Element;s:string|null}[] = [];
+            vhEls.forEach(el => { saved.push({el,s:el.getAttribute('style')}); el.setAttribute('style',(el.getAttribute('style')||'').replace(/min-height\s*:\s*[^;]+/gi,'min-height:auto')); });
+            const opt = { margin:0, filename:`${inv.invoiceNumber||'Invoice'}.pdf`, image:{type:'jpeg',quality:0.98}, html2canvas:{scale:2,useCORS:true,logging:false,scrollX:0,scrollY:0}, jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}, pagebreak:{mode:['avoid-all','css','legacy']} };
+            await html2pdf().set(opt).from(element).save();
+            element.setAttribute('style', originalStyle);
+            saved.forEach(({el,s}) => s!==null ? el.setAttribute('style',s) : el.removeAttribute('style'));
+            toast.dismiss(loadToast);
+            // Focus the WhatsApp tab after PDF is downloaded
+            if (waWindow) waWindow.focus();
+            toast.success('✅ PDF downloaded! Now attach it in the WhatsApp chat.', {duration:6000});
+        } catch(e) {
+            if (waWindow) waWindow.close();
+            toast.error('PDF generation failed', {id:loadToast});
+        }
     };
+
 
     if (showPwPrompt && !unlocked) {
         return (

@@ -37,16 +37,22 @@ export default function BillingListPage() {
         return () => window.removeEventListener('popstate', handlePopState);
     }, []);
 
-    // All non-private, non-hidden invoices — shown in list
-    const allVisibleInvoices = allInvoices.filter(i => !i.isPrivate && !i.isHidden);
-    // GST bills only — for 'All GST Bills' tab and revenue totals
-    const gstOnlyInvoices = allInvoices.filter(i => i.isGstBill && !i.isPrivate);
-    const hiddenInvoices = allInvoices.filter(i => i.isHidden);
+    // Non-GST sale/purchase bills are auto-hidden — only visible via "View Hidden"
+    // Other types (estimate, return, proforma, etc.) always show regardless of GST
+    const AUTO_HIDDEN_TYPES = ['sale', 'purchase'];
+    const isAutoHidden = (i: any) =>
+        !i.isGstBill && AUTO_HIDDEN_TYPES.includes(i.invoiceType);
+
+    // Explicitly hidden (password-protected) + auto-hidden (non-GST sale/purchase)
+    const hiddenInvoices = allInvoices.filter(i => i.isHidden || isAutoHidden(i));
+
+    // Main visible list: non-private, not explicitly hidden, not auto-hidden
+    const mainInvoices = allInvoices.filter(i => !i.isPrivate && !i.isHidden && !isAutoHidden(i));
 
     const filtered = useMemo(() => {
-        // 'All GST Bills' tab shows only GST invoices; all other tabs use full visible list
-        let list = tab === 'All GST Bills' ? gstOnlyInvoices : allVisibleInvoices;
-        if (tab === 'Sale') list = list.filter(i => i.invoiceType === 'sale');
+        let list = mainInvoices;
+        if (tab === 'All GST Bills') list = list.filter(i => i.isGstBill);
+        else if (tab === 'Sale') list = list.filter(i => i.invoiceType === 'sale');
         else if (tab === 'Purchase') list = list.filter(i => i.invoiceType === 'purchase');
         else if (tab === 'Estimate') list = list.filter(i => ['estimate', 'proforma'].includes(i.invoiceType));
         else if (tab === 'Due') list = list.filter(i => i.paymentStatus !== 'paid' && i.balanceDue > 0);
@@ -57,11 +63,12 @@ export default function BillingListPage() {
             i.invoiceNumber.toLowerCase().includes(search.toLowerCase())
         );
         return list;
-    }, [allVisibleInvoices, gstOnlyInvoices, tab, search]);
+    }, [mainInvoices, tab, search]);
 
     // Estimate / Proforma / Delivery Challan are NOT confirmed — exclude from revenue totals
+    // Also only count GST bills (non-GST are hidden, so they shouldn't count)
     const DRAFT_TYPES = ['estimate', 'proforma', 'delivery_challan'];
-    const confirmedSales = allVisibleInvoices.filter(i => i.invoiceType === 'sale' && !DRAFT_TYPES.includes(i.invoiceType));
+    const confirmedSales = mainInvoices.filter(i => i.invoiceType === 'sale' && i.isGstBill && !DRAFT_TYPES.includes(i.invoiceType));
     const totalSales = confirmedSales.reduce((a: number, i: any) => a + i.grandTotal, 0);
     const totalReceived = confirmedSales.reduce((a: number, i: any) => a + i.amountPaid, 0);
     const totalDue = confirmedSales.reduce((a: number, i: any) => a + i.balanceDue, 0);

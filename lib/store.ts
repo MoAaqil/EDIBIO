@@ -613,6 +613,34 @@ export const useStore = create<EdibioState>()(
                         get().assignProductsToParty(inv.partyId, productIds);
                     }
                 }
+
+                // Update party balance based on invoice type
+                // Draft types (estimate, proforma, delivery_challan) do NOT affect balance
+                const DRAFT_TYPES = ['estimate', 'proforma', 'delivery_challan'];
+                if (inv.partyId && !DRAFT_TYPES.includes(inv.invoiceType) && inv.balanceDue > 0) {
+                    let balanceDelta = 0;
+                    if (inv.invoiceType === 'sale') {
+                        // Customer owes us → increase their balance (positive = receivable from them)
+                        balanceDelta = inv.balanceDue;
+                    } else if (inv.invoiceType === 'purchase') {
+                        // We owe supplier → decrease their balance (negative = payable to them)
+                        balanceDelta = -inv.balanceDue;
+                    } else if (['sale_return', 'credit_note'].includes(inv.invoiceType)) {
+                        // Customer return → reduce what they owe us
+                        balanceDelta = -inv.grandTotal;
+                    } else if (['purchase_return', 'debit_note'].includes(inv.invoiceType)) {
+                        // Supplier return → reduce what we owe them
+                        balanceDelta = inv.grandTotal;
+                    }
+                    if (balanceDelta !== 0) {
+                        set(s => ({
+                            parties: s.parties.map(p =>
+                                p.id === inv.partyId ? { ...p, balance: (p.balance || 0) + balanceDelta } : p
+                            ),
+                            lastModified: Date.now()
+                        }));
+                    }
+                }
             },
             updateInvoice: (id, upd) =>
                 set(s => ({ invoices: s.invoices.map(i => i.id === id ? { ...i, ...upd } : i), lastModified: Date.now() })),
@@ -633,6 +661,29 @@ export const useStore = create<EdibioState>()(
                             }
                         }
                     });
+
+                    // Revert party balance changes
+                    const DRAFT_TYPES = ['estimate', 'proforma', 'delivery_challan'];
+                    if (inv.partyId && !DRAFT_TYPES.includes(inv.invoiceType)) {
+                        let revertDelta = 0;
+                        if (inv.invoiceType === 'sale') {
+                            revertDelta = -inv.balanceDue;
+                        } else if (inv.invoiceType === 'purchase') {
+                            revertDelta = inv.balanceDue;
+                        } else if (['sale_return', 'credit_note'].includes(inv.invoiceType)) {
+                            revertDelta = inv.grandTotal;
+                        } else if (['purchase_return', 'debit_note'].includes(inv.invoiceType)) {
+                            revertDelta = -inv.grandTotal;
+                        }
+                        if (revertDelta !== 0) {
+                            set(s => ({
+                                parties: s.parties.map(p =>
+                                    p.id === inv.partyId ? { ...p, balance: (p.balance || 0) + revertDelta } : p
+                                ),
+                                lastModified: Date.now()
+                            }));
+                        }
+                    }
                 }
                 set(s => ({ invoices: s.invoices.filter(i => i.id !== id), lastModified: Date.now() }));
                 syncAfter(get);
