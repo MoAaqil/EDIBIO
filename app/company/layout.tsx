@@ -19,8 +19,8 @@ export default function CompanyRootLayout({ children }: { children: React.ReactN
         const handleResize = () => setIsMobileDevice(window.innerWidth <= 768);
         window.addEventListener('resize', handleResize);
 
-        if (!isAuthenticated) { router.replace('/login'); return; }
         if (isHydrating) return;
+        if (!isAuthenticated) { router.replace('/login'); return; }
 
         const co = companies.find((c: any) => c.id === companyId);
         if (!co) { router.replace('/companies'); return; }

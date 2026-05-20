@@ -74,8 +74,8 @@ function InvoiceDetailInner() {
         window.open(url, '_blank');
     };
 
-    const handleDownloadPDF = async () => {
-        const loadToast = toast.loading('Generating PDF...');
+    const handleShareOrDownloadPDF = async (mode: 'download' | 'share') => {
+        const loadToast = toast.loading(mode === 'share' ? 'Preparing PDF to share...' : 'Generating PDF...');
         try {
             const html2pdf = (await import('html2pdf.js')).default;
             const element = document.getElementById('invoice-print');
@@ -84,6 +84,18 @@ function InvoiceDetailInner() {
             const originalStyle = element.getAttribute('style') || '';
             // Force exactly 794px width (A4 equivalent) with no extra margins, paddings, or shadow offsets
             element.setAttribute('style', originalStyle + '; background: white; width: 794px; padding: 0; margin: 0; box-shadow: none; overflow: visible;');
+
+            // Temporarily replace min-height with auto to avoid vertical page splits/blank pages
+            const vhElements = element.querySelectorAll('[style*="min-height"], [style*="minHeight"]');
+            const originalMinHeights: { el: Element; style: string | null }[] = [];
+            vhElements.forEach(el => {
+                originalMinHeights.push({ el, style: el.getAttribute('style') });
+                const currStyle = el.getAttribute('style') || '';
+                const replaced = currStyle
+                    .replace(/min-height\s*:\s*[^;]+/gi, 'min-height: auto')
+                    .replace(/minHeight\s*:\s*[^;]+/gi, 'min-height: auto');
+                el.setAttribute('style', replaced);
+            });
 
             const opt = {
                 margin: 0,
@@ -101,20 +113,63 @@ function InvoiceDetailInner() {
                 pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
             };
 
-            await html2pdf().set(opt).from(element).save();
-            element.setAttribute('style', originalStyle);
-            toast.success('PDF downloaded successfully!', { id: loadToast });
+            if (mode === 'share') {
+                const pdfBlob = await html2pdf().set(opt).from(element).output('blob');
+                
+                // Restore original styles
+                element.setAttribute('style', originalStyle);
+                originalMinHeights.forEach(item => {
+                    if (item.style !== null) item.el.setAttribute('style', item.style);
+                    else item.el.removeAttribute('style');
+                });
+
+                toast.dismiss(loadToast);
+
+                const file = new File([pdfBlob], `${inv.invoiceNumber || 'Invoice'}.pdf`, { type: 'application/pdf' });
+                
+                if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+                    await navigator.share({
+                        files: [file],
+                        title: `Invoice ${inv.invoiceNumber}`,
+                        text: `🧾 Invoice ${inv.invoiceNumber} from ${company?.name || 'Store'}`
+                    });
+                    toast.success('Shared successfully!');
+                } else {
+                    const downloadUrl = URL.createObjectURL(pdfBlob);
+                    const a = document.createElement('a');
+                    a.href = downloadUrl;
+                    a.download = `${inv.invoiceNumber || 'Invoice'}.pdf`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(downloadUrl);
+                    
+                    setShowSharePdfModal(true);
+                }
+            } else {
+                await html2pdf().set(opt).from(element).save();
+                
+                // Restore original styles
+                element.setAttribute('style', originalStyle);
+                originalMinHeights.forEach(item => {
+                    if (item.style !== null) item.el.setAttribute('style', item.style);
+                    else item.el.removeAttribute('style');
+                });
+                
+                toast.success('PDF downloaded successfully!', { id: loadToast });
+            }
         } catch (err) {
-            console.error('PDF generation failed:', err);
-            toast.error('Failed to generate PDF. Opening print...', { id: loadToast });
+            console.error('PDF operations failed:', err);
+            toast.error('Failed to process PDF. Opening print...', { id: loadToast });
             window.print();
         }
     };
 
+    const handleDownloadPDF = () => handleShareOrDownloadPDF('download');
     const handleWhatsAppPDF = () => {
         const rawPhone = inv.partyPhone?.replace(/\D/g, '');
         if (!rawPhone) { toast.error('Customer phone number required for WhatsApp'); return; }
-        setShowSharePdfModal(true);
+        handleShareOrDownloadPDF('share');
     };
 
     if (showPwPrompt && !unlocked) {
