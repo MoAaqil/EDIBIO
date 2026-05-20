@@ -171,13 +171,13 @@ export default function PartiesPage() {
                                                     {p.balance > 0 ? `↑ ₹${p.balance.toLocaleString('en-IN')}` : p.balance < 0 ? `↓ ₹${Math.abs(p.balance).toLocaleString('en-IN')}` : '—'}
                                                 </td>
                                                 <td>
-                                                    <div style={{ display: 'flex', gap: 6 }}>
-                                                        <a href={`tel:${p.phone}`} className="btn btn-ghost btn-icon" style={{ padding: 6 }}><Phone size={13} color="#34A853" /></a>
-                                                        <a href={`https://wa.me/91${p.phone.replace(/\D/g, '')}`} target="_blank" className="btn btn-ghost btn-icon" style={{ padding: 6 }}><MessageSquare size={13} color="#25D366" /></a>
-                                                        <button onClick={() => { setPaymentParty(p); }} className="btn btn-ghost btn-icon" style={{ padding: 6 }} title="Record Payment"><IndianRupee size={13} color="#9333EA" /></button>
-                                                        <button onClick={() => setHistoryParty(p)} className="btn btn-ghost btn-icon" style={{ padding: 6 }} title="Payment History"><History size={13} color="#F59E0B" /></button>
-                                                        <button onClick={() => openEdit(p)} className="btn btn-ghost btn-icon" style={{ padding: 6 }}><Edit2 size={13} color="#4285F4" /></button>
-                                                        <button onClick={() => handleDelete(p.id)} className="btn btn-ghost btn-icon" style={{ padding: 6 }}><Trash2 size={13} color="#EA4335" /></button>
+                                                    <div style={{ display: 'flex', gap: 8 }}>
+                                                        <a href={`tel:${p.phone}`} className="btn btn-ghost btn-icon" style={{ padding: 8, width: 32, height: 32, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} title="Call"><Phone size={15} color="#34A853" /></a>
+                                                        <a href={`https://wa.me/91${p.phone.replace(/\D/g, '')}`} target="_blank" className="btn btn-ghost btn-icon" style={{ padding: 8, width: 32, height: 32, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} title="WhatsApp"><MessageSquare size={15} color="#25D366" /></a>
+                                                        <button onClick={() => { setPaymentParty(p); }} className="btn btn-ghost btn-icon" style={{ padding: 8, width: 32, height: 32, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} title="Record Payment"><IndianRupee size={15} color="#9333EA" /></button>
+                                                        <button onClick={() => setHistoryParty(p)} className="btn btn-ghost btn-icon" style={{ padding: 8, width: 32, height: 32, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} title="Payment History"><History size={15} color="#F59E0B" /></button>
+                                                        <button onClick={() => openEdit(p)} className="btn btn-ghost btn-icon" style={{ padding: 8, width: 32, height: 32, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} title="Edit"><Edit2 size={15} color="#4285F4" /></button>
+                                                        <button onClick={() => handleDelete(p.id)} className="btn btn-ghost btn-icon" style={{ padding: 8, width: 32, height: 32, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} title="Delete"><Trash2 size={15} color="#EA4335" /></button>
                                                     </div>
                                                 </td>
                                             </tr>
@@ -199,12 +199,12 @@ export default function PartiesPage() {
                                             <p style={{ fontWeight: 800, fontSize: 13, color: p.balance > 0 ? '#34A853' : p.balance < 0 ? '#EA4335' : '#CBD5E0' }}>
                                                 {p.balance !== 0 ? `₹${Math.abs(p.balance).toLocaleString('en-IN')}` : '—'}
                                             </p>
-                                            <div style={{ display: 'flex', gap: 6, marginTop: 4, justifyContent: 'flex-end' }}>
-                                                <a href={`tel:${p.phone}`} style={{ display: 'flex', alignItems: 'center', background: 'none', border: 'none' }}><Phone size={13} color="#34A853" /></a>
-                                                <a href={`https://wa.me/91${p.phone.replace(/\D/g, '')}`} target="_blank" style={{ display: 'flex', alignItems: 'center', background: 'none', border: 'none' }}><MessageSquare size={13} color="#25D366" /></a>
-                                                <button onClick={() => setPaymentParty(p)} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center' }}><IndianRupee size={13} color="#9333EA" /></button>
-                                                <button onClick={() => setHistoryParty(p)} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center' }}><History size={13} color="#F59E0B" /></button>
-                                                <button onClick={() => openEdit(p)} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center' }}><Edit2 size={13} color="#4285F4" /></button>
+                                            <div style={{ display: 'flex', gap: 8, marginTop: 6, justifyContent: 'flex-end', alignItems: 'center' }}>
+                                                <a href={`tel:${p.phone}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F1F5F9', border: 'none', padding: 8, borderRadius: 8, width: 32, height: 32 }} title="Call"><Phone size={15} color="#34A853" /></a>
+                                                <a href={`https://wa.me/91${p.phone.replace(/\D/g, '')}`} target="_blank" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F1F5F9', border: 'none', padding: 8, borderRadius: 8, width: 32, height: 32 }} title="WhatsApp"><MessageSquare size={15} color="#25D366" /></a>
+                                                <button onClick={() => setPaymentParty(p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F1F5F9', border: 'none', cursor: 'pointer', padding: 8, borderRadius: 8, width: 32, height: 32 }} title="Record Payment"><IndianRupee size={15} color="#9333EA" /></button>
+                                                <button onClick={() => setHistoryParty(p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F1F5F9', border: 'none', cursor: 'pointer', padding: 8, borderRadius: 8, width: 32, height: 32 }} title="Payment History"><History size={15} color="#F59E0B" /></button>
+                                                <button onClick={() => openEdit(p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F1F5F9', border: 'none', cursor: 'pointer', padding: 8, borderRadius: 8, width: 32, height: 32 }} title="Edit"><Edit2 size={15} color="#4285F4" /></button>
                                             </div>
                                         </div>
                                     </div>
