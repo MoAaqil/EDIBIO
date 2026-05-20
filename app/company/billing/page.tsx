@@ -68,10 +68,16 @@ export default function BillingListPage() {
     // Estimate / Proforma / Delivery Challan are NOT confirmed — exclude from revenue totals
     // Also only count GST bills (non-GST are hidden, so they shouldn't count)
     const DRAFT_TYPES = ['estimate', 'proforma', 'delivery_challan'];
+    const canSeeHidden = showHidden && (!company?.invoicePassword || passwordVerified);
+    // When "View Hidden" is active, include hidden sale bills in totals too
+    const hiddenSaleInvoices = canSeeHidden
+        ? hiddenInvoices.filter(i => i.invoiceType === 'sale' && !DRAFT_TYPES.includes(i.invoiceType))
+        : [];
     const confirmedSales = mainInvoices.filter(i => i.invoiceType === 'sale' && i.isGstBill && !DRAFT_TYPES.includes(i.invoiceType));
-    const totalSales = confirmedSales.reduce((a: number, i: any) => a + i.grandTotal, 0);
-    const totalReceived = confirmedSales.reduce((a: number, i: any) => a + i.amountPaid, 0);
-    const totalDue = confirmedSales.reduce((a: number, i: any) => a + i.balanceDue, 0);
+    const allCountedSales = [...confirmedSales, ...hiddenSaleInvoices];
+    const totalSales = allCountedSales.reduce((a: number, i: any) => a + i.grandTotal, 0);
+    const totalReceived = allCountedSales.reduce((a: number, i: any) => a + i.amountPaid, 0);
+    const totalDue = allCountedSales.reduce((a: number, i: any) => a + i.balanceDue, 0);
 
     const typeIcon = (type: string) => {
         if (type === 'purchase') return ShoppingCart;
