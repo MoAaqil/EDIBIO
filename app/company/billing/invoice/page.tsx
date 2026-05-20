@@ -74,7 +74,7 @@ function InvoiceDetailInner() {
         window.open(url, '_blank');
     };
 
-    const handleShareOrDownloadPDF = async (mode: 'download' | 'share') => {
+    const handleShareOrDownloadPDF = async (mode: 'download' | 'share', waWindow?: Window | null) => {
         const loadToast = toast.loading(mode === 'share' ? 'Preparing PDF to share...' : 'Generating PDF...');
         try {
             const html2pdf = (await import('html2pdf.js')).default;
@@ -128,6 +128,9 @@ function InvoiceDetailInner() {
                 const file = new File([pdfBlob], `${inv.invoiceNumber || 'Invoice'}.pdf`, { type: 'application/pdf' });
                 
                 if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+                    // Close the preemptive tab we opened since we are using native share instead
+                    if (waWindow) waWindow.close();
+                    
                     await navigator.share({
                         files: [file],
                         title: `Invoice ${inv.invoiceNumber}`,
@@ -144,7 +147,14 @@ function InvoiceDetailInner() {
                     document.body.removeChild(a);
                     URL.revokeObjectURL(downloadUrl);
                     
-                    setShowSharePdfModal(true);
+                    if (waWindow) {
+                        waWindow.focus();
+                    } else {
+                        const rawPhone = inv.partyPhone?.replace(/\D/g, '') || '';
+                        const phone = rawPhone.startsWith('91') && rawPhone.length === 12 ? rawPhone : '91' + rawPhone.slice(-10);
+                        window.open(`https://wa.me/${phone}`, '_blank');
+                    }
+                    toast.success('PDF Downloaded! Please drag/attach it to the WhatsApp chat.', { duration: 5000 });
                 }
             } else {
                 await html2pdf().set(opt).from(element).save();
@@ -160,6 +170,7 @@ function InvoiceDetailInner() {
             }
         } catch (err) {
             console.error('PDF operations failed:', err);
+            if (waWindow) waWindow.close();
             toast.error('Failed to process PDF. Opening print...', { id: loadToast });
             window.print();
         }
@@ -169,7 +180,16 @@ function InvoiceDetailInner() {
     const handleWhatsAppPDF = () => {
         const rawPhone = inv.partyPhone?.replace(/\D/g, '');
         if (!rawPhone) { toast.error('Customer phone number required for WhatsApp'); return; }
-        handleShareOrDownloadPDF('share');
+        
+        let waWindow: Window | null = null;
+        // Check if Web Share API is available for files, otherwise open WhatsApp chat instantly
+        const isShareSupported = typeof navigator !== 'undefined' && navigator.share && navigator.canShare;
+        if (!isShareSupported) {
+            const phone = rawPhone.startsWith('91') && rawPhone.length === 12 ? rawPhone : '91' + rawPhone.slice(-10);
+            waWindow = window.open(`https://wa.me/${phone}`, '_blank');
+        }
+        
+        handleShareOrDownloadPDF('share', waWindow);
     };
 
     if (showPwPrompt && !unlocked) {
