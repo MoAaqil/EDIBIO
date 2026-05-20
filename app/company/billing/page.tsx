@@ -218,7 +218,7 @@ export default function BillingListPage() {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {[...(showHidden && passwordVerified ? hiddenInvoices : []), ...filtered].map((inv: any) => {
+                                                                        {[...(showHidden && (!company?.invoicePassword || passwordVerified) ? hiddenInvoices : []), ...filtered].map((inv: any) => {
                                             const Icon = typeIcon(inv.invoiceType);
                                             const c = typeColor(inv.invoiceType);
                                             return (
@@ -259,7 +259,7 @@ export default function BillingListPage() {
 
                             {/* Mobile list */}
                             <div className="mobile-list">
-                                {[...(showHidden && passwordVerified ? hiddenInvoices : []), ...filtered].map((inv: any) => {
+                                                                {[...(showHidden && (!company?.invoicePassword || passwordVerified) ? hiddenInvoices : []), ...filtered].map((inv: any) => {
                                     const c = typeColor(inv.invoiceType);
                                     return (
                                         <Link key={inv.id} href={`/company/billing/invoice?id=${inv.id}`}
