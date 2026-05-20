@@ -82,19 +82,23 @@ function InvoiceDetailInner() {
             if (!element) throw new Error('Invoice container not found');
             
             const originalStyle = element.getAttribute('style') || '';
-            element.setAttribute('style', originalStyle + '; background: white; width: 800px; padding: 20px; box-shadow: none;');
+            // Force exactly 794px width (A4 equivalent) with no extra margins, paddings, or shadow offsets
+            element.setAttribute('style', originalStyle + '; background: white; width: 794px; padding: 0; margin: 0; box-shadow: none; overflow: visible;');
 
             const opt = {
-                margin: [10, 10, 10, 10],
+                margin: 0,
                 filename: `${inv.invoiceNumber || 'Invoice'}.pdf`,
                 image: { type: 'jpeg', quality: 0.98 },
                 html2canvas: { 
                     scale: 2, 
                     useCORS: true, 
                     logging: false,
-                    letterRendering: true
+                    letterRendering: true,
+                    scrollX: 0,
+                    scrollY: 0
                 },
-                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+                pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
             };
 
             await html2pdf().set(opt).from(element).save();
