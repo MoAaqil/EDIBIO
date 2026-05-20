@@ -61,16 +61,22 @@ function InvoiceDetailInner() {
         router.push(`/company/billing/new?type=${inv.invoiceType}&duplicateId=${inv.id}`);
     };
 
+    const getWhatsAppLink = (rawPhone: string, text?: string) => {
+        const phone = rawPhone.startsWith('91') && rawPhone.length === 12 ? rawPhone : '91' + rawPhone.slice(-10);
+        const isMobile = typeof window !== 'undefined' && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        const base = isMobile ? 'https://api.whatsapp.com/send' : 'https://web.whatsapp.com/send';
+        return `${base}?phone=${phone}${text ? `&text=${encodeURIComponent(text)}` : ''}`;
+    };
+
     const handleWhatsApp = () => {
         const rawPhone = inv.partyPhone?.replace(/\D/g, '');
         if (!rawPhone) { toast.error('Customer phone number required for WhatsApp'); return; }
-        const phone = rawPhone.startsWith('91') && rawPhone.length === 12 ? rawPhone : '91' + rawPhone.slice(-10);
         let itemsText = '';
         inv.items.forEach((item: any) => {
             itemsText += `• *${item.name}* × ${item.qty} ${item.unit} — ₹${item.amount.toLocaleString('en-IN')}\n`;
         });
         const msg = `🧾 *INVOICE: ${inv.invoiceNumber}*\n\n*${company?.name || 'Store'}*\nDate: ${inv.date}\n\n--------------------------------\nHello *${inv.partyName || 'Customer'}*, \nThank you for your business!\n\n*ITEMS:*\n${itemsText}--------------------------------\n*SUBTOTAL:* ₹${inv.subTotal?.toLocaleString('en-IN') || 0}\n*TAX / GST:* ₹${inv.totalGst?.toLocaleString('en-IN') || 0}\n*GRAND TOTAL: ₹${inv.grandTotal.toLocaleString('en-IN')}*\n\n${inv.balanceDue > 0 ? `⚠️ *BALANCE DUE: ₹${inv.balanceDue.toLocaleString('en-IN')}*` : '✅ *STATUS: FULLY PAID*'}\n\n_Sent via Edibio Cloud_`;
-        const url = `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
+        const url = getWhatsAppLink(rawPhone, msg);
         window.open(url, '_blank');
     };
 
@@ -151,8 +157,7 @@ function InvoiceDetailInner() {
                         waWindow.focus();
                     } else {
                         const rawPhone = inv.partyPhone?.replace(/\D/g, '') || '';
-                        const phone = rawPhone.startsWith('91') && rawPhone.length === 12 ? rawPhone : '91' + rawPhone.slice(-10);
-                        window.open(`https://wa.me/${phone}`, '_blank');
+                        window.open(getWhatsAppLink(rawPhone), '_blank');
                     }
                     toast.success('PDF Downloaded! Please drag/attach it to the WhatsApp chat.', { duration: 5000 });
                 }
@@ -185,8 +190,7 @@ function InvoiceDetailInner() {
         // Check if Web Share API is available for files, otherwise open WhatsApp chat instantly
         const isShareSupported = typeof navigator !== 'undefined' && navigator.share && navigator.canShare;
         if (!isShareSupported) {
-            const phone = rawPhone.startsWith('91') && rawPhone.length === 12 ? rawPhone : '91' + rawPhone.slice(-10);
-            waWindow = window.open(`https://wa.me/${phone}`, '_blank');
+            waWindow = window.open(getWhatsAppLink(rawPhone), '_blank');
         }
         
         handleShareOrDownloadPDF('share', waWindow);
@@ -348,9 +352,8 @@ function InvoiceDetailInner() {
                                     <Download size={14} /> Download PDF File
                                 </button>
                                 <button onClick={() => {
-                                    const rawPhone = inv.partyPhone?.replace(/\D/g, '');
-                                    const phone = rawPhone.startsWith('91') && rawPhone.length === 12 ? rawPhone : '91' + rawPhone.slice(-10);
-                                    window.open(`https://wa.me/${phone}`, '_blank');
+                                    const rawPhone = inv.partyPhone?.replace(/\D/g, '') || '';
+                                    window.open(getWhatsAppLink(rawPhone), '_blank');
                                 }} style={{ flex: 1, gap: 6, background: '#25D366', color: 'white', border: 'none', borderRadius: 10, padding: '10px 16px', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                     <MessageSquare size={14} /> Open WhatsApp Chat
                                 </button>

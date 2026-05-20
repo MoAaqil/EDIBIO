@@ -73,7 +73,7 @@ function NewBillContent() {
     const companyId = activeCompanyId;
     const sp = useSearchParams();
     const router = useRouter();
-    const invoiceType = (sp.get('type') || 'sale') as InvoiceType;
+    const [invoiceType, setInvoiceType] = useState<InvoiceType>('sale');
     const company = useActiveCompany();
     const parties = useCompanyData('parties') as any[];
     const products = useCompanyData('products') as any[];
@@ -102,6 +102,9 @@ function NewBillContent() {
     const [itemSearch, setItemSearch] = useState('');
 
     useEffect(() => {
+        const t = sp.get('type');
+        if (t) setInvoiceType(t as InvoiceType);
+
         const cid = sp.get('client');
         const pid = sp.get('project');
         const dupId = sp.get('duplicateId');
@@ -189,9 +192,9 @@ function NewBillContent() {
             currency, exchangeRate,
             createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
         } as any);
-        if (invoiceType === 'sale') {
+        if (['sale', 'purchase_return', 'debit_note'].includes(invoiceType)) {
             items.forEach(item => { if (item.productId) adjustStock(item.productId, -item.qty); });
-        } else if (invoiceType === 'purchase') {
+        } else if (['purchase', 'sale_return', 'credit_note'].includes(invoiceType)) {
             items.forEach(item => { if (item.productId) adjustStock(item.productId, item.qty); });
         }
         toast.success('Invoice saved! 📝', { duration: 2500 });
@@ -199,8 +202,15 @@ function NewBillContent() {
     };
 
     const TYPE_LABELS: Record<string, string> = {
-        sale: 'Tax Invoice', purchase: 'Purchase Bill', estimate: 'Estimate',
-        proforma: 'Proforma Invoice', delivery_challan: 'Delivery Challan', credit_note: 'Credit Note',
+        sale: 'Tax Invoice', 
+        purchase: 'Purchase Bill', 
+        estimate: 'Estimate',
+        proforma: 'Proforma Invoice', 
+        delivery_challan: 'Delivery Challan', 
+        credit_note: 'Credit Note',
+        debit_note: 'Debit Note',
+        sale_return: 'Return Bill (Sale Return)',
+        purchase_return: 'Purchase Return'
     };
 
     const activeParties = isAgency ? agencyClients.map(c => ({ id: c.id, name: c.clientName, phone: c.phone || '', gstNumber: c.gstNumber || '', balance: 0 })) : parties;
@@ -225,7 +235,7 @@ function NewBillContent() {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                         <div className="card" style={{ padding: 20 }}>
                             <p style={{ fontSize: 11, fontWeight: 800, color: '#A0AEC0', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>
-                                {invoiceType === 'purchase' ? 'Supplier' : 'Customer / Party'}
+                                {['purchase', 'purchase_return', 'debit_note'].includes(invoiceType) ? 'Supplier' : 'Customer / Party'}
                             </p>
                             {partyId ? (
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', background: '#E8F0FE', borderRadius: 12 }}>
@@ -260,6 +270,20 @@ function NewBillContent() {
 
                         <div className="card" style={{ padding: 20 }}>
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 14 }}>
+                                <div>
+                                    <label style={{ fontSize: 11, fontWeight: 700, color: '#A0AEC0', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: 6 }}>Bill Type</label>
+                                    <select className="e-select" value={invoiceType} onChange={e => setInvoiceType(e.target.value as InvoiceType)}>
+                                        <option value="sale">Tax Invoice</option>
+                                        <option value="proforma">Proforma Invoice</option>
+                                        <option value="sale_return">Return Bill (Sale Return)</option>
+                                        <option value="estimate">Estimate</option>
+                                        <option value="delivery_challan">Delivery Challan</option>
+                                        <option value="purchase">Purchase Bill</option>
+                                        <option value="purchase_return">Purchase Return</option>
+                                        <option value="credit_note">Credit Note</option>
+                                        <option value="debit_note">Debit Note</option>
+                                    </select>
+                                </div>
                                 <div>
                                     <label style={{ fontSize: 11, fontWeight: 700, color: '#A0AEC0', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: 6 }}>Date</label>
                                     <input type="date" className="e-input" value={date} onChange={e => setDate(e.target.value)} />

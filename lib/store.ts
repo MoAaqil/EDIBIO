@@ -622,8 +622,15 @@ export const useStore = create<EdibioState>()(
                     // Revert stock changes
                     inv.items.forEach((item: any) => {
                         if (item.productId) {
-                            const delta = inv.invoiceType === 'purchase' ? -item.qty : item.qty;
-                            get().adjustStock(item.productId, delta);
+                            let delta = 0;
+                            if (['sale', 'purchase_return', 'debit_note'].includes(inv.invoiceType)) {
+                                delta = item.qty;
+                            } else if (['purchase', 'sale_return', 'credit_note'].includes(inv.invoiceType)) {
+                                delta = -item.qty;
+                            }
+                            if (delta !== 0) {
+                                get().adjustStock(item.productId, delta);
+                            }
                         }
                     });
                 }
