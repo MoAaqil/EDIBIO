@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
     LayoutDashboard, FileText, Users, Package, DollarSign,
-    BarChart3, Settings, Warehouse, Zap, Crown, Activity, Layers, Briefcase, ShieldCheck, Lock
+    BarChart3, Settings, Warehouse, Zap, Crown, Activity, Layers, Briefcase, ShieldCheck, Lock, BookOpen
 } from 'lucide-react';
 import { useStore, useActiveCompany } from '@/lib/store';
 import { canAccess } from '@/components/FeatureGate';
@@ -25,6 +25,8 @@ export default function Sidebar({ isOpen, onClose, isCollapsed }: SidebarProps) 
     const isOwner = !user?.role || user?.role === 'co_owner' || user?.role === 'owner';
     const isManager = user?.role === 'manager';
     const isStaff = user?.role === 'staff';
+    const isChef = user?.role === 'chef_atelier';
+    const isServer = user?.role === 'server';
 
     const NAV = [
         { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', color: '#4285F4' },
@@ -42,6 +44,7 @@ export default function Sidebar({ isOpen, onClose, isCollapsed }: SidebarProps) 
         { href: '/audit', icon: ShieldCheck, label: 'Audit Trail', color: '#10B981' },
         { href: '/settings', icon: Settings, label: 'Settings', color: '#718096' },
         { href: '/settings/templates', icon: FileText, label: 'Templates', color: '#9333EA' },
+        { href: '/help', icon: BookOpen, label: 'Help Center', color: '#0EA5E9' },
     ];
 
     const base = activeCompanyId ? '/company' : '';
@@ -77,6 +80,13 @@ export default function Sidebar({ isOpen, onClose, isCollapsed }: SidebarProps) 
                                     <div className="status-dot" style={{ width: 6, height: 6, borderRadius: 99, background: '#10B981' }} />
                                     <span style={{ color: '#10B981', fontSize: 10, fontWeight: 700 }}>Cloud Synchronized</span>
                                 </div>
+                                {user?.role && (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                                        <span style={{ background: 'rgba(255,255,255,0.1)', color: '#C084FC', fontSize: 9, fontWeight: 800, padding: '1px 6px', borderRadius: '4px', textTransform: 'uppercase' }}>
+                                            {user.role.replace('_', ' ')}
+                                        </span>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -84,12 +94,16 @@ export default function Sidebar({ isOpen, onClose, isCollapsed }: SidebarProps) 
 
                 {company && (
                     <div style={{ padding: '6px 10px' }}>
-                        <Link href={company.type === 'Restaurant' ? `${base}/restaurant/pos` : `${base}/billing/quick`}
+                        <Link href={
+                            company.type === 'Restaurant' ? `${base}/dashboard` : 
+                            company.type === 'Bakery' ? `${base}/dashboard` : 
+                            `${base}/billing/quick`
+                        }
                             className="quick-billing-btn"
                             style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10, background: 'linear-gradient(135deg,#EA4335,#FBBC04)', textDecoration: 'none', boxShadow: '0 2px 8px rgba(234,67,53,0.35)' }}>
                             <Zap size={16} color="white" />
                             <span className="sidebar-label-area" style={{ color: 'white', fontWeight: 800, fontSize: 13 }}>
-                                {company.type === 'Restaurant' ? 'Restaurant POS' : 'Quick Billing'}
+                                {company.type === 'Restaurant' ? 'Restaurant POS' : company.type === 'Bakery' ? 'Bakery POS' : 'Quick Billing'}
                             </span>
                         </Link>
                     </div>
@@ -98,11 +112,14 @@ export default function Sidebar({ isOpen, onClose, isCollapsed }: SidebarProps) 
                 {/* Nav */}
                 <nav style={{ flex: 1, padding: '4px 10px', overflowY: 'auto', scrollbarWidth: 'none' }} className="sidebar-nav">
                     {NAV.filter(n => {
+                        if (isChef || isServer) {
+                            return false; // Chefs and Waiters only use the POS dashboard portal
+                        }
                         if (isManager) {
-                            return !['Expenses', 'Settings', 'Templates', 'Custom Invoice', 'Fees & Finance'].includes(n.label);
+                            return !['Dashboard', 'Expenses', 'Settings', 'Templates', 'Custom Invoice', 'Fees & Finance'].includes(n.label);
                         }
                         if (isStaff) {
-                            return ['Billing', 'Dashboard', 'Inventory'].includes(n.label);
+                            return ['Billing', 'Inventory'].includes(n.label);
                         }
                         if (user?.subscriptionType === 'mobile' && !isDemo) {
                             return !['AI Analytics', 'Audit Trail', 'Expenses'].includes(n.label);
@@ -132,7 +149,14 @@ export default function Sidebar({ isOpen, onClose, isCollapsed }: SidebarProps) 
                                     fontSize: 13, fontWeight: active ? 700 : 500,
                                     color: active ? 'white' : 'rgba(255,255,255,0.55)',
                                     flex: 1,
-                                }}>{label === 'Inventory' && company?.type === 'Restaurant' ? 'Food Items' : label}</span>
+                                }}>{
+                                    label === 'Inventory' ? (
+                                        company?.type === 'Restaurant' ? 'Food Items' :
+                                        company?.type === 'Bakery' ? 'Bakes & Menu' :
+                                        company?.type === 'Logistics' ? 'Fleet & Assets' :
+                                        company?.type === 'Ecommerce' ? 'Store Catalog' : 'Inventory'
+                                    ) : label
+                                }</span>
                                 {label === 'AI Analytics' && !hasAnalytics && (
                                     <Lock size={11} color="rgba(255,255,255,0.3)" />
                                 )}

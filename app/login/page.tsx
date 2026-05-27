@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useStore } from '@/lib/store';
-import { Wifi, ArrowRight, Shield, Smartphone, BarChart3, Check, Fingerprint } from 'lucide-react'; // Trigger HMR rebuild v2
+import { Wifi, ArrowRight, Shield, Smartphone, BarChart3, Check, Fingerprint, Key } from 'lucide-react'; // Trigger HMR rebuild v2
 import { auth, googleProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signInWithPhoneNumber, RecaptchaVerifier, createUserWithEmailAndPassword, signInWithEmailAndPassword, db } from '@/lib/firebase';
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { collection, query, where, getDocs } from 'firebase/firestore';
@@ -102,13 +102,17 @@ export default function LoginPage() {
             });
             router.replace(result.user.email === 'aaqilezio@gmail.com' ? '/admin' : '/companies');
         } catch (err: any) {
-            console.error('[Auth] Login Error:', err);
-            if (err.code === 'auth/unauthorized-domain') {
-                setError('ERROR: Domain not authorized in Firebase. Add this domain to Firebase console.');
-            } else if (err.message && err.message.toLowerCase().includes('network')) {
-                setError('Network Error: You must be online to use Google Sign-In for the first time. Try "Register As a Manager" manually to use the app offline.');
-            } else if (err.code !== 'auth/popup-closed-by-user' && err.code !== 'auth/cancelled-popup-request') {
-                setError(err.message || 'Google Auth Failed. Are you offline?');
+            if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request') {
+                console.log('[Auth] Google Sign-In cancelled or popup closed by user.');
+            } else {
+                console.error('[Auth] Login Error:', err);
+                if (err.code === 'auth/unauthorized-domain') {
+                    setError('ERROR: Domain not authorized in Firebase. Add this domain to Firebase console.');
+                } else if (err.message && err.message.toLowerCase().includes('network')) {
+                    setError('Network Error: You must be online to use Google Sign-In for the first time. Try "Register As a Manager" manually to use the app offline.');
+                } else {
+                    setError(err.message || 'Google Auth Failed. Are you offline?');
+                }
             }
             setGoogleLoading(false);
         }
@@ -374,8 +378,8 @@ export default function LoginPage() {
 
             toast.success('Login verified (Mongo DB).');
 
-            if (matchingTeamMember.role === 'staff') {
-                router.replace('/company/billing');
+            if (matchingTeamMember.role === 'staff' || matchingTeamMember.role === 'manager') {
+                router.replace('/company/billing/quick');
             } else {
                 router.replace('/company/dashboard');
             }
@@ -413,15 +417,14 @@ export default function LoginPage() {
 
                 <div style={{ maxWidth: 420, textAlign: 'center', zIndex: 1 }}>
                     <div style={{
-                        position: 'relative', display: 'inline-block', marginBottom: 36,
-                        perspective: 1000, transformStyle: 'preserve-3d',
+                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                        marginBottom: 36, width: 130, height: 130,
+                        background: 'white', borderRadius: 28,
+                        boxShadow: '0 20px 60px rgba(66,133,244,0.2), 0 4px 16px rgba(0,0,0,0.08)',
+                        padding: 8,
                     }}>
-                        <Image src="/logo.png" alt="Edibio" width={140} height={140}
-                            style={{
-                                borderRadius: 32,
-                                boxShadow: '0 24px 64px rgba(66,133,244,0.3), inset 0 2px 4px rgba(255,255,255,0.8), -8px 8px 16px rgba(0,0,0,0.05)',
-                                transform: 'rotateY(10deg) rotateX(10deg) translateZ(20px)',
-                            }}
+                        <Image src="/logo.png" alt="Edibio" width={114} height={114}
+                            style={{ objectFit: 'contain', width: '100%', height: '100%' }}
                         />
                     </div>
 
@@ -466,8 +469,8 @@ export default function LoginPage() {
 
                 {/* Mobile logo */}
                 <div style={{ textAlign: 'center', marginBottom: 32 }} className="login-mobile-logo">
-                    <Image src="/logo.png" alt="Edibio" width={120} height={120}
-                        style={{ borderRadius: 24, boxShadow: '0 8px 32px rgba(66,133,244,0.18)', marginBottom: 14 }} />
+                    <Image src="/logo-full.jpg" alt="Edibio" width={140} height={46}
+                        style={{ objectFit: 'contain', borderRadius: 12, boxShadow: '0 8px 32px rgba(66,133,244,0.18)', marginBottom: 14 }} />
                 </div>
 
                 <div style={{ width: '100%', maxWidth: 360 }}>
@@ -534,6 +537,21 @@ export default function LoginPage() {
                             }}>
                                 <Fingerprint size={18} color="#4285F4" />
                                 Login with Fingerprint
+                            </button>
+
+                            <button onClick={() => setAuthMode('role_login')} style={{
+                                width: '100%', padding: '13px 16px', borderRadius: 14,
+                                background: '#FFFFFF', color: '#1A1A2E',
+                                border: '1.5px solid #E2E8F0',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+                                cursor: 'pointer', fontWeight: 700, fontSize: 14, marginBottom: 14,
+                                transition: 'all 0.2s',
+                            }}
+                                onMouseEnter={(e) => { e.currentTarget.style.background = '#F8FAFC'; e.currentTarget.style.borderColor = '#CBD5E0'; }}
+                                onMouseLeave={(e) => { e.currentTarget.style.background = '#FFFFFF'; e.currentTarget.style.borderColor = '#E2E8F0'; }}
+                            >
+                                <Key size={18} color="#34A853" />
+                                Login with Role (Staff / Manager)
                             </button>
 
                             {/* Demo CTA */}

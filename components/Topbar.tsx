@@ -1,5 +1,5 @@
 'use client';
-import { Search, Bell, ChevronDown, Menu, Store, Crown, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { Search, Bell, ChevronDown, Menu, Store, Crown, PanelLeftClose, PanelLeftOpen, HelpCircle } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useState, useMemo } from 'react';
@@ -134,7 +134,7 @@ export default function Topbar({ title, onMenuOpen, onDesktopToggle, isSidebarCo
             <div style={{ flex: 1 }} className="mobile-hide" />
 
             {/* Trial Alert */}
-            {user?.trialExpiresAt && daysLeft > 0 && (
+            {user?.trialExpiresAt && daysLeft > 0 && user?.role !== 'staff' && user?.role !== 'manager' && (
                 <div style={{
                     marginRight: 12, background: 'linear-gradient(135deg, rgba(234,67,53,0.1), rgba(234,67,53,0.05))',
                     border: '1px solid rgba(234,67,53,0.3)', padding: '6px 12px', borderRadius: '20px',
@@ -172,6 +172,15 @@ export default function Topbar({ title, onMenuOpen, onDesktopToggle, isSidebarCo
                 <Link href="/companies" className="btn btn-ghost btn-icon mobile-hide" title="Switch Company">
                     <Store size={18} color="#4A5568" />
                 </Link>
+
+                {/* Keyboard Shortcuts Trigger */}
+                <button
+                    onClick={() => window.dispatchEvent(new Event('open-shortcuts-guide'))}
+                    className="btn btn-ghost btn-icon mobile-hide"
+                    title="Keyboard Shortcuts (Press ?)"
+                >
+                    <HelpCircle size={18} color="#4A5568" />
+                </button>
 
                 {/* Notifications */}
                 <div style={{ position: 'relative' }}>

@@ -1,0 +1,179 @@
+Line 226: const isOpen = localStorage.getItem(`fooddesk_register_open_${company.id}`) === 'true';
+Line 229: setOpeningFloat(parseFloat(localStorage.getItem(`fooddesk_register_float_${company.id}`) || '100.00'));
+Line 230: setOpeningTime(localStorage.getItem(`fooddesk_register_time_${company.id}`) || '');
+Line 234: const savedAppOrders = localStorage.getItem(`fooddesk_app_orders_${company.id}`);
+Line 239: localStorage.setItem(`fooddesk_app_orders_${company.id}`, JSON.stringify([]));
+Line 243: const savedBulk = localStorage.getItem(`fooddesk_bulk_orders_${company.id}`);
+Line 249: const savedTableCarts = localStorage.getItem(`fooddesk_table_carts_${company.id}`);
+Line 255: const savedZReports = localStorage.getItem(`fooddesk_z_reports_${company.id}`);
+Line 264: localStorage.setItem(`fooddesk_table_carts_${company.id}`, JSON.stringify(tableCarts));
+Line 266: localStorage.removeItem(`fooddesk_table_carts_${company.id}`);
+Line 273: const key = `${activeArea}-${selectedTable}`;
+Line 350: return toast.error(`Credit limit exceeded! Customer's remaining credit is $${remainingLimit.toFixed(2)}`);
+Line 404: partyName: selectedParty?.name || (orderType === 'Dining' ? `Dining - ${tableNumber}` : `Delivery - ${customerAddress}`),
+Line 405: counter: `${orderType} - ${tableNumber}`,
+Line 406: notes: notesText || `${orderType} Order via FoodDesk POS`,
+Line 423: const key = `${activeArea}-${selectedTable}`;
+Line 531: localStorage.setItem(`fooddesk_register_open_${company.id}`, 'true');
+Line 532: localStorage.setItem(`fooddesk_register_float_${company.id}`, floatVal.toString());
+Line 533: localStorage.setItem(`fooddesk_register_time_${company.id}`, timeStr);
+Line 584: localStorage.setItem(`fooddesk_z_reports_${company.id}`, JSON.stringify(updatedZ));
+Line 592: localStorage.removeItem(`fooddesk_register_open_${company.id}`);
+Line 593: localStorage.removeItem(`fooddesk_register_float_${company.id}`);
+Line 594: localStorage.removeItem(`fooddesk_register_time_${company.id}`);
+Line 622: notes: `Expected: $${expectedCash.toFixed(2)} || Actual: $${countedCash.toFixed(2)} || Diff: $${discrepancy.toFixed(2)}`,
+Line 657: toast.success(`Repayment of $${amount.toFixed(2)} recorded!`);
+Line 699: name: `Catering Booking - ${booking.notes || 'Event Function'}`,
+Line 718: notes: `Event Date: ${booking.eventDate} || Guests: ${booking.guestCount} || Advance: $${booking.advancePaid} || Venue: ${booking.notes} || Status: Booked`,
+Line 726: localStorage.setItem(`fooddesk_bulk_orders_${company.id}`, JSON.stringify(updatedBulk));
+Line 790: className={`fooddesk-sidebar ${sidebarOpen ? 'mobile-open' : ''} ${sidebarCollapsed ? 'collapsed' : ''}`}
+Line 801: <div className="brand-logo-img-wrapper" style={{ border: `2px solid ${primaryColor}`, flexShrink: 0, width: '40px', height: '40px' }}>
+Line 813: <nav className="sidebar-links-panel" style={{ border: `1px solid ${accentBorder}`, borderRadius: '16px', margin: sidebarCollapsed ? '12px 6px' : '12px', padding: sidebarCollapsed ? '12px 6px' : '16px 12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+Line 816: className={`sidebar-tab-btn ${activeView === 'dashboard' ? 'active' : ''}`}
+Line 828: className={`sidebar-tab-btn ${activeView === 'inventory' ? 'active' : ''}`}
+Line 840: className={`sidebar-tab-btn ${activeView === 'billing' ? 'active' : ''}`}
+Line 852: className={`sidebar-tab-btn ${activeView === 'parties' ? 'active' : ''}`}
+Line 864: className={`sidebar-tab-btn ${activeView === 'invoice-template' ? 'active' : ''}`}
+Line 876: className={`sidebar-tab-btn ${activeView === 'app-orders' ? 'active' : ''}`}
+Line 888: className={`sidebar-tab-btn ${activeView === 'bulk-orders' ? 'active' : ''}`}
+Line 900: className={`sidebar-tab-btn ${activeView === 'expenses' ? 'active' : ''}`}
+Line 912: className={`sidebar-tab-btn ${activeView === 'reports' ? 'active' : ''}`}
+Line 924: className={`sidebar-tab-btn ${activeView === 'settings' ? 'active' : ''}`}
+Line 998: onClick={() => toast.success(`Searching: ${searchQuery}`)}
+Line 1043: <div className="open-shift-splash-card" style={{ maxWidth: '440px', margin: '40px auto', background: 'white', border: `1px solid ${accentBorder}`, borderRadius: '24px', padding: '32px', textAlign: 'center', boxShadow: '0 10px 30px rgba(0,0,0,0.02)' }}>
+Line 1048: <label style={{ fontSize: '11px', fontWeight: 700, color: '#4A5568' }}>Opening Cash Float ($)</label>
+Line 1082: border: `1px solid ${activeArea === area ? primaryColor : '#E2E8F0'}`,
+Line 1098: const key = `${activeArea}-${tableNum}`;
+Line 1133: toast.success(`Table ${tableNum} cleaned & ready!`);
+Line 1137: setTableNumber(`${activeArea} - Table ${tableNum}`);
+Line 1146: toast.success(`Loaded active order for Table ${tableNum}`);
+Line 1157: border: `2px solid ${border}`,
+Line 1168: {isOccupied ? `$${cached.cart.reduce((sum, c) => sum + (c.item.sellingPrice * c.qty), 0).toFixed(2)}` : stateLabel}
+Line 1198: className={`category-chip ${selectedCat === cat ? 'active' : ''}`}
+Line 1251: <span className="dish-price">${item.sellingPrice.toFixed(2)}</span>
+Line 1310: <span className="dish-price">${item.price.toFixed(2)}</span>
+Line 1363: <td style={{ color: primaryColor, fontWeight: 800 }}>${p.sellingPrice.toFixed(2)}</td>
+Line 1364: <td>${p.purchasePrice.toFixed(2)}</td>
+Line 1370: <button onClick={() => confirm(`Delete ${p.name}?`) && deleteProduct(p.id)} className="action-icon-btn text-red">
+Line 1426: <td style={{ color: '#38A169', fontWeight: 700 }}>${val.revenue.toFixed(2)}</td>
+Line 1462: <td style={{ color: '#E53E3E', fontWeight: 700 }}>${e.amount.toFixed(2)}</td>
+Line 1487: className={`sub-tab-btn ${billingTab === 'invoices' ? 'active' : ''}`}
+Line 1498: className={`sub-tab-btn ${billingTab === 'customers' ? 'active' : ''}`}
+Line 1509: className={`sub-tab-btn ${billingTab === 'daily' ? 'active' : ''}`}
+Line 1545: <td style={{ color: primaryColor, fontWeight: 800 }}>${inv.grandTotal.toFixed(2)}</td>
+Line 1581: <span style={{ color: p.balance > 0 ? '#E53E3E' : '#718096', fontWeight: 800 }}>${p.balance.toFixed(2)}</span>
+Line 1583: <p style={{ margin: '4px 0 0 0', fontSize: '11px', color: '#718096' }}>Phone: {p.phone || 'N/A'} || Limit: ${p.creditLimit || 50000}</p>
+Line 1596: <div>Outstanding Balance: <strong style={{ color: '#E53E3E' }}>${selectedCustomerLedger.balance.toFixed(2)}</strong></div>
+Line 1597: <div>Credit Limit: <strong>${selectedCustomerLedger.creditLimit || 50000}</strong></div>
+Line 1608: placeholder="Amount paid ($)"
+Line 1664: <td style={{ color: '#38A169', fontWeight: 700 }}>${rep.amount.toFixed(2)}</td>
+Line 1666: <td>${rep.balanceAfter.toFixed(2)}</td>
+Line 1708: <td>${rep.openingFloat.toFixed(2)}</td>
+Line 1709: <td>${rep.cashSales.toFixed(2)}</td>
+Line 1710: <td><strong>${rep.expectedCash.toFixed(2)}</strong></td>
+Line 1711: <td style={{ color: primaryColor, fontWeight: 800 }}>${rep.countedCash.toFixed(2)}</td>
+Line 1713: {rep.discrepancy === 0 ? '$0.00' : rep.discrepancy > 0 ? `+$${rep.discrepancy.toFixed(2)}` : `-$${Math.abs(rep.discrepancy).toFixed(2)}`}
+Line 1738: notes: `Expected: $${rep.expectedCash.toFixed(2)} || Counted: $${rep.countedCash.toFixed(2)} || Diff: $${rep.discrepancy.toFixed(2)}`,
+Line 1764: <span style={{ color: '#E53E3E', fontWeight: 800 }}>Total Costs: ${totalExpenses.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+Line 1769: <form onSubmit={handleAddExpense} className="expense-form-card" style={{ border: `1px solid ${accentBorder}` }}>
+Line 1792: <label>Amount ($) *</label>
+Line 1829: <span style={{ fontWeight: 800, color: '#E53E3E' }}>- ${exp.amount.toFixed(2)}</span>
+Line 1851: <div className="analytics-card" style={{ borderLeft: `4px solid ${primaryColor}` }}>
+Line 1853: <h3>${totalEarnings.toLocaleString('en-US', { minimumFractionDigits: 2 })}</h3>
+Line 1857: <h3 style={{ color: '#E53E3E' }}>${totalExpenses.toLocaleString('en-US', { minimumFractionDigits: 2 })}</h3>
+Line 1927: <div className="progress-bar-fill" style={{ width: `${percentage}%`, background: primaryColor }} />
+Line 1957: <p style={{ fontSize: '11px', color: '#718096', margin: '0 0 8px 0' }}>{order.items.map(i => `${i.qty}x ${i.name}`).join(', ')}</p>
+Line 1959: <span style={{ fontSize: '13px', fontWeight: 900, color: primaryColor }}>${order.total.toFixed(2)}</span>
+Line 1964: localStorage.setItem(`fooddesk_app_orders_${company.id}`, JSON.stringify(updated));
+Line 1984: <p style={{ fontSize: '11px', color: '#718096', margin: '0 0 8px 0' }}>{order.items.map(i => `${i.qty}x ${i.name}`).join(', ')}</p>
+Line 1986: <span style={{ fontSize: '13px', fontWeight: 900, color: primaryColor }}>${order.total.toFixed(2)}</span>
+Line 1991: localStorage.setItem(`fooddesk_app_orders_${company.id}`, JSON.stringify(updated));
+Line 2011: <p style={{ fontSize: '11px', color: '#718096', margin: '0 0 8px 0' }}>{order.items.map(i => `${i.qty}x ${i.name}`).join(', ')}</p>
+Line 2013: <span style={{ fontSize: '13px', fontWeight: 900, color: primaryColor }}>${order.total.toFixed(2)}</span>
+Line 2041: partyName: `${order.channel} - ${order.customer}`,
+Line 2042: notes: `App Order Delivery to ${order.address}`,
+Line 2049: localStorage.setItem(`fooddesk_app_orders_${company.id}`, JSON.stringify(updated));
+Line 2069: <p style={{ fontSize: '11px', color: '#A0AEC0', margin: '0 0 8px 0' }}>{order.items.map(i => `${i.qty}x ${i.name}`).join(', ')}</p>
+Line 2071: <span style={{ fontSize: '13px', fontWeight: 900, color: '#A0AEC0' }}>${order.total.toFixed(2)}</span>
+Line 2124: <td><strong>${b.totalDeal.toFixed(2)}</strong></td>
+Line 2125: <td style={{ color: '#38A169', fontWeight: 700 }}>${b.advancePaid.toFixed(2)}</td>
+Line 2126: <td style={{ color: '#E53E3E', fontWeight: 700 }}>${(b.totalDeal - b.advancePaid).toFixed(2)}</td>
+Line 2176: notes: `Event Date: ${b.eventDate} || Guests: ${b.guestCount} || Fully Paid Sale`,
+Line 2183: localStorage.setItem(`fooddesk_bulk_orders_${company.id}`, JSON.stringify(updated));
+Line 2214: className={`category-chip ${settingsTab === t ? 'active' : ''}`}
+Line 2228: <form onSubmit={handleSaveSettings} className="settings-form-card" style={{ border: `1px solid ${accentBorder}` }}>
+Line 2309: <div className="settings-form-card" style={{ border: `1px solid ${accentBorder}` }}>
+Line 2319: toast.success(`Print layout set to ${size}`);
+Line 2324: border: `1px solid ${isSelected ? primaryColor : '#E2E8F0'}`,
+Line 2347: <div className="settings-form-card" style={{ border: `1px solid ${accentBorder}` }}>
+Line 2356: if(confirm(`Remove godown ${g.name}?`)) {
+Line 2382: toast.success(`Godown "${newGodownName}" registered!`);
+Line 2394: <form onSubmit={handleSaveBankDetails} className="settings-form-card" style={{ border: `1px solid ${accentBorder}` }}>
+Line 2452: <div className="settings-form-card" style={{ border: `1px solid ${accentBorder}` }}>
+Line 2519: const generatedUsername = `${cleanShopName}${randomNum}@edibio.${newTeamForm.role}`;
+Line 2531: toast.success(`User created successfully!\nUsername: ${generatedUsername}`);
+Line 2544: <div className="settings-form-card" style={{ border: `1px solid ${accentBorder}` }}>
+Line 2584: style={{ flex: 1, border: `1px solid ${primaryColor}`, color: primaryColor }}
+Line 2593: <form onSubmit={handleSaveLoyaltySettings} className="settings-form-card" style={{ border: `1px solid ${accentBorder}` }}>
+Line 2597: <label>Credit / Outstanding Loan Limit ($)</label>
+Line 2617: <label>Point Earning Ratio (Spend $1 = X points)</label>
+Line 2626: <label>Point Redemption Value (1 point = $Y)</label>
+Line 2808: toast.success(`Template format changed to: ${e.target.value}`);
+Line 2932: <aside className={`fooddesk-cart-panel ${cartOpen ? 'mobile-open' : ''}`}>
+Line 2935: <div className="address-widget-copy" style={{ background: secondaryBg, borderRadius: '16px', padding: '16px 20px', margin: '24px 24px 20px 24px', border: `1px solid ${accentBorder}` }}>
+Line 2947: border: `1px solid ${orderType === type ? primaryColor : '#E2E8F0'}`,
+Line 2985: ? `Table: ${tableNumber}`
+Line 2987: ? (notesText ? `Takeaway - ${notesText}` : 'Takeaway Order')
+Line 3005: toast.success(`Attached Customer: ${matching.name}`);
+Line 3007: toast.error(`No customer named "${guest}" found. You can add them in the Parties list!`);
+Line 3011: {selectedParty ? `Attached: ${selectedParty.name}` : 'Attach Party'}
+Line 3062: <div className="total-row-grand" style={{ borderTop: `2px dashed ${primaryColor}` }}>
+Line 3080: border: `1.5px dashed ${primaryColor}40`,
+Line 3181: toast.success(`Category "${newCatName.trim()}" added!`);
+Line 3217: background: secondaryBg, color: primaryColor, border: `1px solid ${primaryColor}`,
+Line 3315: toast.success(`Category "${newCatName.trim()}" added!`);
+Line 3351: background: secondaryBg, color: primaryColor, border: `1px solid ${primaryColor}`,
+Line 3432: <span><strong>${openingFloat.toFixed(2)}</strong></span>
+Line 3436: <span><strong>+${cashSales.toFixed(2)}</strong></span>
+Line 3440: <span><strong>+${(upiSales + cardSales).toFixed(2)}</strong></span>
+Line 3444: <span><strong>+${creditSales.toFixed(2)}</strong></span>
+Line 3449: <span>${expectedCash.toFixed(2)}</span>
+Line 3456: <label>Actual Cash Counted in Drawer ($) *</label>
+Line 3524: <label>Total Deal Value ($) *</label>
+Line 3535: <label>Advance Deposit Paid ($)</label>
+Line 3593: <td style={{ textAlign: 'right', padding: '4px 0' }}>${it.amount.toFixed(2)}</td>
+Line 3602: <span>${viewingReceipt.subTotal.toFixed(2)}</span>
+Line 3606: <span>${viewingReceipt.totalGst.toFixed(2)}</span>
+Line 3610: <span>${viewingReceipt.grandTotal.toFixed(2)}</span>
+Line 3655: .search-input:focus { border-color: ${primaryColor}; }
+Line 3681: .category-chip:hover { border-color: ${primaryColor}; }
+Line 3707: .change-btn { background: none; border: none; color: ${primaryColor}; font-weight: 700; font-size: 11px; cursor: pointer; }
+Line 3721: .cart-item-price { font-size: 12px; font-weight: 800; color: ${primaryColor}; margin: 2px 0 0; }
+Line 3734: .discount-voucher-banner { margin: 16px 24px 24px; border-radius: 16px; padding: 14px 20px; display: flex; align-items: center; gap: 12px; border: 1.5px dashed ${primaryColor}40; }
+Line 3785: .modal-input:focus { border-color: ${primaryColor}; }
+Line 3950: description: `${t.address} || ${t.date}`
+Line 3964: notes: `${load.driver}`,
+Line 4000: invoiceNumber: loadForm.loadNumber.startsWith('#') ? loadForm.loadNumber : `#${loadForm.loadNumber}`,
+Line 4014: description: `${t.address} || ${t.date}`
+Line 4129: className={`status-tab ${activeStatus === st ? 'active' : ''}`}
+Line 4156: className={`load-item-card ${isSelected ? 'active' : ''}`}
+Line 4160: <span className={`load-badge ${load.paymentStatus}`}>
+Line 4205: <span className={`load-badge ${selectedLoad.paymentStatus}`}>
+Line 4235: <div className={`node-inner ${isCompleted ? 'completed' : ''}`}>
+Line 4328: <text x="0" y="-4" fill="#10B981" fontSize="8" fontWeight="700" textAnchor="middle">$3.07</text>
+Line 4335: <text x="0" y="-4" fill="#FFB020" fontSize="8" fontWeight="700" textAnchor="middle">$3.21 New</text>
+Line 4342: <text x="0" y="-4" fill="#10B981" fontSize="8" fontWeight="700" textAnchor="middle">$3.10</text>
+Line 4349: <text x="0" y="-4" fill="#10B981" fontSize="8" fontWeight="700" textAnchor="middle">$3.18</text>
+Line 4621: if (topItem) calculated.push({ emoji: '📈', text: `<b>${topItem.name}</b> is your top-selling product (${topItem.qty} units sold).`, color: '#34A853' });
+Line 4623: if (oos.length) calculated.push({ emoji: '🚨', text: `<b>${oos.length} item${oos.length > 1 ? 's' : ''}</b> are out of stock — reorder now to avoid lost sales.`, color: '#EA4335' });
+Line 4624: if (totalReceivable > 0) calculated.push({ emoji: '💰', text: `You have <b>₹${totalReceivable.toLocaleString('en-IN')}</b> in outstanding receivables from customers.`, color: '#FBBC04' });
+Line 4626: if (lowStockCount > 0) calculated.push({ emoji: '⚠️', text: `<b>${lowStockCount} product${lowStockCount > 1 ? 's are' : ' is'}</b> running low on stock. Consider reordering soon.`, color: '#F59E0B' });
+Line 4672: <div style={{ position: 'absolute', right: -20, top: -20, width: 140, height: 140, borderRadius: 999, background: `${company.colorAccent}20` }} />
+Line 4689: fontWeight: 700, fontSize: 13, boxShadow: `0 4px 16px ${company.colorAccent}50`, flexShrink: 0
+Line 4697: { label: "Today's Sales", value: formatShort(todayInv.reduce((a, i) => a + i.grandTotal, 0)), sub: `${todayInv.length} bills` },
+Line 4747: formatter={(val: any) => [`₹${(val || 0).toLocaleString()}`, 'Sales']}
+Line 4770: <p style={{ fontSize: 11, color: '#B45309' }}>{lowStock.slice(0, 3).map((p: any) => p.name).join(', ')}{lowStock.length > 3 ? ` +${lowStock.length - 3} more` : ''}</p>
+Line 4797: <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 14px', borderRadius: 12, background: ins.color + '10', border: `1px solid ${ins.color}25` }}>
+Line 4818: <div style={{ width: 44, height: 44, borderRadius: 12, background: color, display: 'flex', alignItems: 'center', justifycontent: 'center', boxShadow: `0 4px 12px ${color}35` }}>
+Line 4847: <Link key={inv.id} href={`/company/billing/invoice?id=${inv.id}`} style={{
+Line 4866: <span className={`badge ${inv.paymentStatus === 'paid' ? 'badge-green' : inv.paymentStatus === 'partial' ? 'badge-yellow' : 'badge-red'}`}>

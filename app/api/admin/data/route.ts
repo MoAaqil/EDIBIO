@@ -31,6 +31,7 @@ export async function GET() {
             statsMap.set(stat._id, { count: stat.count, total: stat.total });
         });
 
+        const usersMap = new Map(users.map((u: any) => [u._id, u]));
         const accounts = users.map((u: any) => {
             const userCompanies = companies.filter((c: any) => c.userId === u._id);
             return {
@@ -54,6 +55,30 @@ export async function GET() {
                 rawUser: u
             };
         });
+
+        const unlinkedCompanies = companies.filter((c: any) => !c.userId || !usersMap.has(c.userId));
+        if (unlinkedCompanies.length > 0) {
+            accounts.push({
+                docId: 'unlinked_stores',
+                uid: 'unlinked_stores',
+                email: 'unlinked@edibio.app',
+                name: 'Unlinked / Orphaned Stores',
+                phone: 'N/A',
+                plan: 'free',
+                planExpiry: null,
+                updatedAt: new Date().toISOString(),
+                aiApiKey: '',
+                companies: unlinkedCompanies.map((c: any) => ({
+                    id: c._id,
+                    name: c.name,
+                    type: c.type,
+                    invoices: statsMap.get(c._id)?.count || 0
+                })),
+                totalInvoices: unlinkedCompanies.reduce((acc, c) => acc + (statsMap.get(c._id)?.count || 0), 0),
+                revenue: unlinkedCompanies.reduce((acc, c) => acc + (statsMap.get(c._id)?.total || 0), 0),
+                rawUser: { _id: 'unlinked_stores', email: 'unlinked@edibio.app', name: 'Unlinked Stores' }
+            });
+        }
 
         return NextResponse.json({ accounts });
     } catch (error: any) {

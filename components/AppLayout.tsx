@@ -5,11 +5,12 @@ import BottomNav from './BottomNav';
 import Tutorial from './Tutorial';
 import KeyboardShortcuts from './KeyboardShortcuts';
 import { ConfirmDialog } from './ConfirmDialog';
+import AutoBackup from './AutoBackup';
 import { useState, useEffect } from 'react';
-import { useStore } from '@/lib/store';
+import { useStore, useActiveCompany } from '@/lib/store';
 import Link from 'next/link';
 import { X, Lock, Smartphone, ShieldAlert } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 
 interface AppLayoutProps {
     children: React.ReactNode;
@@ -74,7 +75,7 @@ function SubscriptionGuard({ children }: { children: React.ReactNode }) {
         return () => window.removeEventListener('resize', handleResize);
     }, []);
 
-    if (isDemo || !user || user.role === 'admin') return <>{children}</>;
+    if (isDemo || !user || user.role === 'admin' || user.role === 'staff' || user.role === 'manager') return <>{children}</>;
 
     const expiryStr = user.subscriptionExpiresAt || user.trialExpiresAt;
     const isExpired = expiryStr ? new Date(expiryStr).getTime() < Date.now() : false;
@@ -139,6 +140,8 @@ export default function AppLayout({ children, title }: AppLayoutProps) {
     const [sidebarOpen, setSidebarOpen] = useState(false);
     // Always start as false (matches SSR). Read persisted state after mount to avoid hydration mismatch.
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+    const pathname = usePathname();
+    const company = useActiveCompany();
 
     useEffect(() => {
         const stored = localStorage.getItem('sidebar_collapsed');
@@ -151,8 +154,25 @@ export default function AppLayout({ children, title }: AppLayoutProps) {
         localStorage.setItem('sidebar_collapsed', String(next));
     };
 
+    const isDashboard = pathname === '/company/dashboard' || pathname === '/company/dashboard/';
+    const isCustomLayout = isDashboard && company && ['Restaurant', 'Bakery', 'Logistics'].includes(company.type);
+
+    if (isCustomLayout) {
+        return (
+            <div style={{ background: '#F8FAFC', minHeight: '100vh' }}>
+                <AutoBackup />
+                <KeyboardShortcuts />
+                <ConfirmDialog />
+                <SubscriptionGuard>
+                    {children}
+                </SubscriptionGuard>
+            </div>
+        );
+    }
+
     return (
         <div className={`app-shell${sidebarCollapsed ? ' sidebar-is-collapsed' : ''}`}>
+            <AutoBackup />
             <KeyboardShortcuts />
             <Tutorial />
             <ConfirmDialog />

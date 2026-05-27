@@ -12,8 +12,8 @@ export default function TrialGuard({ children }: { children: React.ReactNode }) 
 
     useEffect(() => {
         if (isAuthenticated && user) {
-            // Bypass for admin
-            if (user.role === 'admin') {
+            // Bypass for admin and role logins
+            if (user.role === 'admin' || user.role === 'staff' || user.role === 'manager') {
                 setIsExpired(false);
                 return;
             }

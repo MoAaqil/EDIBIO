@@ -42,15 +42,36 @@ export interface Company {
     templateTheme?: string; // Standard / Manual Invoice theme
     quickBillingTheme?: string; // Theme for Quick Billing
     posTheme?: string; // Theme for POS Billing
+    templatePageSize?: string; // Page size
     templateColumns?: { sn: boolean; hsn: boolean; rate: boolean; discount: boolean; tax: boolean };
+    quickBillingColumns?: { barcode: boolean; hsn: boolean; mfgDate: boolean; mrp: boolean; size: boolean; discount: boolean; tax: boolean };
     customLabels?: { invoiceTitle: string; invoiceNo: string; date: string; dueDate: string; billedTo: string; paymentMethod: string; footerTerms: string; };
     invoicePassword?: string; // password to view hidden invoices
     whatsappEnabled?: boolean;  // WhatsApp invoice sending toggle
     autoBackupEnabled?: boolean; // auto-save local backup file
     bankDetails?: { bankName: string; accountName: string; accountNumber: string; ifsc: string; upiId: string; qrCodeUrl?: string };
-    team?: { id: string; contact: string; name: string; role: 'co_owner' | 'manager' | 'staff' | 'principal' | 'accountant' | 'teacher' | 'receptionist'; code?: string; password?: string; }[];
+    team?: { id: string; contact: string; name: string; role: 'co_owner' | 'manager' | 'staff' | 'principal' | 'accountant' | 'teacher' | 'receptionist' | 'chef_atelier' | 'server'; code?: string; password?: string; counter?: string; }[];
     licenseNo?: string;
     auditLogs?: AuditLog[]; // Enterprise Audit Trail
+    loyaltyPointsEnabled?: boolean;
+    loyaltyEarningRatio?: number;
+    loyaltyRedemptionValue?: number;
+    loyaltyMinRedeemPoints?: number;
+    offers?: OfferScheme[];
+    // Restaurant-specific sync fields
+    tableCarts?: Record<string, { cart: { item: Product; qty: number; sentQty?: number }[]; orderType: string; customerId?: string; notes?: string; status?: 'active' | 'completed' }>;
+    dirtyTables?: Record<string, boolean>;
+    tableConfig?: Record<string, number>;
+    customAreas?: string[];
+    kitchenOrders?: { id: string; tableNum: string; area: string; items: { name: string; qty: number; notes?: string }[]; status: 'new' | 'preparing' | 'ready'; orderedAt: string; servedBy?: string }[];
+    deals?: { id: string; name: string; description: string; items: { name: string; qty: number; price: number }[]; dealPrice: number; emoji: string; type: 'combo' | 'offer' | 'special'; validFor: 'All' | 'Breakfast' | 'Lunch' | 'Dinner' }[];
+    deliveryIntegrations?: { platform: string; apiKey: string; restaurantId: string; enabled: boolean; color: string; icon: string }[];
+    recentZReports?: any[];
+    appOrders?: any[];
+    bulkOrders?: any[];
+    registerOpen?: boolean;
+    openingFloat?: number;
+    openingTime?: string;
     createdAt: string;
 }
 
@@ -107,6 +128,44 @@ export interface Party {
     creditDays?: number;
     assignedProductIds?: string[]; // IDs of products this supplier provides
     paymentHistory?: BalancePayment[]; // repayment ledger
+    loyaltyPoints?: number;
+    loyaltyAdjustments?: LoyaltyAdjustment[];
+}
+
+export interface LoyaltyAdjustment {
+    id: string;
+    date: string;          // YYYY-MM-DD
+    time?: string;         // HH:MM
+    points: number;        // positive = add, negative = deduct
+    reason: string;
+}
+
+
+// ── Stock Movement Log ───────────────────────────────────────────────────────
+export interface StockLog {
+    id: string;
+    date: string;          // YYYY-MM-DD
+    time?: string;         // HH:MM
+    type: 'in' | 'out' | 'adjust' | 'opening';
+    qty: number;
+    reason: string;        // e.g. 'Sale Invoice', 'Purchase', 'Manual Adjust'
+    invoiceId?: string;
+    invoiceNumber?: string;
+    partyName?: string;
+    balanceAfter: number;  // stock qty after this movement
+}
+
+// ── Batch / Expiry Tracking ───────────────────────────────────────────────────
+export interface Batch {
+    id: string;
+    batchNo: string;
+    mfgDate?: string;      // YYYY-MM-DD
+    expiryDate?: string;   // YYYY-MM-DD
+    qty: number;
+    purchasePrice: number;
+    supplierId?: string;
+    supplierName?: string;
+    addedAt: string;       // ISO timestamp
 }
 
 // ── Product / Item ────────────────────────────────────────────────────────────
@@ -134,6 +193,9 @@ export interface Product {
     taxIncluded: boolean;     // is GST included in selling price?
     description?: string;
     isBulkImported?: boolean; // flag for tracking bulk uploads
+    stockLogs?: StockLog[];   // movement history
+    batches?: Batch[];        // batch/expiry tracking
+    expiryDate?: string;      // YYYY-MM-DD (Product Expiry Date)
 }
 
 // ── Digital Agency CRM & Projects ───────────────────────────────────────────────
@@ -258,6 +320,8 @@ export interface Invoice {
     balanceDue: number;
     payments: PaymentEntry[];
     paymentMethod: PaymentMethod;
+    splitPayments?: { method: PaymentMethod; amount: number; label?: string }[]; // e.g. [{method:'cash',amount:200},{method:'upi',amount:300}]
+
     // Flags
     isGstBill: boolean;       // has GST? if false, hidden from normal view
     isHidden: boolean;        // requires password
@@ -269,6 +333,9 @@ export interface Invoice {
     signature?: string;
     templateId?: string;
     godownId?: string;
+    pointsEarned?: number;
+    pointsRedeemed?: number;
+    pointsValueRedeemed?: number;
     createdAt: string;
     updatedAt: string;
 }
@@ -334,5 +401,50 @@ export interface HsnCode {
     description: string;
     gstRate: GstRate;
     source: 'api' | 'manual' | 'cache';
+}
+
+// ── Purchase Order ────────────────────────────────────────────────────────────
+export interface PurchaseOrderItem {
+    productId?: string;
+    name: string;
+    qty: number;
+    unit: string;
+    rate: number;
+    amount: number;
+    hsnCode?: string;
+}
+
+export type POStatus = 'draft' | 'sent' | 'received' | 'cancelled';
+
+export interface PurchaseOrder {
+    id: string;
+    companyId: string;
+    poNumber: string;
+    supplierId?: string;
+    supplierName: string;
+    supplierPhone?: string;
+    items: PurchaseOrderItem[];
+    status: POStatus;
+    date: string;          // YYYY-MM-DD
+    expectedDate?: string; // expected delivery date
+    notes?: string;
+    grandTotal: number;
+    convertedInvoiceId?: string; // set when PO is converted to purchase invoice
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface OfferScheme {
+    id: string;
+    type: 'bogo' | 'discount' | 'combo';
+    name: string;
+    buyProductId?: string;
+    buyQty?: number;
+    getProductId?: string;
+    getQty?: number;
+    discountPercent?: number; // e.g., 50 for 50% off
+    comboProductIds?: string[];
+    comboPrice?: number;
+    isActive: boolean;
 }
 

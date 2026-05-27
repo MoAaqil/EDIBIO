@@ -103,7 +103,7 @@ function InvoiceDetailInner() {
                 el.setAttribute('style', replaced);
             });
 
-            const opt = {
+            const opt: any = {
                 margin: 0,
                 filename: `${inv.invoiceNumber || 'Invoice'}.pdf`,
                 image: { type: 'jpeg', quality: 0.98 },
@@ -200,7 +200,7 @@ function InvoiceDetailInner() {
                 const vhEls = element.querySelectorAll('[style*="min-height"],[style*="minHeight"]');
                 const saved: {el:Element;s:string|null}[] = [];
                 vhEls.forEach(el => { saved.push({el,s:el.getAttribute('style')}); el.setAttribute('style',(el.getAttribute('style')||'').replace(/min-height\s*:\s*[^;]+/gi,'min-height:auto')); });
-                const opt = { margin:0, filename:`${inv.invoiceNumber||'Invoice'}.pdf`, image:{type:'jpeg',quality:0.98}, html2canvas:{scale:2,useCORS:true,logging:false,scrollX:0,scrollY:0}, jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}, pagebreak:{mode:['avoid-all','css','legacy']} };
+                const opt: any = { margin:0, filename:`${inv.invoiceNumber||'Invoice'}.pdf`, image:{type:'jpeg',quality:0.98}, html2canvas:{scale:2,useCORS:true,logging:false,scrollX:0,scrollY:0}, jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}, pagebreak:{mode:['avoid-all','css','legacy']} };
                 const pdfBlob = await html2pdf().set(opt).from(element).output('blob');
                 element.setAttribute('style', originalStyle);
                 saved.forEach(({el,s}) => s!==null ? el.setAttribute('style',s) : el.removeAttribute('style'));
@@ -233,7 +233,7 @@ function InvoiceDetailInner() {
             const vhEls = element.querySelectorAll('[style*="min-height"],[style*="minHeight"]');
             const saved: {el:Element;s:string|null}[] = [];
             vhEls.forEach(el => { saved.push({el,s:el.getAttribute('style')}); el.setAttribute('style',(el.getAttribute('style')||'').replace(/min-height\s*:\s*[^;]+/gi,'min-height:auto')); });
-            const opt = { margin:0, filename:`${inv.invoiceNumber||'Invoice'}.pdf`, image:{type:'jpeg',quality:0.98}, html2canvas:{scale:2,useCORS:true,logging:false,scrollX:0,scrollY:0}, jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}, pagebreak:{mode:['avoid-all','css','legacy']} };
+            const opt: any = { margin:0, filename:`${inv.invoiceNumber||'Invoice'}.pdf`, image:{type:'jpeg',quality:0.98}, html2canvas:{scale:2,useCORS:true,logging:false,scrollX:0,scrollY:0}, jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}, pagebreak:{mode:['avoid-all','css','legacy']} };
             await html2pdf().set(opt).from(element).save();
             element.setAttribute('style', originalStyle);
             saved.forEach(({el,s}) => s!==null ? el.setAttribute('style',s) : el.removeAttribute('style'));

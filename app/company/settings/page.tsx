@@ -1,17 +1,22 @@
 'use client';
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { useStore, useActiveCompany } from '@/lib/store';
+import { useStore, useActiveCompany, useCompanyData } from '@/lib/store';
 import type { InvoiceTemplate, PaperSize } from '@/lib/types';
 import { amountInWords } from '@/lib/utils';
 import {
     Store, FileText, Printer, Shield, Bell, ChevronRight, Share2,
     Check, Plus, Edit2, Trash2, Eye, X, Palette, Warehouse, Settings, Users, Landmark,
-    MessageSquare, Database, Download, Upload, RefreshCw, Cloud, CheckCircle, Smartphone, ShieldCheck
+    MessageSquare, Database, Download, Upload, RefreshCw, Cloud, CheckCircle, Smartphone, ShieldCheck, HardDrive, Gift
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { confirm } from '@/components/ConfirmDialog';
 import { canAccess } from '@/components/FeatureGate';
+import {
+    getAutoBackupMeta, restoreFromAutoBackup,
+    BACKUP_INTERVAL_OPTIONS, getBackupIntervalMs, setBackupIntervalMs
+} from '@/components/AutoBackup';
+
 
 function ColorPicker({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
     return (
@@ -23,6 +28,140 @@ function ColorPicker({ label, value, onChange }: { label: string; value: string;
                 <input type="text" value={value} onChange={e => onChange(e.target.value)}
                     style={{ flex: 1, padding: '7px 10px', border: '1.5px solid #E1E4E8', borderRadius: 8, fontSize: 12, fontFamily: 'monospace', outline: 'none' }} />
             </div>
+        </div>
+    );
+}
+
+function AutoBackupStatusCard() {
+    const meta = getAutoBackupMeta();
+    const [restoring, setRestoring] = useState(false);
+    const [intervalMs, setIntervalMsState] = useState<number>(() => getBackupIntervalMs());
+
+    const handleIntervalChange = (ms: number) => {
+        setIntervalMsState(ms);
+        setBackupIntervalMs(ms);
+        // Broadcast to other tabs so AutoBackup picks it up
+        window.dispatchEvent(new StorageEvent('storage', { key: 'edibio_backup_interval', newValue: String(ms) }));
+        toast.success('Backup interval updated!');
+    };
+
+    const handleRestore = async () => {
+        const yes = await confirm({ message: 'Restore all data from your last auto-backup? This will overwrite your current data.', danger: true });
+        if (!yes) return;
+        setRestoring(true);
+        const ok = restoreFromAutoBackup();
+        setRestoring(false);
+        if (ok) {
+            toast.success('✅ Data restored from auto-backup!');
+        } else {
+            toast.error('No auto-backup found.');
+        }
+    };
+
+    return (
+        <div className="card" style={{ padding: '24px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 16 }}>
+                <div style={{ width: 44, height: 44, borderRadius: 12, background: '#FEF3C7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <HardDrive size={20} color="#D97706" />
+                </div>
+                <div>
+                    <h3 style={{ fontWeight: 800, fontSize: 16, color: '#1A1A2E', margin: 0 }}>Auto-Backup (Local)</h3>
+                    <p style={{ fontSize: 12, color: '#718096', marginTop: 2 }}>Saved automatically to your browser storage.</p>
+                </div>
+            </div>
+
+            {/* Interval selector */}
+            <div style={{ marginBottom: 16 }}>
+                <p style={{ fontSize: 11, fontWeight: 800, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Backup Frequency</p>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {BACKUP_INTERVAL_OPTIONS.map(opt => (
+                        <button
+                            key={opt.value}
+                            onClick={() => handleIntervalChange(opt.value)}
+                            style={{
+                                padding: '7px 16px', borderRadius: 8, border: '2px solid',
+                                borderColor: intervalMs === opt.value ? '#D97706' : '#E2E8F0',
+                                background: intervalMs === opt.value ? '#FFFBEB' : 'white',
+                                color: intervalMs === opt.value ? '#92400E' : '#64748B',
+                                fontWeight: 800, fontSize: 12, cursor: 'pointer', transition: 'all 0.15s',
+                            }}
+                        >
+                            {opt.label}
+                        </button>
+                    ))}
+                </div>
+            </div>
+
+            {meta ? (
+                <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 12, padding: '14px 16px', marginBottom: 16 }}>
+                    <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+                        <div><p style={{ fontSize: 10, fontWeight: 800, color: '#92400E', textTransform: 'uppercase' }}>Last Saved</p><p style={{ fontSize: 13, fontWeight: 700, color: '#1A1A2E', marginTop: 2 }}>{new Date(meta.savedAt).toLocaleString()}</p></div>
+                        <div><p style={{ fontSize: 10, fontWeight: 800, color: '#92400E', textTransform: 'uppercase' }}>Bills</p><p style={{ fontSize: 13, fontWeight: 700, color: '#1A1A2E', marginTop: 2 }}>{meta.invoiceCount}</p></div>
+                        <div><p style={{ fontSize: 10, fontWeight: 800, color: '#92400E', textTransform: 'uppercase' }}>Parties</p><p style={{ fontSize: 13, fontWeight: 700, color: '#1A1A2E', marginTop: 2 }}>{meta.partyCount}</p></div>
+                        <div><p style={{ fontSize: 10, fontWeight: 800, color: '#92400E', textTransform: 'uppercase' }}>Products</p><p style={{ fontSize: 13, fontWeight: 700, color: '#1A1A2E', marginTop: 2 }}>{meta.productCount}</p></div>
+                    </div>
+                </div>
+            ) : (
+                <div style={{ background: '#F1F5F9', borderRadius: 10, padding: '12px 14px', marginBottom: 16, fontSize: 13, color: '#64748B' }}>
+                    No auto-backup saved yet. It will save automatically once you have data.
+                </div>
+            )}
+            <button onClick={handleRestore} disabled={restoring || !meta} className="btn btn-outline" style={{ gap: 8 }}>
+                <HardDrive size={15} /> {restoring ? 'Restoring…' : 'Restore from Auto-Backup'}
+            </button>
+        </div>
+    );
+}
+
+function RestaurantChargesPanel({ company, updateCompany, companyId }: { company: any; updateCompany: any; companyId: string }) {
+    const [deliveryCharge, setDeliveryCharge] = useState<string>(String(company?.restaurantSettings?.deliveryCharge ?? '0'));
+    const [takeawayCharge, setTakeawayCharge] = useState<string>(String(company?.restaurantSettings?.takeawayCharge ?? '0'));
+    const [tableCount, setTableCount] = useState<string>(String(company?.restaurantSettings?.tableCount ?? '12'));
+
+    const saveCharges = () => {
+        updateCompany(companyId, {
+            restaurantSettings: {
+                ...(company?.restaurantSettings || {}),
+                deliveryCharge: parseFloat(deliveryCharge) || 0,
+                takeawayCharge: parseFloat(takeawayCharge) || 0,
+                tableCount: parseInt(tableCount) || 12,
+            }
+        });
+        // Also save to localStorage for POS page
+        if (typeof window !== 'undefined') {
+            localStorage.setItem('restaurant_settings', JSON.stringify({
+                deliveryCharge: parseFloat(deliveryCharge) || 0,
+                takeawayCharge: parseFloat(takeawayCharge) || 0,
+                tableCount: parseInt(tableCount) || 12,
+            }));
+        }
+        import('react-hot-toast').then(m => m.default.success('Restaurant charges saved!'));
+    };
+
+    return (
+        <div style={{ background: '#EFF6FF', border: '1.5px solid #BFDBFE', borderRadius: 14, padding: '18px 20px', marginBottom: 24 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+                <span style={{ fontSize: 22 }}>🍽️</span>
+                <div>
+                    <h3 style={{ fontWeight: 800, fontSize: 14, color: '#1E40AF', margin: 0 }}>Restaurant Settings</h3>
+                    <p style={{ fontSize: 11, color: '#3B82F6', margin: 0 }}>Configure charges and table layout for your restaurant</p>
+                </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+                <div>
+                    <label style={{ fontSize: 11, fontWeight: 700, color: '#1E40AF', display: 'block', marginBottom: 5, textTransform: 'uppercase' }}>Delivery Charge (₹)</label>
+                    <input type="number" className="e-input" value={deliveryCharge} onChange={e => setDeliveryCharge(e.target.value)} placeholder="0" min="0" />
+                </div>
+                <div>
+                    <label style={{ fontSize: 11, fontWeight: 700, color: '#1E40AF', display: 'block', marginBottom: 5, textTransform: 'uppercase' }}>Takeaway Charge (₹)</label>
+                    <input type="number" className="e-input" value={takeawayCharge} onChange={e => setTakeawayCharge(e.target.value)} placeholder="0" min="0" />
+                </div>
+                <div>
+                    <label style={{ fontSize: 11, fontWeight: 700, color: '#1E40AF', display: 'block', marginBottom: 5, textTransform: 'uppercase' }}>Number of Tables</label>
+                    <input type="number" className="e-input" value={tableCount} onChange={e => setTableCount(e.target.value)} placeholder="12" min="1" max="50" />
+                </div>
+            </div>
+            <button onClick={saveCharges} className="btn btn-blue" style={{ marginTop: 14 }}>Save Restaurant Settings</button>
         </div>
     );
 }
@@ -163,7 +302,27 @@ export default function SettingsPage() {
     const company = useActiveCompany();
     const { templates, updateTemplate, addTemplate, deleteTemplate, updateCompany, addGodown, removeGodown, deleteCompany, exportBackup, importBackup, aiApiKey, setAiApiKey, user, updateUser } = useStore();
 
-    const [tab, setTab] = useState<'business' | 'templates' | 'godowns' | 'banking' | 'team' | 'security' | 'communication' | 'data'>('business');
+    const invoices = useCompanyData('invoices') as any[] || [];
+    const [newTeamCounter, setNewTeamCounter] = useState('');
+
+    const counterSales = useMemo(() => {
+        const counts: Record<string, { count: number; total: number }> = {
+            'Counter 1': { count: 0, total: 0 },
+            'Counter 2': { count: 0, total: 0 },
+            'Counter 3': { count: 0, total: 0 },
+            'Counter 4': { count: 0, total: 0 },
+        };
+        invoices.forEach(inv => {
+            const c = inv.counter || 'Counter 1';
+            if (counts[c] && inv.invoiceType === 'sale') {
+                counts[c].count += 1;
+                counts[c].total += inv.grandTotal || 0;
+            }
+        });
+        return counts;
+    }, [invoices]);
+
+    const [tab, setTab] = useState<'business' | 'templates' | 'godowns' | 'banking' | 'team' | 'security' | 'communication' | 'data' | 'loyalty'>('business');
     const importFileRef = useRef<HTMLInputElement>(null);
     const [selectedTemplate, setSelectedTemplate] = useState<InvoiceTemplate | undefined>(templates[0]);
     const [editingTemplate, setEditingTemplate] = useState(false);
@@ -225,6 +384,31 @@ export default function SettingsPage() {
     const ubiz = (k: string, v: string) => setBiz(f => ({ ...f, [k]: v }));
     const saveBiz = () => { updateCompany(companyId!, biz); toast.success('Business profile updated!'); };
 
+    // Loyalty Program States
+    const [loyaltyEnabled, setLoyaltyEnabled] = useState(false);
+    const [earnRatio, setEarnRatio] = useState('100');
+    const [redeemValue, setRedeemValue] = useState('1');
+    const [minRedeem, setMinRedeem] = useState('10');
+
+    useEffect(() => {
+        if (company) {
+            setLoyaltyEnabled(company.loyaltyPointsEnabled ?? false);
+            setEarnRatio(company.loyaltyEarningRatio?.toString() ?? '100');
+            setRedeemValue(company.loyaltyRedemptionValue?.toString() ?? '1');
+            setMinRedeem(company.loyaltyMinRedeemPoints?.toString() ?? '10');
+        }
+    }, [company]);
+
+    const saveLoyalty = () => {
+        updateCompany(companyId!, {
+            loyaltyPointsEnabled: loyaltyEnabled,
+            loyaltyEarningRatio: parseFloat(earnRatio) || 100,
+            loyaltyRedemptionValue: parseFloat(redeemValue) || 1,
+            loyaltyMinRedeemPoints: parseFloat(minRedeem) || 10,
+        });
+        toast.success('Loyalty settings saved!');
+    };
+
     // Template editor
     const [tmpl, setTmpl] = useState<InvoiceTemplate | undefined>(selectedTemplate);
     const ut = (k: string, v: any) => setTmpl(f => f ? { ...f, [k]: v } : f);
@@ -263,6 +447,7 @@ export default function SettingsPage() {
         { id: 'templates', label: 'Invoice Templates', icon: FileText },
         { id: 'godowns', label: 'Godowns', icon: Warehouse },
         { id: 'banking', label: 'Bank & UPI', icon: Landmark },
+        { id: 'loyalty', label: 'Loyalty Program', icon: Gift },
         { id: 'communication', label: 'Communication', icon: MessageSquare },
         { id: 'data', label: 'Data & Backup', icon: Database },
         { id: 'team', label: 'Team & Roles', icon: Users },
@@ -649,6 +834,22 @@ export default function SettingsPage() {
                                 <div style={{ gridColumn: '1/-1', borderTop: '1px solid #F1F3F5', marginTop: 10, paddingTop: 16 }}>
                                     <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', display: 'block', marginBottom: 5 }}>UPI ID</label>
                                     <input className="e-input" placeholder="e.g. pay.name@bank" value={bank.upiId} onChange={e => uBank('upiId', e.target.value)} />
+                                    {bank.upiId && (
+                                        <div style={{ marginTop: 14, display: 'flex', alignItems: 'flex-start', gap: 16, padding: '16px', background: '#E6F4EA', borderRadius: 12, border: '1px solid #B7DFC4' }}>
+                                            <div style={{ background: 'white', padding: 10, borderRadius: 10, border: '1px solid #E2E8F0', flexShrink: 0 }}>
+                                                <img
+                                                    src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(`upi://pay?pa=${bank.upiId}&pn=${encodeURIComponent(company?.name || 'Shop')}&cu=INR`)}`}
+                                                    alt="UPI QR Code Preview"
+                                                    style={{ width: 80, height: 80, display: 'block' }}
+                                                />
+                                            </div>
+                                            <div>
+                                                <p style={{ fontWeight: 800, fontSize: 13, color: '#137333', margin: '0 0 4px' }}>✅ UPI QR will appear on invoices</p>
+                                                <p style={{ fontSize: 12, color: '#4A5568', margin: '0 0 4px' }}>UPI ID: <strong>{bank.upiId}</strong></p>
+                                                <p style={{ fontSize: 11, color: '#718096', margin: 0 }}>Customers can scan this QR to pay directly. This QR appears at the bottom of every invoice when UPI ID is set.</p>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                             <div style={{ marginTop: 24 }}>
@@ -667,6 +868,27 @@ export default function SettingsPage() {
                                 </div>
                             </div>
 
+                            {/* Role Descriptions */}
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 10, marginBottom: 20 }}>
+                                {[
+                                    { role: 'co_owner', label: 'Co-Owner', color: '#4285F4', bg: '#E8F0FE', icon: '👑', desc: 'Full access except expenses and account deletion. Can view all data, create invoices, manage products.' },
+                                    { role: 'manager', label: 'Manager', color: '#34A853', bg: '#E6F4EA', icon: '🏢', desc: 'Can manage billing, inventory, parties. No access to settings, cash register, or godowns.' },
+                                    { role: 'staff', label: 'Staff / Biller', color: '#FBBC04', bg: '#FEF7E0', icon: '🧾', desc: 'Only billing and POS access. Can create invoices and process payments. Perfect for cashier counter.' },
+                                    ...(company?.type === 'Restaurant' || company?.type === 'Bakery' ? [
+                                        { role: 'chef_atelier', label: 'Chef / Atelier', color: '#EA4335', bg: '#FCE8E6', icon: '👨‍🍳', desc: 'Kitchen display ONLY. Can view new orders, mark items as cooking or ready to serve. Cannot access billing or settings.' },
+                                        { role: 'server', label: 'Waiter / Server', color: '#9333EA', bg: '#F3E8FF', icon: '🍽️', desc: 'Can take table orders and send to kitchen. Cannot convert orders to bills — only the Biller/Staff can finalize and print receipts.' },
+                                    ] : []),
+                                ].map(({ role, label, color, bg, icon, desc }) => (
+                                    <div key={role} style={{ padding: '14px 16px', background: bg, borderRadius: 12, border: `1.5px solid ${color}25` }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                                            <span style={{ fontSize: 20 }}>{icon}</span>
+                                            <span style={{ fontWeight: 800, fontSize: 13, color }}>{label}</span>
+                                        </div>
+                                        <p style={{ fontSize: 11, color: '#4A5568', lineHeight: 1.5, margin: 0 }}>{desc}</p>
+                                    </div>
+                                ))}
+                            </div>
+
                             <div style={{ background: '#F8F9FA', padding: 16, borderRadius: 12, marginBottom: 24, border: '1px solid #E2E8F0' }}>
                                 <h3 style={{ fontSize: 13, fontWeight: 800, marginBottom: 12 }}>Add New Member (Roles Login)</h3>
                                 <p style={{ fontSize: 12, color: '#718096', marginBottom: 12 }}>Company License No: <span style={{ fontWeight: 800, color: '#1A1A2E' }}>{company?.licenseNo || 'Not generated'}</span></p>
@@ -677,6 +899,19 @@ export default function SettingsPage() {
                                         <option value="co_owner">Co-Owner (All except expenses)</option>
                                         <option value="manager">Manager (No settings/cash/godown)</option>
                                         <option value="staff">Staff / Biller (Only Billing/POS)</option>
+                                        {(company?.type === 'Restaurant' || company?.type === 'Bakery') && (
+                                            <>
+                                                <option value="chef_atelier">Chef Atelier (Kitchen Display Only)</option>
+                                                <option value="server">Server / Waiter (Table Orders Only)</option>
+                                            </>
+                                        )}
+                                    </select>
+                                    <select className="e-select" value={newTeamCounter} onChange={e => setNewTeamCounter(e.target.value)} style={{ flex: 1, minWidth: 120 }}>
+                                        <option value="">No Counter</option>
+                                        <option value="Counter 1">Counter 1</option>
+                                        <option value="Counter 2">Counter 2</option>
+                                        <option value="Counter 3">Counter 3</option>
+                                        <option value="Counter 4">Counter 4</option>
                                     </select>
                                     <button onClick={() => {
                                         if (!newTeamPassword || !newTeamName) return;
@@ -684,13 +919,18 @@ export default function SettingsPage() {
                                         const randomNum = Math.floor(Math.random() * 999);
                                         const generatedUsername = `${cleanShopName}${randomNum}@edibio.${newTeamRole}`;
 
-                                        const t = [...(company?.team || []), { id: Math.random().toString(), name: newTeamName, contact: generatedUsername, password: newTeamPassword, role: newTeamRole as any }];
+                                        const t = [...(company?.team || []), { id: Math.random().toString(), name: newTeamName, contact: generatedUsername, password: newTeamPassword, role: newTeamRole as any, counter: newTeamCounter || undefined }];
                                         updateCompany(companyId!, { team: t });
                                         toast.success(`User created!\n${generatedUsername}`);
-                                        setNewTeamName(''); setNewTeamPassword('');
+                                        setNewTeamName(''); setNewTeamPassword(''); setNewTeamCounter('');
                                     }} className="btn btn-blue" style={{ flexShrink: 0 }}>Create User</button>
                                 </div>
                             </div>
+
+                            {/* Restaurant Charges (only for Restaurant/Bakery) */}
+                            {(company?.type === 'Restaurant' || company?.type === 'Bakery') && (
+                                <RestaurantChargesPanel company={company} updateCompany={updateCompany} companyId={companyId!} />
+                            )}
 
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                                 {/* Owners row */}
@@ -711,7 +951,28 @@ export default function SettingsPage() {
                                             <p style={{ fontWeight: 700, fontSize: 14, color: '#1A1A2E' }}>{t.name}</p>
                                             <p style={{ fontSize: 12, color: '#718096' }}>{t.contact}</p>
                                         </div>
-                                        <span className="badge badge-blue" style={{ fontSize: 10, textTransform: 'uppercase' }}>{t.role.replace('_', ' ')}</span>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                            <select 
+                                                value={(t as any).counter || ''} 
+                                                onChange={e => {
+                                                    const val = e.target.value;
+                                                    const updatedTeam = company.team!.map(member => 
+                                                        member.id === t.id ? { ...member, counter: val || undefined } : member
+                                                    );
+                                                    updateCompany(companyId!, { team: updatedTeam });
+                                                    toast.success(`Counter assigned for ${t.name}`);
+                                                }}
+                                                className="e-select" 
+                                                style={{ width: 'auto', padding: '4px 8px', fontSize: 11, background: '#F8F9FA', borderRadius: 6, cursor: 'pointer' }}
+                                            >
+                                                <option value="">No Counter</option>
+                                                <option value="Counter 1">Counter 1</option>
+                                                <option value="Counter 2">Counter 2</option>
+                                                <option value="Counter 3">Counter 3</option>
+                                                <option value="Counter 4">Counter 4</option>
+                                            </select>
+                                            <span className="badge badge-blue" style={{ fontSize: 10, textTransform: 'uppercase' }}>{t.role.replace('_', ' ')}</span>
+                                        </div>
                                         <button onClick={() => {
                                             confirm({ message: `Remove ${t.name} from your team?`, danger: true })
                                                 .then(yes => { if (yes) updateCompany(companyId!, { team: company.team!.filter(x => x.id !== t.id) }); });
@@ -721,6 +982,23 @@ export default function SettingsPage() {
                                         </button>
                                     </div>
                                 ))}
+                            </div>
+
+                            {/* Counter Sales Summary */}
+                            <div style={{ marginTop: 32, borderTop: '1px solid #E2E8F0', paddingTop: 24 }}>
+                                <h3 style={{ fontSize: 15, fontWeight: 900, color: '#1A202C', marginBottom: 16 }}>Counter Sales Performance</h3>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
+                                    {['Counter 1', 'Counter 2', 'Counter 3', 'Counter 4'].map(cName => {
+                                        const stats = counterSales[cName] || { count: 0, total: 0 };
+                                        return (
+                                            <div key={cName} style={{ padding: 16, background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 12 }}>
+                                                <p style={{ fontSize: 11, fontWeight: 800, color: '#718096', textTransform: 'uppercase', marginBottom: 8, letterSpacing: '0.05em' }}>{cName}</p>
+                                                <p style={{ fontSize: 18, fontWeight: 900, color: '#1A202C', margin: 0 }}>₹{stats.total.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+                                                <p style={{ fontSize: 11, color: '#A0AEC0', marginTop: 4, margin: 0 }}>{stats.count} bills generated</p>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
                             </div>
                         </div>
                     )}
@@ -858,6 +1136,10 @@ export default function SettingsPage() {
                                 </button>
                             </div>
 
+                            {/* Auto-Backup Status */}
+                            <AutoBackupStatusCard />
+
+
                             {/* PWA / Mobile */}
                             <div className="card" style={{ padding: '24px' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 16 }}>
@@ -965,6 +1247,104 @@ export default function SettingsPage() {
                                         <button onClick={() => { setDeleteStep(0); setDeleteInput(''); }} className="btn btn-ghost" style={{ marginTop: 10, fontSize: 12 }}>Cancel</button>
                                     </div>
                                 )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ── Loyalty Program ── */}
+                    {tab === 'loyalty' && (
+                        <div className="card" style={{ padding: '24px' }}>
+                            <h2 style={{ fontWeight: 900, fontSize: 18, color: '#1A1A2E', marginBottom: 20 }}>Customer Loyalty Program</h2>
+                            <p style={{ fontSize: 13, color: '#718096', marginBottom: 20 }}>Configure how customer value points are earned and redeemed in your shop.</p>
+                            
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', background: '#F0FDF4', borderRadius: 14, border: '1.5px solid #BBF7D0', marginBottom: 24 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                                    <div style={{ width: 44, height: 44, borderRadius: 12, background: '#10B98115', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                        <Gift size={22} color="#10B981" />
+                                    </div>
+                                    <div>
+                                        <p style={{ fontWeight: 800, fontSize: 15, color: '#1A1A2E' }}>Enable Loyalty Points</p>
+                                        <p style={{ fontSize: 12, color: '#718096', marginTop: 2 }}>Allow customers to accumulate value points on their purchases and redeem them for discounts.</p>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => setLoyaltyEnabled(!loyaltyEnabled)}
+                                    style={{
+                                        width: 52, height: 28, borderRadius: 99, border: 'none', cursor: 'pointer',
+                                        background: loyaltyEnabled ? '#10B981' : '#E2E8F0',
+                                        transition: 'background 0.2s', position: 'relative', flexShrink: 0
+                                    }}
+                                >
+                                    <div style={{
+                                        position: 'absolute', top: 3, left: loyaltyEnabled ? 26 : 3,
+                                        width: 22, height: 22, borderRadius: '50%', background: 'white',
+                                        boxShadow: '0 1px 4px rgba(0,0,0,0.2)', transition: 'left 0.2s'
+                                    }} />
+                                </button>
+                            </div>
+
+                            {loyaltyEnabled && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                                        <div>
+                                            <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', display: 'block', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Earning Ratio (₹ per Point)</label>
+                                            <p style={{ fontSize: 11, color: '#718096', marginBottom: 8 }}>Amount spent to earn 1 loyalty point.</p>
+                                            <div style={{ position: 'relative' }}>
+                                                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 13, fontWeight: 700, color: '#4A5568' }}>₹</span>
+                                                <input
+                                                    type="number"
+                                                    className="e-input"
+                                                    style={{ paddingLeft: 28 }}
+                                                    value={earnRatio}
+                                                    onChange={e => setEarnRatio(e.target.value)}
+                                                    placeholder="100"
+                                                />
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', display: 'block', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Redemption Value (₹ per Point)</label>
+                                            <p style={{ fontSize: 11, color: '#718096', marginBottom: 8 }}>Discount value of 1 loyalty point in rupees.</p>
+                                            <div style={{ position: 'relative' }}>
+                                                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 13, fontWeight: 700, color: '#4A5568' }}>₹</span>
+                                                <input
+                                                    type="number"
+                                                    step="0.01"
+                                                    className="e-input"
+                                                    style={{ paddingLeft: 28 }}
+                                                    value={redeemValue}
+                                                    onChange={e => setRedeemValue(e.target.value)}
+                                                    placeholder="1"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', display: 'block', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Minimum Points to Redeem</label>
+                                        <p style={{ fontSize: 11, color: '#718096', marginBottom: 8 }}>Minimum points threshold required before points can be redeemed.</p>
+                                        <input
+                                            type="number"
+                                            className="e-input"
+                                            value={minRedeem}
+                                            onChange={e => setMinRedeem(e.target.value)}
+                                            placeholder="10"
+                                        />
+                                    </div>
+                                    
+                                    <div style={{ background: '#F8FAFC', border: '1px dashed #E2E8F0', borderRadius: 12, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                        <span style={{ fontSize: 11, fontWeight: 800, color: '#475569', textTransform: 'uppercase' }}>Rule Summary</span>
+                                        <p style={{ fontSize: 12, color: '#64748B', margin: 0 }}>
+                                            Customers will earn <strong>1 Point</strong> for every <strong>₹{parseFloat(earnRatio) || 100}</strong> spent.
+                                        </p>
+                                        <p style={{ fontSize: 12, color: '#64748B', margin: 0 }}>
+                                            Each point can be redeemed for <strong>₹{parseFloat(redeemValue) || 1}</strong> discount when they have at least <strong>{parseFloat(minRedeem) || 10} Points</strong>.
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+
+                            <div style={{ marginTop: 24, borderTop: '1px solid #F1F3F5', paddingTop: 20 }}>
+                                <button onClick={saveLoyalty} className="btn btn-blue">Save Loyalty Settings</button>
                             </div>
                         </div>
                     )}

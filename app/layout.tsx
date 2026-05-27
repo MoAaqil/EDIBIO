@@ -3,6 +3,7 @@ import "./globals.css";
 import OfflineGuard from "@/components/OfflineGuard";
 import TrialGuard from "@/components/TrialGuard";
 import MongoSync from "@/components/MongoSync";
+import AutoBackup from "@/components/AutoBackup";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { Toaster } from "react-hot-toast";
@@ -76,6 +77,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <TrialGuard>
                 {children}
                 <MongoSync />
+                <AutoBackup />
                 <SystemNotifications />
                 <ConfirmDialog />
               </TrialGuard>

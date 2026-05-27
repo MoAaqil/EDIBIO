@@ -3,8 +3,10 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import type {
     EdibioUser, Company, Party, Product, Invoice, Expense,
-    InvoiceTemplate, HsnCode, Godown, AgencyClient, AgencyProject, AuditLog, BalancePayment
+    InvoiceTemplate, HsnCode, Godown, AgencyClient, AgencyProject, AuditLog, BalancePayment,
+    PurchaseOrder, StockLog, OfferScheme
 } from './types';
+
 import { get, set as idbSet, del } from 'idb-keyval';
 import toast from 'react-hot-toast';
 
@@ -198,6 +200,13 @@ interface EdibioState {
     updateProduct: (id: string, upd: Partial<Product>) => void;
     deleteProduct: (id: string) => void;
     adjustStock: (id: string, delta: number, godownId?: string) => void;
+    appendStockLog: (productId: string, log: Omit<StockLog, 'id'>) => void;
+
+    // Purchase Orders
+    purchaseOrders: PurchaseOrder[];
+    addPurchaseOrder: (po: Omit<PurchaseOrder, 'id' | 'createdAt' | 'updatedAt'>) => PurchaseOrder;
+    updatePurchaseOrder: (id: string, upd: Partial<PurchaseOrder>) => void;
+    deletePurchaseOrder: (id: string) => void;
 
     // Invoices
     invoices: Invoice[];
@@ -249,6 +258,11 @@ interface EdibioState {
 
     // Enterprise Audit
     addAuditLog: (log: Omit<AuditLog, 'id' | 'timestamp'>) => void;
+
+    // Offers & Schemes
+    addOfferScheme: (companyId: string, offer: Omit<OfferScheme, 'id'>) => void;
+    updateOfferScheme: (companyId: string, id: string, upd: Partial<OfferScheme>) => void;
+    deleteOfferScheme: (companyId: string, id: string) => void;
 }
 
 // ── getters convenience ───────────────────────────────────────────────────────
@@ -257,7 +271,7 @@ export const useActiveCompany = () => {
     return companies.find(c => c.id === activeCompanyId) ?? null;
 };
 export const useCompanyData = (
-    type: 'parties' | 'products' | 'invoices' | 'expenses' | 'agencyClients' | 'agencyProjects'
+    type: 'parties' | 'products' | 'invoices' | 'expenses' | 'agencyClients' | 'agencyProjects' | 'purchaseOrders'
 ) => {
     const { [type]: items, activeCompanyId } = useStore() as any;
     return useMemo(() => (items as any[] || []).filter((i: any) => i.companyId === activeCompanyId), [items, activeCompanyId]);
@@ -267,7 +281,9 @@ export const useUserCompanies = () => {
     const { companies, user } = useStore();
     return useMemo(() => companies.filter(c => {
         if (!c.userId) return true; // legacy or demo
-        if (c.userId === user?.uid && !user?.role) return true; // owner
+        
+        const isOwner = !user?.role || user?.role === 'owner' || user?.role === 'co_owner';
+        if (c.userId === user?.uid && isOwner) return true; // owner
 
         // Check team access
         if (c.team && user) {
@@ -479,8 +495,10 @@ export const useStore = create<EdibioState>()(
                 syncAfter(get);
                 return co;
             },
-            updateCompany: (id, upd) =>
-                set(s => ({ companies: s.companies.map(c => c.id === id ? { ...c, ...upd } : c), lastModified: Date.now() })),
+            updateCompany: (id, upd) => {
+                set(s => ({ companies: s.companies.map(c => c.id === id ? { ...c, ...upd } : c), lastModified: Date.now() }));
+                syncAfter(get);
+            },
             deleteCompany: (id) =>
                 set(s => ({
                     companies: s.companies.filter(c => c.id !== id),
@@ -501,6 +519,31 @@ export const useStore = create<EdibioState>()(
                 set(s => ({
                     companies: s.companies.map(c => c.id !== companyId ? c : {
                         ...c, godowns: c.godowns.filter(g => g.id !== godownId),
+                    }),
+                    lastModified: Date.now()
+                })),
+
+            addOfferScheme: (companyId, offer) =>
+                set(s => ({
+                    companies: s.companies.map(c => c.id !== companyId ? c : {
+                        ...c,
+                        offers: [...(c.offers || []), { ...offer, id: uid() }]
+                    }),
+                    lastModified: Date.now()
+                })),
+            updateOfferScheme: (companyId, id, upd) =>
+                set(s => ({
+                    companies: s.companies.map(c => c.id !== companyId ? c : {
+                        ...c,
+                        offers: (c.offers || []).map(o => o.id === id ? { ...o, ...upd } : o)
+                    }),
+                    lastModified: Date.now()
+                })),
+            deleteOfferScheme: (companyId, id) =>
+                set(s => ({
+                    companies: s.companies.map(c => c.id !== companyId ? c : {
+                        ...c,
+                        offers: (c.offers || []).filter(o => o.id !== id)
                     }),
                     lastModified: Date.now()
                 })),
@@ -576,13 +619,42 @@ export const useStore = create<EdibioState>()(
                 set(s => ({ products: s.products.map(p => p.id === id ? { ...p, ...upd } : p), lastModified: Date.now() })),
             deleteProduct: (id) =>
                 set(s => ({ products: s.products.filter(p => p.id !== id), lastModified: Date.now() })),
-            adjustStock: (id, delta) =>
+            appendStockLog: (productId, log) =>
                 set(s => ({
                     products: s.products.map(p =>
-                        p.id === id ? { ...p, stockQty: Math.max(0, p.stockQty + delta) } : p
+                        p.id === productId
+                            ? { ...p, stockLogs: [{ ...log, id: uid() }, ...(p.stockLogs || [])].slice(0, 500) }
+                            : p
                     ),
                     lastModified: Date.now()
                 })),
+
+            adjustStock: (id, delta) => {
+                const state = useStore.getState();
+                const product = state.products.find(p => p.id === id);
+                if (!product) return;
+                const newQty = Math.max(0, product.stockQty + delta);
+                const log: Omit<StockLog, 'id'> = {
+                    date: new Date().toISOString().slice(0, 10),
+                    time: new Date().toTimeString().slice(0, 5),
+                    type: delta > 0 ? 'in' : 'out',
+                    qty: Math.abs(delta),
+                    reason: 'Manual Adjust',
+                    balanceAfter: newQty,
+                };
+                set(s => ({
+                    products: s.products.map(p =>
+                        p.id === id
+                            ? {
+                                ...p,
+                                stockQty: newQty,
+                                stockLogs: [{ ...log, id: uid() }, ...(p.stockLogs || [])].slice(0, 500)
+                              }
+                            : p
+                    ),
+                    lastModified: Date.now()
+                }));
+            },
 
             assignProductsToParty: (partyId, productIds) =>
                 set(s => ({
@@ -614,6 +686,34 @@ export const useStore = create<EdibioState>()(
                     }
                 }
 
+                // Append StockLog for each line item
+                const STOCK_IN_TYPES = ['purchase', 'sale_return', 'credit_note'];
+                const STOCK_OUT_TYPES = ['sale', 'purchase_return', 'debit_note'];
+                const isStockIn = STOCK_IN_TYPES.includes(inv.invoiceType);
+                const isStockOut = STOCK_OUT_TYPES.includes(inv.invoiceType);
+                if (isStockIn || isStockOut) {
+                    const state = useStore.getState();
+                    inv.items.forEach(item => {
+                        if (!item.productId) return;
+                        const prod = state.products.find(p => p.id === item.productId);
+                        if (!prod) return;
+                        const delta = isStockIn ? item.qty : -item.qty;
+                        const balanceAfter = Math.max(0, prod.stockQty + delta);
+                        const log: Omit<StockLog, 'id'> = {
+                            date: inv.date,
+                            time: inv.time,
+                            type: isStockIn ? 'in' : 'out',
+                            qty: item.qty,
+                            reason: isStockIn ? `Purchase - ${inv.invoiceNumber}` : `Sale - ${inv.invoiceNumber}`,
+                            invoiceId: inv.id,
+                            invoiceNumber: inv.invoiceNumber,
+                            partyName: inv.partyName,
+                            balanceAfter,
+                        };
+                        get().appendStockLog(item.productId, log);
+                    });
+                }
+
                 // Update party balance based on invoice type
                 // Draft types (estimate, proforma, delivery_challan) do NOT affect balance
                 const DRAFT_TYPES = ['estimate', 'proforma', 'delivery_challan'];
@@ -636,6 +736,22 @@ export const useStore = create<EdibioState>()(
                         set(s => ({
                             parties: s.parties.map(p =>
                                 p.id === inv.partyId ? { ...p, balance: (p.balance || 0) + balanceDelta } : p
+                            ),
+                            lastModified: Date.now()
+                        }));
+                    }
+                }
+
+                // Update party loyalty points for sale invoices
+                if (inv.partyId && inv.invoiceType === 'sale') {
+                    const earned = inv.pointsEarned || 0;
+                    const redeemed = inv.pointsRedeemed || 0;
+                    if (earned !== 0 || redeemed !== 0) {
+                        set(s => ({
+                            parties: s.parties.map(p =>
+                                p.id === inv.partyId
+                                    ? { ...p, loyaltyPoints: Math.max(0, (p.loyaltyPoints || 0) + earned - redeemed) }
+                                    : p
                             ),
                             lastModified: Date.now()
                         }));
@@ -679,6 +795,22 @@ export const useStore = create<EdibioState>()(
                             set(s => ({
                                 parties: s.parties.map(p =>
                                     p.id === inv.partyId ? { ...p, balance: (p.balance || 0) + revertDelta } : p
+                                ),
+                                lastModified: Date.now()
+                            }));
+                        }
+                    }
+
+                    // Revert loyalty points
+                    if (inv.partyId && inv.invoiceType === 'sale') {
+                        const earned = inv.pointsEarned || 0;
+                        const redeemed = inv.pointsRedeemed || 0;
+                        if (earned !== 0 || redeemed !== 0) {
+                            set(s => ({
+                                parties: s.parties.map(p =>
+                                    p.id === inv.partyId
+                                        ? { ...p, loyaltyPoints: Math.max(0, (p.loyaltyPoints || 0) - earned + redeemed) }
+                                        : p
                                 ),
                                 lastModified: Date.now()
                             }));
@@ -730,6 +862,18 @@ export const useStore = create<EdibioState>()(
                 set(s => ({ agencyProjects: s.agencyProjects.map(p => p.id === id ? { ...p, ...upd } : p), lastModified: Date.now() })),
             deleteAgencyProject: (id) =>
                 set(s => ({ agencyProjects: s.agencyProjects.filter(p => p.id !== id), lastModified: Date.now() })),
+
+            purchaseOrders: [],
+            addPurchaseOrder: (po) => {
+                const now = new Date().toISOString();
+                const full: PurchaseOrder = { ...po, id: uid(), createdAt: now, updatedAt: now };
+                set(s => ({ purchaseOrders: [full, ...s.purchaseOrders], lastModified: Date.now() }));
+                return full;
+            },
+            updatePurchaseOrder: (id, upd) =>
+                set(s => ({ purchaseOrders: s.purchaseOrders.map(po => po.id === id ? { ...po, ...upd, updatedAt: new Date().toISOString() } : po), lastModified: Date.now() })),
+            deletePurchaseOrder: (id) =>
+                set(s => ({ purchaseOrders: s.purchaseOrders.filter(po => po.id !== id), lastModified: Date.now() })),
 
 
             templates: DEFAULT_TEMPLATES,
@@ -785,8 +929,13 @@ export const useStore = create<EdibioState>()(
                 try {
                     const data = JSON.parse(json);
                     if (!data.companies) throw new Error('Invalid backup file — missing companies data.');
+                    const currentUserId = get().user?.uid;
+                    const importedCompanies = (data.companies || []).map((c: any) => ({
+                        ...c,
+                        userId: currentUserId || c.userId
+                    }));
                     set({
-                        companies: data.companies || [],
+                        companies: importedCompanies,
                         parties: data.parties || [],
                         products: data.products || [],
                         invoices: data.invoices || [],
@@ -795,6 +944,7 @@ export const useStore = create<EdibioState>()(
                         agencyProjects: data.agencyProjects || [],
                         hsnCache: data.hsnCache || [],
                         aiApiKey: data.aiApiKey || null,
+                        lastModified: Date.now()
                     });
                     syncAfter(get);
                     toast.success('Backup imported successfully!');

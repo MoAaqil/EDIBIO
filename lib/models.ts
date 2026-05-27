@@ -50,6 +50,20 @@ const CompanySchema = new Schema({
     team: { type: Array, default: [] },
     licenseNo: { type: String },
     auditLogs: { type: Array, default: [] },
+    // Restaurant-specific sync fields
+    tableCarts: { type: Object, default: {} },
+    dirtyTables: { type: Object, default: {} },
+    tableConfig: { type: Object, default: {} },
+    customAreas: { type: Array, default: [] },
+    kitchenOrders: { type: Array, default: [] },
+    deals: { type: Array, default: [] },
+    deliveryIntegrations: { type: Array, default: [] },
+    recentZReports: { type: Array, default: [] },
+    appOrders: { type: Array, default: [] },
+    bulkOrders: { type: Array, default: [] },
+    registerOpen: { type: Boolean, default: false },
+    openingFloat: { type: Number, default: 0 },
+    openingTime: { type: String },
     createdAt: { type: String },
 }, { timestamps: true });
 
@@ -95,6 +109,7 @@ const ProductSchema = new Schema({
     taxIncluded: { type: Boolean, default: false },
     description: { type: String },
     isBulkImported: { type: Boolean },
+    expiryDate: { type: String },
 }, { timestamps: true });
 
 // ── INVOICE ──────────────────────────────────────────────────────────

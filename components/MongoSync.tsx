@@ -19,6 +19,12 @@ export default function MongoSync() {
             const s = useStore.getState();
             const role = s.user?.role || 'owner';
             const activeCompanyId = s.activeCompanyId;
+            const isOwner = !role || role === 'owner' || role === 'co_owner';
+            const isStaff = !isOwner;
+            if (isStaff && !activeCompanyId) {
+                return;
+            }
+
             const qs = `?userId=${user.uid}&role=${role}&companyId=${activeCompanyId || ''}`;
             
             const res = await fetch(`/api/sync${qs}`);
@@ -35,20 +41,30 @@ export default function MongoSync() {
             const cloudTime = data.updatedAt || 0;
             const localTime = parseInt(localStorage.getItem(`sync_ts_${user.uid}`) || '0', 10);
 
-            // If cloud is newer OR we have no local companies but cloud has them
-            if (cloudTime > localTime || (s.companies.length === 0 && cloudState.companies?.length > 0)) {
+            // Always pull if:
+            //  - This is a new/fresh device (localTime === 0)
+            //  - Cloud data is newer than local data
+            //  - We have no local companies but cloud has them
+            const shouldPull = localTime === 0 || cloudTime !== localTime || (s.companies.length === 0 && (cloudState.companies?.length ?? 0) > 0);
+            if (shouldPull && cloudState) {
                 const keys = ['companies', 'parties', 'products', 'invoices', 'expenses', 'agencyClients', 'agencyProjects', 'templates'];
                 const merged: any = {};
                 
                 keys.forEach(k => merged[k] = cloudState[k] || []);
                 if (cloudState.user) merged.user = cloudState.user;
                 if (cloudState.aiApiKey) merged.aiApiKey = cloudState.aiApiKey;
-                if (cloudState.aiUsageCount) merged.aiUsageCount = cloudState.aiUsageCount;
-                if (cloudState.primarySwapCount) merged.primarySwapCount = cloudState.primarySwapCount;
+                if (cloudState.aiUsageCount !== undefined) merged.aiUsageCount = cloudState.aiUsageCount;
+                if (cloudState.primarySwapCount !== undefined) merged.primarySwapCount = cloudState.primarySwapCount;
 
                 useStore.setState(merged);
                 setLastSyncedAt(cloudTime);
                 localStorage.setItem(`sync_ts_${user.uid}`, cloudTime.toString());
+                
+                // Auto-set activeCompanyId on new device if not already set
+                const currentState = useStore.getState();
+                if (!currentState.activeCompanyId && (merged.companies?.length ?? 0) > 0) {
+                    useStore.setState({ activeCompanyId: merged.companies[0].id });
+                }
             }
         } catch (err) {
             console.error('[MongoSync] Pull error:', err);
@@ -80,6 +96,13 @@ export default function MongoSync() {
 
             const role = state.user?.role || 'owner';
             const activeCompanyId = state.activeCompanyId;
+
+            const isOwner = !role || role === 'owner' || role === 'co_owner';
+            const isStaff = !isOwner;
+            if (isStaff && !activeCompanyId) {
+                setSyncStatus('saved');
+                return;
+            }
 
             const res = await fetch('/api/sync', {
                 method: 'POST',
@@ -151,28 +174,40 @@ export default function MongoSync() {
     // Auto sync on change
     useEffect(() => {
         if (!isAuthenticated || isDemo) return;
+        let t: any;
         const sub = useStore.subscribe(state => {
             if (state.isHydrating) return;
             const sig = `${state.lastModified}`;
             if (sig !== prevStateStr.current) {
                 prevStateStr.current = sig;
-                const t = setTimeout(() => sync(), 5000);
-                return () => clearTimeout(t);
+                if (t) clearTimeout(t);
+                t = setTimeout(() => sync(), 5000);
             }
         });
-        return () => sub();
+        return () => {
+            sub();
+            if (t) clearTimeout(t);
+        };
     }, [isAuthenticated, isDemo, sync]);
 
-    // Force Sync Global helper
+    // Force Sync Global helper — ONLY pulls from cloud (does NOT push local state)
     useEffect(() => {
         (window as any).forceEdibioCloudSync = async () => {
             if (!isAuthenticated || !user?.uid) return;
-            toast.loading('Force Syncing...', { id: 'forcesync' });
+            toast.loading('Pulling from Cloud...', { id: 'forcesync' });
             
             try {
                 const s = useStore.getState();
                 const role = s.user?.role || 'owner';
                 const activeCompanyId = s.activeCompanyId;
+                
+                const isOwner = !role || role === 'owner' || role === 'co_owner';
+                const isStaff = !isOwner;
+                if (isStaff && !activeCompanyId) {
+                    toast.error('No active company selected for staff sync', { id: 'forcesync' });
+                    return;
+                }
+
                 const qs = `?userId=${user.uid}&role=${role}&companyId=${activeCompanyId || ''}`;
                 
                 const res = await fetch(`/api/sync${qs}`);
@@ -181,14 +216,19 @@ export default function MongoSync() {
                 const data = await res.json();
                 const cloudState = data.payload;
                 
+                if (!cloudState) {
+                    toast.error('No cloud data found.', { id: 'forcesync' });
+                    return;
+                }
+
                 const merged: any = {};
                 const keys = ['companies', 'parties', 'products', 'invoices', 'expenses', 'agencyClients', 'agencyProjects', 'templates'];
                 keys.forEach(k => merged[k] = cloudState[k] || []);
                 
                 if (cloudState.user) merged.user = cloudState.user;
                 if (cloudState.aiApiKey) merged.aiApiKey = cloudState.aiApiKey;
-                if (cloudState.aiUsageCount) merged.aiUsageCount = cloudState.aiUsageCount;
-                if (cloudState.primarySwapCount) merged.primarySwapCount = cloudState.primarySwapCount;
+                if (cloudState.aiUsageCount !== undefined) merged.aiUsageCount = cloudState.aiUsageCount;
+                if (cloudState.primarySwapCount !== undefined) merged.primarySwapCount = cloudState.primarySwapCount;
                 
                 useStore.setState(merged);
                 
@@ -196,9 +236,10 @@ export default function MongoSync() {
                 setLastSyncedAt(serverTime);
                 localStorage.setItem(`sync_ts_${user.uid}`, serverTime.toString());
                 
-                toast.success('Force Sync Complete!', { id: 'forcesync' });
+                toast.success('Force Sync Complete! ☁️', { id: 'forcesync' });
             } catch (err) {
-                toast.error('Sync failed', { id: 'forcesync' });
+                console.error('[MongoSync] Force sync failed:', err);
+                toast.error('Sync failed. Check your connection.', { id: 'forcesync' });
             }
         };
         return () => { (window as any).forceEdibioCloudSync = null; };

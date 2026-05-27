@@ -35,18 +35,22 @@ export async function GET(req: Request) {
         let companies = await CompanyData.find({ userId }).lean();
         let companyIds = companies.map((c: any) => c._id);
 
-        if (role === 'staff' || role === 'manager') {
+        const isOwner = !role || role === 'owner' || role === 'co_owner';
+        const isStaff = !isOwner;
+
+        if (isStaff) {
              if (!reqCompanyId) return NextResponse.json({ error: 'companyId required for team members' }, { status: 400 });
              
              // Check if they are in the team array (extra safety)
-             const targetCompany = companies.find((c: any) => c._id === reqCompanyId);
+             // Use .toString() to compare ObjectId with string
+             const targetCompany = companies.find((c: any) => c._id.toString() === reqCompanyId);
              if (!targetCompany || !targetCompany.team?.some((t: any) => t.role === role)) {
                  return NextResponse.json({ error: 'Unauthorized company access' }, { status: 403 });
              }
 
              // Restrict to only the active company for this staff member
              companies = [targetCompany];
-             companyIds = [reqCompanyId];
+             companyIds = [targetCompany._id];
         }
 
         // Fetch all related data ONLY for the allowed companyIds
@@ -57,10 +61,10 @@ export async function GET(req: Request) {
             ExpenseData.find({ companyId: { $in: companyIds } }).lean()
         ]);
 
-        // Transform _id to id to match frontend Zustand expectations
+        // Transform _id to id (as string) to match frontend Zustand expectations
         const formatDocs = (docs: any[]) => docs.map((d: any) => {
             const { _id, __v, ...rest } = d;
-            return { id: _id, ...rest };
+            return { id: _id.toString(), ...rest };
         });
 
         // The exact payload structure Zustand expects
@@ -81,7 +85,7 @@ export async function GET(req: Request) {
         };
 
         // Staff members do not receive the owner's full User object with billing history etc
-        if (role !== 'staff' && role !== 'manager') {
+        if (isOwner) {
             payload.user = { ...user, uid: user._id, id: undefined, _id: undefined, __v: undefined };
         }
 
@@ -130,8 +134,12 @@ export async function POST(req: Request) {
         const syncCollection = async (Model: any, items: any[], filter: any, optionalRefField?: { name: string, value: string }) => {
             const incomingIds = (items || []).map(item => item.id || item._id);
             
-            // Delete items not in incoming payload but belonging to this scope
-            await Model.deleteMany({ ...filter, _id: { $nin: incomingIds } });
+            // Safety guard: NEVER delete from DB if incoming list is empty.
+            // An empty list from a new/empty device should NOT wipe cloud data.
+            if (items && items.length > 0) {
+                // Delete items not in incoming payload but belonging to this scope
+                await Model.deleteMany({ ...filter, _id: { $nin: incomingIds } });
+            }
 
             if (!items || items.length === 0) return;
 
@@ -162,7 +170,8 @@ export async function POST(req: Request) {
         };
 
         let { user, companies, parties, products, invoices, expenses } = payload;
-        const isStaff = role === 'staff' || role === 'manager';
+        const isOwner = !role || role === 'owner' || role === 'co_owner';
+        const isStaff = !isOwner;
 
         companies = companies || [];
         parties = parties || [];

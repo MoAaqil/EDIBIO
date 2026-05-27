@@ -8,7 +8,7 @@ import type { Product } from '@/lib/types';
 import Link from 'next/link';
 import {
     Plus, Search, Package, Trash2, Edit2, AlertTriangle,
-    Download, Upload, ScanLine, Warehouse, ArrowUp, ArrowDown, X, ArrowRightLeft, History
+    Download, Upload, ScanLine, Warehouse, ArrowUp, ArrowDown, X, ArrowRightLeft, History, Calendar, ShoppingCart, Gift
 } from 'lucide-react'; // Trigger HMR rebuild
 import PurchaseBillsTab from './PurchaseBillsTab';
 import StockLedgerTab from './StockLedgerTab';
@@ -16,9 +16,20 @@ import AIAddItemModal from '@/components/AIAddItemModal';
 import toast from 'react-hot-toast';
 import { confirm } from '@/components/ConfirmDialog';
 
-function InventoryRow({ p, companyId, onDelete, onEdit, godowns, isSelected, onToggle, invoices }: any) {
+function InventoryRow({ p, companyId, onDelete, onEdit, godowns, isSelected, onToggle, invoices, offers }: any) {
     const isLow = p.stockQty <= p.lowStockAlertQty;
     const daysLeft = predictStockDays(p.stockQty, invoices, p.id);
+    const today = new Date().toISOString().slice(0, 10);
+    const in30 = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
+    const batches = p.batches || [];
+    const hasExpired = batches.some((b: any) => b.expiryDate && b.expiryDate < today);
+    const expiringSoon = !hasExpired && batches.some((b: any) => b.expiryDate && b.expiryDate >= today && b.expiryDate <= in30);
+
+    const matchingOffers = (offers || []).filter((o: any) => 
+        (o.type === 'bogo' && (o.buyProductId === p.id || o.getProductId === p.id)) ||
+        (o.type === 'discount' && o.buyProductId === p.id) ||
+        (o.type === 'combo' && o.comboProductIds?.includes(p.id))
+    );
 
     return (
         <tr className={isSelected ? 'selected-row' : ''} style={{ backgroundColor: isSelected ? '#F0F4F8' : 'transparent', transition: 'all 0.15s' }}>
@@ -31,8 +42,19 @@ function InventoryRow({ p, companyId, onDelete, onEdit, godowns, isSelected, onT
                         {p.name[0]}
                     </div>
                     <div>
-                        <p style={{ fontWeight: 700, fontSize: 13, color: '#1A1A2E' }}>{p.name}</p>
+                        <Link href={`/company/inventory/${p.id}`} style={{ fontWeight: 700, fontSize: 13, color: '#1A1A2E', textDecoration: 'none' }}>
+                            {p.name}
+                        </Link>
                         {p.barcode && <p style={{ fontSize: 10, color: '#A0AEC0', fontFamily: 'monospace' }}>{p.barcode}</p>}
+                        <div style={{ display: 'flex', gap: 4, marginTop: 2, flexWrap: 'wrap' }}>
+                            {hasExpired && <span style={{ fontSize: 9, fontWeight: 800, padding: '1px 5px', borderRadius: 4, background: '#FEE2E2', color: '#DC2626' }}>EXPIRED BATCH</span>}
+                            {expiringSoon && <span style={{ fontSize: 9, fontWeight: 800, padding: '1px 5px', borderRadius: 4, background: '#FEF3C7', color: '#D97706' }}>EXPIRING SOON</span>}
+                            {matchingOffers.map((o: any) => (
+                                <span key={o.id} style={{ fontSize: 9, fontWeight: 800, padding: '1px 5px', borderRadius: 4, background: '#E6FFFA', color: '#00A389', border: '1px solid #B2F5EA' }}>
+                                    🎁 {o.name}
+                                </span>
+                            ))}
+                        </div>
                     </div>
                 </div>
             </td>
@@ -84,7 +106,7 @@ export default function InventoryPage() {
     const [godownFilter, setGodownFilter] = useState('all');
     const [showAdd, setShowAdd] = useState(false);
     const [showAIAdd, setShowAIAdd] = useState(false);
-    const [activeTab, setActiveTab] = useState<'items' | 'purchases' | 'ledger'>('items');
+    const [activeTab, setActiveTab] = useState<'items' | 'purchases' | 'ledger' | 'offers'>('items');
 
     // Derive canScan once from reactive hook — avoids SSR/hydration mismatch from useStore.getState() in render
     const { user: storeUser, isDemo: storeIsDemo } = useStore();
@@ -379,12 +401,18 @@ export default function InventoryPage() {
                         <History size={13} />
                         Ledger
                     </button>
+                    <button onClick={() => setActiveTab('offers')} className={`inv-tab-btn${activeTab === 'offers' ? ' inv-tab-active' : ''}`}>
+                        <Gift size={13} />
+                        Schemes & Offers
+                    </button>
                 </div>
 
                 {activeTab === 'purchases' ? (
                     <PurchaseBillsTab />
                 ) : activeTab === 'ledger' ? (
                     <StockLedgerTab />
+                ) : activeTab === 'offers' ? (
+                    <OffersTab />
                 ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
                         {/* Header stats */}
@@ -427,6 +455,12 @@ export default function InventoryPage() {
                             )}
                             <button onClick={() => { exportCSV(); }} className="btn btn-outline btn-sm" style={{ gap: 5 }}><Download size={13} /> Export</button>
                             <button onClick={() => setShowImport(true)} className="btn btn-outline btn-sm" style={{ gap: 5 }}><Upload size={13} /> Import CSV</button>
+                            <Link href="/company/inventory/expiry" className="btn btn-outline btn-sm" style={{ gap: 5, color: '#D97706', borderColor: '#FDE68A', background: '#FFFBEB', textDecoration: 'none' }}>
+                                <Calendar size={13} /> Expiry
+                            </Link>
+                            <Link href="/company/inventory/purchase-orders" className="btn btn-outline btn-sm" style={{ gap: 5, color: '#7C3AED', borderColor: '#E9D5FF', background: '#FAF5FF', textDecoration: 'none' }}>
+                                <ShoppingCart size={13} /> Purchase Orders
+                            </Link>
                             {godowns.length > 1 && (
                                 <button onClick={() => setShowTransfer(true)} className="btn btn-outline btn-sm" style={{ gap: 5, color: '#9333EA', borderColor: '#E9D8FD', background: '#FAF5FF' }}>
                                     <ArrowRightLeft size={13} /> Stock Transfer
@@ -472,7 +506,7 @@ export default function InventoryPage() {
                                                 <th>Item</th><th>HSN</th><th>Category</th><th>Stock</th><th>Godown</th><th>Purchase</th><th>Selling</th><th>GST</th><th>Actions</th>
                                             </tr></thead>
                                             <tbody>
-                                                {filtered.map(p => <InventoryRow key={p.id} p={p} companyId={companyId} onDelete={handleDelete} onEdit={openEdit} godowns={godowns} isSelected={selectedItems.includes(p.id)} onToggle={toggleItemSelection} invoices={invoices} />)}
+                                                {filtered.map(p => <InventoryRow key={p.id} p={p} companyId={companyId} onDelete={handleDelete} onEdit={openEdit} godowns={godowns} isSelected={selectedItems.includes(p.id)} onToggle={toggleItemSelection} invoices={invoices} offers={company?.offers || []} />)}
                                             </tbody>
                                         </table>
                                     </div>
@@ -492,9 +526,18 @@ export default function InventoryPage() {
                                                     <div style={{ width: 44, height: 44, borderRadius: 12, background: 'linear-gradient(135deg, #FEF7E0, #FFFBEB)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, color: '#B45309', flexShrink: 0, fontSize: 16 }}>{p.name[0]}</div>
                                                     <div style={{ flex: 1, minWidth: 0 }}>
                                                         <p style={{ fontWeight: 800, fontSize: 13, color: '#1A1A2E', marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</p>
-                                                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                                                        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                                                             <span className="badge badge-gray" style={{ fontSize: 9 }}>{p.unit}</span>
                                                             <span className="badge badge-blue" style={{ fontSize: 9 }}>GST {p.gstRate}%</span>
+                                                            {(company?.offers || []).filter((o: any) => 
+                                                                (o.type === 'bogo' && (o.buyProductId === p.id || o.getProductId === p.id)) ||
+                                                                (o.type === 'discount' && o.buyProductId === p.id) ||
+                                                                (o.type === 'combo' && o.comboProductIds?.includes(p.id))
+                                                            ).map((o: any) => (
+                                                                <span key={o.id} style={{ fontSize: 8, fontWeight: 800, padding: '1px 4px', borderRadius: 4, background: '#E6FFFA', color: '#00A389', border: '1px solid #B2F5EA' }}>
+                                                                    🎁 {o.name}
+                                                                </span>
+                                                            ))}
                                                         </div>
                                                     </div>
                                                     <div style={{ textAlign: 'right', flexShrink: 0, maxWidth: 100 }}>
@@ -788,5 +831,268 @@ export default function InventoryPage() {
                 }
             `}</style>
         </>
+    );
+}
+
+function OffersTab() {
+    const { activeCompanyId, addOfferScheme, deleteOfferScheme } = useStore();
+    const company = useActiveCompany();
+    const products = useCompanyData('products') as Product[];
+    
+    const [showAddOffer, setShowAddOffer] = useState(false);
+    const [offerType, setOfferType] = useState<'bogo' | 'discount' | 'combo'>('bogo');
+    const [offerName, setOfferName] = useState('');
+    
+    // BOGO inputs
+    const [buyProduct, setBuyProduct] = useState('');
+    const [buyQty, setBuyQty] = useState('1');
+    const [getProduct, setGetProduct] = useState('');
+    const [getQty, setGetQty] = useState('1');
+    const [bogoDiscount, setBogoDiscount] = useState('100'); // 100% discount on the getProduct
+
+    // Discount inputs
+    const [discProduct, setDiscProduct] = useState('');
+    const [discPercent, setDiscPercent] = useState('50'); // e.g. 50%
+
+    // Combo inputs
+    const [comboProducts, setComboProducts] = useState<string[]>([]);
+    const [comboPrice, setComboPrice] = useState('');
+
+    const activeOffers = company?.offers || [];
+
+    const handleCreateOffer = () => {
+        if (!offerName.trim()) { toast.error('Enter an offer name'); return; }
+        
+        let offerData: any = {
+            type: offerType,
+            name: offerName,
+            isActive: true
+        };
+
+        if (offerType === 'bogo') {
+            if (!buyProduct || !getProduct) { toast.error('Please select both buy and get products'); return; }
+            offerData.buyProductId = buyProduct;
+            offerData.buyQty = parseInt(buyQty) || 1;
+            offerData.getProductId = getProduct;
+            offerData.getQty = parseInt(getQty) || 1;
+            offerData.discountPercent = parseFloat(bogoDiscount) || 100;
+        } else if (offerType === 'discount') {
+            if (!discProduct) { toast.error('Please select a product'); return; }
+            offerData.buyProductId = discProduct; // reuse buyProductId
+            offerData.discountPercent = parseFloat(discPercent) || 50;
+        } else if (offerType === 'combo') {
+            if (comboProducts.length < 2) { toast.error('Please select at least 2 products for the combo'); return; }
+            if (!comboPrice || parseFloat(comboPrice) <= 0) { toast.error('Enter a valid combo price'); return; }
+            offerData.comboProductIds = comboProducts;
+            offerData.comboPrice = parseFloat(comboPrice) || 0;
+        }
+
+        addOfferScheme(activeCompanyId!, offerData);
+        toast.success(`Offer "${offerName}" created successfully!`);
+        setShowAddOffer(false);
+        // Reset form
+        setOfferName('');
+        setBuyProduct('');
+        setBuyQty('1');
+        setGetProduct('');
+        setGetQty('1');
+        setBogoDiscount('100');
+        setDiscProduct('');
+        setDiscPercent('50');
+        setComboProducts([]);
+        setComboPrice('');
+    };
+
+    return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            {/* Header controls */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                    <h2 style={{ fontWeight: 900, fontSize: 18, color: '#1A1A2E', margin: 0 }}>Schemes & Offers Manager</h2>
+                    <p style={{ fontSize: 13, color: '#718096', margin: '4px 0 0' }}>Configure BOGO, percentage discounts, and combo bundle offers for your catalog.</p>
+                </div>
+                <button onClick={() => setShowAddOffer(true)} className="btn btn-blue btn-sm" style={{ gap: 5 }}>
+                    <Plus size={13} /> Create Offer
+                </button>
+            </div>
+
+            {/* Active Offers List */}
+            <div className="card" style={{ padding: 20 }}>
+                {activeOffers.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '40px 0' }}>
+                        <Gift size={40} style={{ color: '#E2E8F0', margin: '0 auto 12px' }} />
+                        <p style={{ color: '#A0AEC0', fontWeight: 600, fontSize: 14, margin: 0 }}>No active offers configured yet.</p>
+                        <button onClick={() => setShowAddOffer(true)} className="btn btn-blue btn-sm" style={{ display: 'inline-flex', marginTop: 12, gap: 5 }}>
+                            <Plus size={13} /> Add Offer
+                        </button>
+                    </div>
+                ) : (
+                    <div style={{ overflowX: 'auto' }}>
+                        <table className="e-table">
+                            <thead>
+                                <tr>
+                                    <th>Offer Name</th>
+                                    <th>Type</th>
+                                    <th>Details</th>
+                                    <th style={{ width: 100, textAlign: 'center' }}>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {activeOffers.map((o: any) => {
+                                    let detailsText = '';
+                                    if (o.type === 'bogo') {
+                                        const buyP = products.find(p => p.id === o.buyProductId)?.name || 'Unknown Item';
+                                        const getP = products.find(p => p.id === o.getProductId)?.name || 'Unknown Item';
+                                        detailsText = `Buy ${o.buyQty} of "${buyP}" and get ${o.getQty} of "${getP}" at ${o.discountPercent}% off`;
+                                    } else if (o.type === 'discount') {
+                                        const buyP = products.find(p => p.id === o.buyProductId)?.name || 'Unknown Item';
+                                        detailsText = `Flat ${o.discountPercent}% Off on "${buyP}"`;
+                                    } else if (o.type === 'combo') {
+                                        const itemsText = o.comboProductIds.map((pid: string) => products.find(p => p.id === pid)?.name || 'Unknown Item').join(' + ');
+                                        detailsText = `Get [ ${itemsText} ] together for a combo price of ₹${o.comboPrice}`;
+                                    }
+
+                                    return (
+                                        <tr key={o.id}>
+                                            <td style={{ fontWeight: 800, color: '#1A1A2E' }}>{o.name}</td>
+                                            <td>
+                                                <span className={`badge ${o.type === 'bogo' ? 'badge-green' : o.type === 'discount' ? 'badge-blue' : 'badge-gray'}`} style={{ textTransform: 'uppercase' }}>
+                                                    {o.type}
+                                                </span>
+                                            </td>
+                                            <td style={{ fontSize: 13, color: '#4A5568' }}>{detailsText}</td>
+                                            <td style={{ textAlign: 'center' }}>
+                                                <button onClick={() => deleteOfferScheme(activeCompanyId!, o.id)} className="btn btn-ghost btn-icon" style={{ color: '#EA4335', padding: 6 }}>
+                                                    <Trash2 size={14} />
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+            </div>
+
+            {/* Create Offer Modal */}
+            {showAddOffer && (
+                <div className="modal-overlay" onClick={() => setShowAddOffer(false)}>
+                    <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 500, maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}>
+                        <div style={{ padding: '18px 24px 14px', borderBottom: '1px solid #E1E4E8', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+                            <h3 style={{ fontWeight: 900, fontSize: 17, color: '#1A1A2E', margin: 0 }}>Create Promotional Offer</h3>
+                            <button onClick={() => setShowAddOffer(false)} className="btn btn-ghost btn-icon"><X size={18} /></button>
+                        </div>
+                        <div style={{ overflowY: 'auto', padding: '18px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+                            <div>
+                                <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', display: 'block', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Offer Name *</label>
+                                <input className="e-input" placeholder="e.g. Soap Buy 1 Get 1 Free" value={offerName} onChange={e => setOfferName(e.target.value)} />
+                            </div>
+
+                            <div>
+                                <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', display: 'block', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Offer Type</label>
+                                <div style={{ display: 'flex', gap: 8, background: '#EDF2F7', padding: 4, borderRadius: 10 }}>
+                                    {[
+                                        { key: 'bogo', label: 'BOGO / Free' },
+                                        { key: 'discount', label: 'Flat % Off' },
+                                        { key: 'combo', label: 'Combo Deal' }
+                                    ].map(t => (
+                                        <button key={t.key} onClick={() => setOfferType(t.key as any)}
+                                            style={{ flex: 1, padding: '8px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 800, fontSize: 12, background: offerType === t.key ? '#4285F4' : 'transparent', color: offerType === t.key ? 'white' : '#718096', transition: 'all 0.15s' }}>
+                                            {t.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* BOGO Inputs */}
+                            {offerType === 'bogo' && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 10 }}>
+                                        <div>
+                                            <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', display: 'block', marginBottom: 5 }}>Buy Product *</label>
+                                            <select className="e-select" value={buyProduct} onChange={e => setBuyProduct(e.target.value)}>
+                                                <option value="">Select Product...</option>
+                                                {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', display: 'block', marginBottom: 5 }}>Qty *</label>
+                                            <input type="number" min="1" className="e-input" value={buyQty} onChange={e => setBuyQty(e.target.value)} />
+                                        </div>
+                                    </div>
+
+                                    <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 10 }}>
+                                        <div>
+                                            <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', display: 'block', marginBottom: 5 }}>Get Product *</label>
+                                            <select className="e-select" value={getProduct} onChange={e => setGetProduct(e.target.value)}>
+                                                <option value="">Select Product...</option>
+                                                {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', display: 'block', marginBottom: 5 }}>Qty *</label>
+                                            <input type="number" min="1" className="e-input" value={getQty} onChange={e => setGetQty(e.target.value)} />
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', display: 'block', marginBottom: 5 }}>Discount % on Free Product (100 = Free) *</label>
+                                        <input type="number" min="1" max="100" className="e-input" value={bogoDiscount} onChange={e => setBogoDiscount(e.target.value)} />
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Flat % Off Inputs */}
+                            {offerType === 'discount' && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                    <div>
+                                        <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', display: 'block', marginBottom: 5 }}>Select Product *</label>
+                                        <select className="e-select" value={discProduct} onChange={e => setDiscProduct(e.target.value)}>
+                                            <option value="">Select Product...</option>
+                                            {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', display: 'block', marginBottom: 5 }}>Discount Percentage (%) *</label>
+                                        <input type="number" min="1" max="100" className="e-input" value={discPercent} onChange={e => setDiscPercent(e.target.value)} />
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Combo Pack Inputs */}
+                            {offerType === 'combo' && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                    <div>
+                                        <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', display: 'block', marginBottom: 5 }}>Products in Combo *</label>
+                                        <p style={{ fontSize: 11, color: '#718096', marginBottom: 8 }}>Hold Ctrl (or Cmd) to select multiple products.</p>
+                                        <select
+                                            multiple
+                                            className="e-select"
+                                            style={{ height: 160 }}
+                                            value={comboProducts}
+                                            onChange={e => {
+                                                const opts = Array.from(e.target.selectedOptions, o => o.value);
+                                                setComboProducts(opts);
+                                            }}
+                                        >
+                                            {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', display: 'block', marginBottom: 5 }}>Combo Package Price (₹) *</label>
+                                        <input type="number" min="1" className="e-input" placeholder="Combo Total Price" value={comboPrice} onChange={e => setComboPrice(e.target.value)} />
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                        <div style={{ padding: '14px 24px', borderTop: '1px solid #E1E4E8', display: 'flex', gap: 10, justifyContent: 'flex-end', flexShrink: 0 }}>
+                            <button onClick={() => setShowAddOffer(false)} className="btn btn-outline">Cancel</button>
+                            <button onClick={handleCreateOffer} className="btn btn-blue">Save Offer</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
     );
 }

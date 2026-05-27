@@ -218,7 +218,35 @@ export function deriveTitleFromPath(path: string): string {
         'agency-clients': 'Clients',
         'agency-projects': 'Projects',
         'restaurant': 'Restaurant POS',
+        'bakery': 'Bakery POS',
+        'logistics': 'Logistics Operations',
+        'ecommerce': 'Ecommerce Storefront',
     };
 
     return titles[last] || last.charAt(0).toUpperCase() + last.slice(1);
+}
+
+// ── WhatsApp Reminder ────────────────────────────────────────────────────────
+/**
+ * Builds a wa.me URL with a pre-filled payment reminder message.
+ * @param invoice  The invoice object (must have invoiceNumber, grandTotal, balanceDue, partyPhone, partyName)
+ * @param party    Optional party record to get a cleaner phone number
+ */
+export function buildWhatsAppReminderUrl(invoice: any, party?: any): string {
+    const phone = (party?.phone || invoice.partyPhone || '').replace(/\D/g, '');
+    const name = invoice.partyName || party?.name || 'Customer';
+    const invNo = invoice.invoiceNumber || '';
+    const total = Number(invoice.grandTotal || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 });
+    const due = Number(invoice.balanceDue || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 });
+    const dueDate = invoice.dueDate ? ` (due ${formatDate(invoice.dueDate)})` : '';
+
+    const message =
+        `Dear ${name},\n\n` +
+        `This is a gentle reminder that your invoice *#${invNo}* of *₹${total}* has an outstanding balance of *₹${due}*${dueDate}.\n\n` +
+        `Please arrange payment at your earliest convenience.\n\n` +
+        `Thank you for your business! 🙏`;
+
+    const encoded = encodeURIComponent(message);
+    const base = phone ? `https://wa.me/${phone.startsWith('91') ? phone : '91' + phone}` : 'https://wa.me/';
+    return `${base}?text=${encoded}`;
 }

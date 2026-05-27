@@ -7,16 +7,65 @@ export const InvoicePrintTemplate = ({ invoice, company, copies = 1, previewMode
 
     const theme = themeOverride || company?.templateTheme || 'classic';
     const showColumns = company?.templateColumns || { sn: true, hsn: true, discount: true, tax: true, rate: true };
-    const showQrCode = invoice.paymentStatus !== 'paid' && company?.bankDetails?.upiId && company?.templateColumns?.showQrCode !== false;
+    const showQrCode = !!company?.bankDetails?.upiId;
     const labels = company?.customLabels || {};
 
     const upiLink = showQrCode ? `upi://pay?pa=${company.bankDetails.upiId}&pn=${encodeURIComponent(company.name)}&am=${invoice.grandTotal.toFixed(2)}&cu=INR` : null;
     const qrUrl = upiLink ? `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(upiLink)}` : null;
 
-    const lTitle = labels.invoiceTitle || 'INVOICE';
-    const lNo = labels.invoiceNo || 'Invoice No';
-    const lDate = labels.date || 'Date';
-    const lDueDate = labels.dueDate || 'Due Date';
+    let lTitle = labels.invoiceTitle || 'TAX INVOICE';
+    let lNo = labels.invoiceNo || 'Invoice No';
+    let lDate = labels.date || 'Date';
+    let lDueDate = labels.dueDate || 'Due Date';
+
+    if (invoice.invoiceType) {
+        if (invoice.invoiceType === 'sale') {
+            lTitle = labels.invoiceTitle || 'TAX INVOICE';
+        } else {
+            const typeLabels: Record<string, string> = {
+                estimate: 'ESTIMATE',
+                proforma: 'PROFORMA INVOICE',
+                delivery_challan: 'DELIVERY CHALLAN',
+                purchase: 'PURCHASE BILL',
+                sale_return: 'CREDIT NOTE',
+                purchase_return: 'DEBIT NOTE',
+                credit_note: 'CREDIT NOTE',
+                debit_note: 'DEBIT NOTE',
+            };
+            lTitle = typeLabels[invoice.invoiceType] || invoice.invoiceType.toUpperCase();
+
+            const typeNoLabels: Record<string, string> = {
+                estimate: 'Estimate No',
+                proforma: 'Proforma No',
+                delivery_challan: 'Challan No',
+                purchase: 'Bill No',
+                sale_return: 'Return No',
+                purchase_return: 'Return No',
+                credit_note: 'Note No',
+                debit_note: 'Note No',
+            };
+            lNo = typeNoLabels[invoice.invoiceType] || 'No';
+
+            const typeDateLabels: Record<string, string> = {
+                estimate: 'Estimate Date',
+                proforma: 'Proforma Date',
+                delivery_challan: 'Challan Date',
+                purchase: 'Bill Date',
+                sale_return: 'Return Date',
+                purchase_return: 'Return Date',
+                credit_note: 'Note Date',
+                debit_note: 'Note Date',
+            };
+            lDate = typeDateLabels[invoice.invoiceType] || 'Date';
+
+            const typeDueDateLabels: Record<string, string> = {
+                estimate: 'Validity Date',
+                proforma: 'Validity Date',
+            };
+            lDueDate = typeDueDateLabels[invoice.invoiceType] || 'Due Date';
+        }
+    }
+
     const lBilledTo = labels.billedTo || 'Billed To';
     const lPayment = labels.paymentMethod || 'Payment Method';
     const defaultFooter = labels.footerTerms || 'Thank you for your business!';
@@ -24,32 +73,34 @@ export const InvoicePrintTemplate = ({ invoice, company, copies = 1, previewMode
     const FooterBrand = () => (
         <div className="invoice-footer" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', paddingTop: 20, borderTop: '3px solid #E2E8F0', paddingBottom: 10, pageBreakInside: 'avoid', background: 'transparent' }}>
             <div>
-                <p style={{ fontSize: 11, color: '#A0AEC0', marginBottom: 16 }}>{defaultFooter}</p>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <svg width="32" height="32" viewBox="0 0 100 100" fill="none">
-                        <path d="M10 25 h15 a5 5 0 0 1 4.5 3 l4 12" stroke="#34A853" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round" />
-                        <path d="M28 40 h26 v22 h-20 z" fill="#34A853" />
-                        <path d="M54 40 h24 a8 8 0 0 1 8 8 v14 h-32 z" fill="#FBBC04" />
-                        <path d="M34 62 h20 v20 h-10 a10 10 0 0 1 -10 -10 z" fill="#4285F4" />
-                        <path d="M54 62 h32 v10 a10 10 0 0 1 -10 10 h-22 z" fill="#EA4335" />
-                        <circle cx="42" cy="88" r="7" fill="#4285F4" />
-                        <circle cx="70" cy="88" r="7" fill="#4285F4" />
-                    </svg>
-                    <span style={{ fontSize: 24, fontWeight: 900, letterSpacing: '-1px', display: 'flex', alignItems: 'center', fontFamily: "'Inter', sans-serif" }}>
-                        <span style={{ color: '#EA4335' }}>E</span>
-                        <span style={{ color: '#34A853' }}>d</span>
-                        <span style={{ color: '#FBBC04' }}>i</span>
-                        <span style={{ color: '#4285F4' }}>b</span>
-                        <span style={{ color: '#34A853' }}>i</span>
-                        <span style={{ color: '#EA4335' }}>o</span>
-                    </span>
-                </div>
+                <p style={{ fontSize: 11, color: '#A0AEC0', marginBottom: 12 }}>{defaultFooter}</p>
+                <img src="/logo.png" alt="Edibio" style={{ height: 120, width: 'auto', objectFit: 'contain', display: 'block' }} />
             </div>
             <div style={{ paddingBottom: 4 }}>
                 <Barcode value={invoice.invoiceNumber || 'INV-000'} width={1.2} height={40} fontSize={12} fontWeight="bold" displayValue={true} margin={0} background="transparent" />
             </div>
         </div>
     );
+
+    // Split payment display helper
+    const METHOD_ICONS: Record<string, string> = { cash: '💵', upi: '📱', card: '💳', bank: '🏦', cheque: '📝', neft: '🔁', rtgs: '🔄', credit: '🤝' };
+    const PaymentMethodDisplay = ({ style }: { style?: React.CSSProperties }) => {
+        if (invoice.splitPayments && invoice.splitPayments.length > 1) {
+            return (
+                <div style={style}>
+                    {invoice.splitPayments.map((sp: any, i: number) => (
+                        <span key={i} style={{ display: 'inline-block', marginRight: 6, fontSize: 12, fontWeight: 700 }}>
+                            {METHOD_ICONS[sp.method] || '💰'} {sp.method.charAt(0).toUpperCase() + sp.method.slice(1)} ₹{sp.amount.toLocaleString('en-IN')}
+                            {i < invoice.splitPayments.length - 1 ? ' +' : ''}
+                        </span>
+                    ))}
+                </div>
+            );
+        }
+        return <span style={style}>{METHOD_ICONS[invoice.paymentMethod] || ''} {invoice.paymentMethod || 'Cash'}</span>;
+    };
+
+
 
 
     const ItemsTableModern = ({ headerColor, textColor = 'white' }: { headerColor: string, textColor?: string }) => (
@@ -109,6 +160,10 @@ export const InvoicePrintTemplate = ({ invoice, company, copies = 1, previewMode
                     {invoice.roundOff !== 0 && <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
                         <span style={{ color: '#4A5568' }}>Round Off</span>
                         <span style={{ fontWeight: 700 }}>{invoice.roundOff > 0 ? '+' : ''}₹{invoice.roundOff.toFixed(2)}</span>
+                    </div>}
+                    {invoice.pointsValueRedeemed > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, color: '#E53E3E', fontWeight: 600 }}>
+                        <span>Loyalty Redeem</span>
+                        <span>-₹{invoice.pointsValueRedeemed.toFixed(2)}</span>
                     </div>}
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 12, paddingTop: 12, borderTop: '2px dashed #E2E8F0' }}>
                         <span style={{ fontWeight: 900, fontSize: 18 }}>Total</span>
@@ -183,6 +238,12 @@ export const InvoicePrintTemplate = ({ invoice, company, copies = 1, previewMode
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 16 }}>
                 <div style={{ width: '45%' }}>
                     <p style={{ margin: '0 0 8px', fontSize: 11, fontStyle: 'italic' }}>Amount in Words: <br />{amountInWords(invoice.grandTotal)}</p>
+                    {qrUrl && (
+                        <div style={{ padding: '6px', background: 'white', borderRadius: 8, border: '1.5px solid black', display: 'flex', flexDirection: 'column', alignItems: 'center', width: 'fit-content', margin: '12px 0 0' }}>
+                            <img src={qrUrl} alt="UPI QR Code" style={{ width: 90, height: 90, marginBottom: 4 }} />
+                            <span style={{ fontSize: 9, fontWeight: 'bold', color: 'black' }}>SCAN TO PAY (UPI)</span>
+                        </div>
+                    )}
                     <div style={{ border: '1px solid black', padding: 8, marginTop: 16 }}>
                         <p style={{ margin: '0 0 4px', fontWeight: 'bold', fontSize: 11 }}>Terms & Conditions:</p>
                         <p style={{ margin: 0, fontSize: 10, whiteSpace: 'pre-wrap' }}>{invoice.notes || defaultFooter}</p>
@@ -199,6 +260,7 @@ export const InvoicePrintTemplate = ({ invoice, company, copies = 1, previewMode
                                 </>
                             )}
                             {invoice.roundOff !== 0 && <tr><td style={{ padding: '6px 8px', border: '1px solid black' }}>Round Off</td><td style={{ padding: '6px 8px', border: '1px solid black', textAlign: 'right' }}>{invoice.roundOff.toFixed(2)}</td></tr>}
+                            {invoice.pointsValueRedeemed > 0 && <tr><td style={{ padding: '6px 8px', border: '1px solid black', color: '#DC2626', fontWeight: 'bold' }}>Loyalty Redeem</td><td style={{ padding: '6px 8px', border: '1px solid black', textAlign: 'right', color: '#DC2626', fontWeight: 'bold' }}>-₹{invoice.pointsValueRedeemed.toFixed(2)}</td></tr>}
                             <tr><td style={{ padding: '8px 8px', border: '1px solid black', fontWeight: 'bold', fontSize: 16 }}>Grand Total</td><td style={{ padding: '8px 8px', border: '1px solid black', textAlign: 'right', fontWeight: 'bold', fontSize: 16 }}>₹{invoice.grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td></tr>
                         </tbody>
                     </table>
@@ -288,7 +350,7 @@ export const InvoicePrintTemplate = ({ invoice, company, copies = 1, previewMode
                     </div>
                     <div>
                         <p style={{ fontSize: 12, fontWeight: 800, color: '#4285F4', textTransform: 'uppercase', marginBottom: 8, margin: 0 }}>{lPayment}</p>
-                        <p style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>{invoice.paymentMethod || 'Cash'}</p>
+                        <PaymentMethodDisplay style={{ fontSize: 15, fontWeight: 700 }} />
                     </div>
                 </div>
             </div>
@@ -376,9 +438,10 @@ export const InvoicePrintTemplate = ({ invoice, company, copies = 1, previewMode
                 {previewMode ? null : <p style={{ textAlign: 'center', fontSize: 10, fontWeight: 'bold', border: '1px solid black', display: 'inline-block', padding: '2px 8px', position: 'absolute', top: 40, right: 40, textTransform: 'uppercase' }}>{printTitle}</p>}
 
                 <div style={{ textAlign: 'center', marginBottom: 20 }}>
-                    <h1 style={{ fontSize: 24, fontWeight: 'bold', margin: 0, textTransform: 'uppercase' }}>{company?.name || 'Tax Invoice'}</h1>
+                    <h1 style={{ fontSize: 24, fontWeight: 'bold', margin: 0, textTransform: 'uppercase' }}>{company?.name || 'Your Company'}</h1>
                     <p style={{ fontSize: 12, margin: '4px 0 0' }}>{company?.address || 'Shop Address'}, {company?.city || ''}</p>
                     <p style={{ fontSize: 12, margin: '2px 0 0' }}>Phone: {company?.phone} {company?.gstNumber ? `| GSTIN: ${company?.gstNumber}` : ''}</p>
+                    <p style={{ fontSize: 14, fontWeight: 'bold', margin: '8px 0 0', textTransform: 'uppercase', letterSpacing: '1px' }}>{lTitle}</p>
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '2px solid black', borderBottom: '2px solid black', padding: '10px 0', fontSize: 12 }}>
@@ -430,13 +493,20 @@ export const InvoicePrintTemplate = ({ invoice, company, copies = 1, previewMode
                             {invoice.totalDiscount > 0 && <tr><td>Discount:</td><td style={{ textAlign: 'right' }}>-{invoice.totalDiscount.toFixed(2)}</td></tr>}
                             {invoice.totalGst > 0 && <tr><td>GST:</td><td style={{ textAlign: 'right' }}>+{invoice.totalGst.toFixed(2)}</td></tr>}
                             {invoice.roundOff !== 0 && <tr><td>Round Off:</td><td style={{ textAlign: 'right' }}>{invoice.roundOff > 0 ? '+' : ''}{invoice.roundOff.toFixed(2)}</td></tr>}
+                            {invoice.pointsValueRedeemed > 0 && <tr><td style={{ color: '#DC2626', fontWeight: 'bold' }}>Loyalty Redeem:</td><td style={{ textAlign: 'right', color: '#DC2626', fontWeight: 'bold' }}>-{invoice.pointsValueRedeemed.toFixed(2)}</td></tr>}
                             <tr style={{ fontWeight: 'bold', fontSize: 14 }}><td>Grand Total:</td><td style={{ textAlign: 'right' }}>{invoice.grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td></tr>
                         </tbody>
                     </table>
                 </div>
 
-                <div style={{ marginTop: 40, fontSize: 11, display: 'flex', justifyContent: 'space-between' }}>
+                <div style={{ marginTop: 40, fontSize: 11, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
                     <div>
+                        {qrUrl && (
+                            <div style={{ padding: '6px', background: 'white', borderRadius: 6, border: '1px solid black', display: 'flex', flexDirection: 'column', alignItems: 'center', width: 'fit-content', marginBottom: 12 }}>
+                                <img src={qrUrl} alt="UPI QR Code" style={{ width: 85, height: 85, marginBottom: 4 }} />
+                                <span style={{ fontSize: 8, fontWeight: 'bold', color: 'black' }}>SCAN TO PAY (UPI)</span>
+                            </div>
+                        )}
                         <p><b>Terms & Conditions:</b></p>
                         <p>1. Goods once sold will not be taken back.</p>
                         <p>2. Subject to local jurisdiction.</p>
@@ -557,7 +627,7 @@ export const InvoicePrintTemplate = ({ invoice, company, copies = 1, previewMode
             <div style={{ background: '#111827', color: 'white', padding: '60px 50px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
                 <div>
                     <h1 style={{ fontSize: 44, fontWeight: 300, margin: '0 0 10px 0', letterSpacing: '2px' }}>{lTitle}</h1>
-                    <p style={{ fontSize: 14, margin: 0, opacity: 0.8 }}>No. {invoice.invoiceNumber} | {formatDate(invoice.date)}</p>
+                    <p style={{ fontSize: 14, margin: 0, opacity: 0.8 }}>{lNo === 'Invoice No' ? 'No.' : lNo} {invoice.invoiceNumber} | {formatDate(invoice.date)}</p>
                 </div>
                 <div style={{ textAlign: 'right' }}>
                     <h2 style={{ fontSize: 24, fontWeight: 800, margin: '0 0 4px 0' }}>{company?.name}</h2>
@@ -609,6 +679,7 @@ export const InvoicePrintTemplate = ({ invoice, company, copies = 1, previewMode
                 <h1 style={{ fontSize: 24, fontWeight: 'bold', margin: '0 0 10px' }}>{company?.name}</h1>
                 <p style={{ fontSize: 14 }}>{company?.address}, {company?.city}</p>
                 <p style={{ fontSize: 14 }}>TEL: {company?.phone}</p>
+                <p style={{ fontSize: 14, fontWeight: 'bold', margin: '10px 0 0', textTransform: 'uppercase' }}>*** {lTitle} ***</p>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 30 }}>
                 <div>
@@ -616,8 +687,8 @@ export const InvoicePrintTemplate = ({ invoice, company, copies = 1, previewMode
                     <p>PH: {invoice.partyPhone}</p>
                 </div>
                 <div style={{ textAlign: 'right' }}>
-                    <p>NO: {invoice.invoiceNumber}</p>
-                    <p>DATE: {invoice.date}</p>
+                    <p>{lNo.toUpperCase()}: {invoice.invoiceNumber}</p>
+                    <p>{lDate.toUpperCase()}: {formatDate(invoice.date)}</p>
                 </div>
             </div>
             <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 30 }}>
@@ -775,8 +846,8 @@ export const InvoicePrintTemplate = ({ invoice, company, copies = 1, previewMode
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', padding: '40px 0 20px' }}>
                     <div style={{ width: '45%' }}>
-                        <p style={{ fontSize: 14, fontWeight: 900, margin: '0 0 10px 0' }}>Payment Method.</p>
-                        <p style={{ fontSize: 12, margin: '0 0 4px 0' }}>Status: {(invoice.paymentStatus || 'unpaid').toUpperCase()}</p>
+                        <p style={{ fontSize: 14, fontWeight: 900, margin: '0 0 10px 0' }}>Payment Method</p>
+                        <PaymentMethodDisplay style={{ fontSize: 12, margin: '0 0 4px 0', display: 'block' }} />
                         <p style={{ fontSize: 12, margin: '0 0 4px 0' }}>Method: {invoice.paymentMethod || 'Cash / Bank Transfer'}</p>
                         {company?.bankDetails?.upiId && <p style={{ fontSize: 12, margin: '0 0 4px 0' }}>UPI: {company.bankDetails.upiId}</p>}
                     </div>
@@ -825,10 +896,10 @@ export const InvoicePrintTemplate = ({ invoice, company, copies = 1, previewMode
                     <div>
                         <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 20 }}>{company?.name}</div>
                         <h1 style={{ fontSize: 56, fontWeight: 900, margin: '0 0 10px', letterSpacing: '-2px' }}>{lTitle}.</h1>
-                        <p style={{ fontSize: 16, fontWeight: 600 }}>No. {invoice.invoiceNumber}</p>
+                        <p style={{ fontSize: 16, fontWeight: 600 }}>{lNo === 'Invoice No' ? 'No.' : lNo} {invoice.invoiceNumber}</p>
                     </div>
                     <div style={{ textAlign: 'right', paddingTop: 40 }}>
-                        <p style={{ fontSize: 14, fontWeight: 600, opacity: 0.9, margin: '0 0 4px' }}>Invoice Date:</p>
+                        <p style={{ fontSize: 14, fontWeight: 600, opacity: 0.9, margin: '0 0 4px' }}>{lDate}:</p>
                         <p style={{ fontSize: 16, fontWeight: 800, margin: 0 }}>{formatDate(invoice.date)}</p>
                     </div>
                 </div>
@@ -1032,25 +1103,7 @@ export const InvoicePrintTemplate = ({ invoice, company, copies = 1, previewMode
             <div style={{ marginTop: 30, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', paddingTop: 20, borderTop: '3px solid #E2E8F0', paddingBottom: 10, pageBreakInside: 'avoid' }}>
                 <div>
                     <p style={{ fontSize: 11, color: '#A0AEC0', marginBottom: 16 }}>{defaultFooter}</p>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <svg width="32" height="32" viewBox="0 0 100 100" fill="none">
-                            <path d="M10 25 h15 a5 5 0 0 1 4.5 3 l4 12" stroke="#34A853" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round" />
-                            <path d="M28 40 h26 v22 h-20 z" fill="#34A853" />
-                            <path d="M54 40 h24 a8 8 0 0 1 8 8 v14 h-32 z" fill="#FBBC04" />
-                            <path d="M34 62 h20 v20 h-10 a10 10 0 0 1 -10 -10 z" fill="#4285F4" />
-                            <path d="M54 62 h32 v10 a10 10 0 0 1 -10 10 h-22 z" fill="#EA4335" />
-                            <circle cx="42" cy="88" r="7" fill="#4285F4" />
-                            <circle cx="70" cy="88" r="7" fill="#4285F4" />
-                        </svg>
-                        <span style={{ fontSize: 24, fontWeight: 900, letterSpacing: '-1px', display: 'flex', alignItems: 'center', fontFamily: "'Inter', sans-serif" }}>
-                            <span style={{ color: '#EA4335' }}>E</span>
-                            <span style={{ color: '#34A853' }}>d</span>
-                            <span style={{ color: '#FBBC04' }}>i</span>
-                            <span style={{ color: '#4285F4' }}>b</span>
-                            <span style={{ color: '#34A853' }}>i</span>
-                            <span style={{ color: '#EA4335' }}>o</span>
-                        </span>
-                    </div>
+                    <img src="/logo.png" alt="Edibio" style={{ height: 44, width: 'auto', objectFit: 'contain', display: 'block' }} />
                 </div>
                 <div style={{ paddingBottom: 4 }}>
                     <Barcode value={invoice.invoiceNumber || 'INV-000'} width={1.2} height={40} fontSize={12} fontWeight="bold" displayValue={true} margin={0} background="transparent" />

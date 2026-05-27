@@ -8,7 +8,7 @@ import { Plus, Power, KeyRound, ChevronRight, Check, X, Warehouse, Trash2, LogOu
 import { canAccess } from '@/components/FeatureGate';
 
 const COMPANY_COLORS = ['#4285F4', '#34A853', '#EA4335', '#FBBC04', '#9333EA', '#F59E0B'];
-const BUSINESS_TYPES = ['Supermarket', 'Grocery Store', 'Restaurant', 'Retail Shop', 'Pharmacy', 'Electronics', 'Clothing', 'Wholesale', 'Digital Agency', 'Other'];
+const BUSINESS_TYPES = ['Supermarket', 'Grocery Store', 'Bakery', 'Restaurant', 'Ecommerce', 'Logistics', 'Retail Shop', 'Pharmacy', 'Electronics', 'Clothing', 'Wholesale', 'Digital Agency', 'Other'];
 
 export default function CompaniesPage() {
     const router = useRouter();
@@ -60,14 +60,19 @@ export default function CompaniesPage() {
     const update = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
 
     const handleSelect = (id: string, isLocked: boolean) => {
-        if (isLocked) {
+        const isStaffOrManager = user?.role === 'staff' || user?.role === 'manager';
+        if (isLocked && !isStaffOrManager) {
             toast.error(`Your current plan only supports ${MAX_COMPANIES} company. Upgrade to unlock!`);
             router.push('/subscription');
             return;
         }
         const co = companies.find(c => c.id === id);
         setActiveCompany(id);
-        router.push(`/company/dashboard`);
+        if (isStaffOrManager) {
+            router.push(`/company/billing/quick`);
+        } else {
+            router.push(`/company/dashboard`);
+        }
     };
 
     const handleAdd = () => {

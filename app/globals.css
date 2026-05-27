@@ -42,7 +42,7 @@ button {
   --sidebar-w: 240px;
   --sidebar-w-tablet: 64px;
   --topbar-h: 60px;
-  --bottom-nav-h: 64px;
+  --bottom-nav-h: 60px;
 
   --blue: #4285F4;
   --green: #34A853;
@@ -157,8 +157,11 @@ button {
   background: white;
   border-top: 1px solid var(--gray-200);
   z-index: 50;
-  box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.06);
-  padding-bottom: env(safe-area-inset-bottom, 0);
+  box-shadow: 0 -2px 16px rgba(0, 0, 0, 0.08);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  background: rgba(255,255,255,0.95);
 }
 
 /* ── Breakpoints ────────────────────────────────────────────────────────────── */
@@ -177,13 +180,15 @@ button {
     display: flex !important;
   }
 
+  /* Content inner: use safe area + bottom nav clearance */
   .app-content-inner {
-    padding: 16px;
-    padding-bottom: calc(var(--bottom-nav-h) + 24px);
+    padding: 12px 12px;
+    padding-bottom: calc(var(--bottom-nav-h) + env(safe-area-inset-bottom, 0px) + 16px);
   }
 
   .app-topbar {
-    padding: 0 16px;
+    padding: 0 14px;
+    height: 56px;
   }
 
   .desktop-table {
@@ -196,6 +201,54 @@ button {
 
   .mobile-list {
     display: block !important;
+  }
+
+  /* Better touch targets on mobile */
+  .btn {
+    min-height: 44px;
+    padding: 10px 14px;
+    font-size: 14px;
+  }
+
+  .btn-sm {
+    min-height: 36px;
+    padding: 6px 12px;
+    font-size: 12px;
+  }
+
+  /* Bigger inputs for fat fingers */
+  .e-input,
+  .e-select {
+    font-size: 16px; /* prevents iOS zoom on focus */
+    padding: 12px 12px;
+    min-height: 48px;
+  }
+
+  /* Card padding tighter on small screens */
+  .card {
+    border-radius: var(--radius-lg);
+  }
+
+  /* Smooth momentum scroll on content */
+  .app-content {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Table cells — tighter on phone */
+  .e-table th {
+    padding: 8px 10px;
+    font-size: 10px;
+  }
+
+  .e-table td {
+    padding: 10px 10px;
+    font-size: 13px;
+  }
+
+  /* Modal fills screen bottom-up on mobile */
+  .modal-box {
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+    max-height: 92dvh;
   }
 }
 

@@ -1,10 +1,10 @@
 'use client';
-import { useState, useRef, useEffect, useCallback, Suspense, memo } from 'react';
+import { useState, useRef, useEffect, useCallback, Suspense, memo, useMemo } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useStore, useActiveCompany, useCompanyData } from '@/lib/store';
 import { calcLineItem, r2, roundOff, INDIAN_STATES } from '@/lib/utils';
 import type { InvoiceLineItem } from '@/lib/types';
-import { Search, Plus, Trash2, X, RefreshCw, Printer, ChevronDown, Check, FileText, Image as ImageIcon, Calendar, Clock, Download, TrendingUp, Repeat, PauseCircle, PlayCircle, Wallet, AlertCircle } from 'lucide-react';
+import { Search, Plus, Trash2, X, RefreshCw, Printer, ChevronDown, Check, FileText, Image as ImageIcon, Calendar, Clock, Download, TrendingUp, Repeat, PauseCircle, PlayCircle, Wallet, AlertCircle, Settings } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { InvoicePrintTemplate } from '@/components/InvoicePrintTemplate';
 import { confirm, ConfirmDialog } from '@/components/ConfirmDialog';
@@ -24,7 +24,7 @@ function QuickBillingContent() {
     const products = useCompanyData('products') as any[];
     const invoices = useCompanyData('invoices') as any[];
     const parties = useCompanyData('parties') as any[];
-    const { addInvoice, nextInvoiceNumber, adjustStock, addParty, updateParty, updateInvoice } = useStore();
+    const { addInvoice, nextInvoiceNumber, adjustStock, addParty, updateParty, updateInvoice, addBalancePayment, updateCompany } = useStore();
 
     useEffect(() => {
         const handlePopState = () => {
@@ -60,6 +60,40 @@ function QuickBillingContent() {
     const [copies, setCopies] = useState(1);
     const [showPrintModal, setShowPrintModal] = useState(false);
     const [amountGiven, setAmountGiven] = useState('');
+    const [showColumnConfig, setShowColumnConfig] = useState(false);
+
+    useEffect(() => {
+        if (user && company?.team) {
+            const matchingTeamMember = company.team.find(t => 
+                t.contact === user.email || t.name === user.name
+            );
+            if (matchingTeamMember?.counter) {
+                setCounter(matchingTeamMember.counter);
+            }
+        }
+    }, [user, company?.team]);
+
+    const cols = company?.quickBillingColumns || {
+        barcode: true,
+        hsn: true,
+        mfgDate: true,
+        mrp: true,
+        size: true,
+        discount: true,
+        tax: true,
+    };
+
+    // Split payments
+    const SPLIT_METHODS = [
+        { key: 'cash', label: '💵 Cash', color: '#38A169' },
+        { key: 'upi', label: '📱 UPI', color: '#6B46C1' },
+        { key: 'card', label: '💳 Card', color: '#2B6CB0' },
+        { key: 'bank', label: '🏦 Bank', color: '#C05621' },
+        { key: 'cheque', label: '📝 Cheque', color: '#718096' },
+    ] as const;
+    const [splitPayments, setSplitPayments] = useState<{ method: string; amount: string }[]>([{ method: 'cash', amount: '' }]);
+    const [useSplitPayment, setUseSplitPayment] = useState(false);
+
 
     // Custom Suggestions State
     const [activeRowIdx, setActiveRowIdx] = useState<number | null>(null);
@@ -85,6 +119,37 @@ function QuickBillingContent() {
     const [showBalanceModal, setShowBalanceModal] = useState(false);
     const [customPayments, setCustomPayments] = useState<Record<string, string>>({});
     const [balanceSearchQuery, setBalanceSearchQuery] = useState('');
+    const [redeemPointsAmount, setRedeemPointsAmount] = useState('');
+
+    const outstandingBalanceCount = useMemo(() => {
+        const normPhone = (ph: string) => {
+            const d = (ph || '').replace(/\D/g, '');
+            return d.startsWith('91') && d.length > 10 ? d.slice(2) : d;
+        };
+        const DRAFT = ['estimate', 'proforma', 'delivery_challan'];
+        const trackerMap = new Map<string, { party: any; computedBalance: number }>();
+        // Build map from parties
+        parties.filter((p: any) => p.companyId === companyId).forEach((p: any) => {
+            const key = normPhone(p.phone) || p.id;
+            if (!trackerMap.has(key)) trackerMap.set(key, { party: p, computedBalance: 0 });
+        });
+        // Sum up unpaid invoice balanceDue per party key
+        invoices
+            .filter((i: any) => i.invoiceType === 'sale' && !DRAFT.includes(i.invoiceType) && i.paymentStatus !== 'paid' && (i.balanceDue ?? 0) > 0)
+            .forEach((i: any) => {
+                const key = normPhone(i.partyPhone) || i.partyId || '';
+                if (!key) return;
+                if (trackerMap.has(key)) {
+                    trackerMap.get(key)!.computedBalance += i.balanceDue;
+                } else {
+                    const p = parties.find((p: any) => p.id === i.partyId) ||
+                              parties.find((p: any) => normPhone(p.phone) === key);
+                    if (p) trackerMap.set(key, { party: p, computedBalance: i.balanceDue });
+                    else trackerMap.set(key, { party: { id: i.partyId, name: i.partyName, phone: i.partyPhone }, computedBalance: i.balanceDue });
+                }
+            });
+        return Array.from(trackerMap.values()).filter(e => e.computedBalance > 0).length;
+    }, [parties, invoices, companyId]);
 
     const saveSuspendedBills = (bills: any[]) => {
         setSuspendedBills(bills);
@@ -136,55 +201,173 @@ function QuickBillingContent() {
 
 
     const updateItem = (idx: number, k: string, v: any) => {
-        setItems(prev => prev.map((item, i) => {
-            if (i !== idx) return item;
-            const upd = { ...item, [k]: v };
+        setItems(prev => {
+            let bogoToAdd: any = null;
+            const nextItems = prev.map((item, i) => {
+                if (i !== idx) return item;
+                const upd = { ...item, [k]: v };
 
-            // Auto complete product if entering name or barcode
-            if (k === 'name' || k === 'barcode') {
-                if (typeof v === 'string' && v.trim() !== '') {
-                    // Filter suggestions
-                    const searchTerm = v.toLowerCase();
-                    const matches = products.filter(p => 
-                        p.name.toLowerCase().includes(searchTerm) || 
-                        (p.barcode && p.barcode.includes(searchTerm)) ||
-                        (p.category && p.category.toLowerCase().includes(searchTerm))
-                    ).slice(0, 10);
-                    
-                    if (k === 'name') {
-                        setFilteredProducts(matches);
-                        setShowSuggestions(matches.length > 0);
-                        setActiveRowIdx(idx);
-                        setActiveSuggestionIdx(0);
-                    }
+                // Auto complete product if entering name or barcode
+                if (k === 'name' || k === 'barcode') {
+                    if (typeof v === 'string' && v.trim() !== '') {
+                        // Filter suggestions (including combo offers)
+                        const searchTerm = v.toLowerCase();
+                        const matches = products.filter(p => 
+                            p.name.toLowerCase().includes(searchTerm) || 
+                            (p.barcode && p.barcode.includes(searchTerm)) ||
+                            (p.category && p.category.toLowerCase().includes(searchTerm))
+                        );
+                        
+                        const comboMatches = (company?.offers || []).filter(o => 
+                            o.isActive && o.type === 'combo' && o.name.toLowerCase().includes(searchTerm)
+                        ).map(o => ({
+                            id: o.id,
+                            name: o.name,
+                            isComboOffer: true,
+                            comboOffer: o
+                        }));
+                        
+                        const combined = [...matches, ...comboMatches].slice(0, 10);
+                        
+                        if (k === 'name') {
+                            setFilteredProducts(combined);
+                            setShowSuggestions(combined.length > 0);
+                            setActiveRowIdx(idx);
+                            setActiveSuggestionIdx(0);
+                        }
 
-                    const prod = products.find(p => (k === 'name' && p.name.toLowerCase() === v.toLowerCase()) || (k === 'barcode' && p.barcode === v));
-                    if (prod) {
-                        upd.name = prod.name;
-                        upd.barcode = prod.barcode || '';
-                        upd.hsnCode = prod.hsnCode || '';
-                        upd.mrp = prod.mrp || prod.sellingPrice || 0;
-                        upd.rate = prod.sellingPrice || 0;
-                        upd.gstRate = prod.gstRate || 0;
-                        upd.unit = prod.unit || 'Pcs';
+                        const prod = products.find(p => (k === 'name' && p.name.toLowerCase() === v.toLowerCase()) || (k === 'barcode' && p.barcode === v));
+                        if (prod) {
+                            upd.productId = prod.id;
+                            upd.name = prod.name;
+                            upd.barcode = prod.barcode || '';
+                            upd.hsnCode = prod.hsnCode || '';
+                            upd.mrp = prod.mrp || prod.sellingPrice || 0;
+                            upd.gstRate = prod.gstRate || 0;
+                            upd.unit = prod.unit || 'Pcs';
+                            
+                            // Check for active flat discount offer on this item
+                            const discountOffer = company?.offers?.find(o => o.isActive && o.type === 'discount' && o.buyProductId === prod.id);
+                            if (discountOffer) {
+                                const percent = discountOffer.discountPercent || 50;
+                                upd.rate = prod.sellingPrice * (1 - percent / 100);
+                                upd.originalPrice = prod.sellingPrice;
+                            } else {
+                                upd.rate = prod.sellingPrice || 0;
+                                upd.originalPrice = undefined;
+                            }
+                            
+                            // Check for active BOGO offer on this item
+                            const bogoOffer = company?.offers?.find(o => o.isActive && o.type === 'bogo' && o.buyProductId === prod.id);
+                            if (bogoOffer && !upd.bogoTriggered && !upd.isFree) {
+                                upd.bogoTriggered = true;
+                                const getProd = products.find(p => p.id === bogoOffer.getProductId) || prod;
+                                bogoToAdd = {
+                                    name: `[FREE] ${getProd.name}`,
+                                    barcode: getProd.barcode || '',
+                                    hsnCode: getProd.hsnCode || '',
+                                    mfgDate: '',
+                                    mrp: getProd.mrp || getProd.sellingPrice || 0,
+                                    size: '',
+                                    qty: bogoOffer.getQty || 1,
+                                    unit: getProd.unit || 'Pcs',
+                                    rate: 0, // Free!
+                                    isFree: true,
+                                    originalPrice: getProd.sellingPrice,
+                                    gstRate: getProd.gstRate || 0,
+                                    productId: getProd.id,
+                                    discount: 0,
+                                    discountAmt: 0,
+                                    taxableAmt: 0,
+                                    cgst: 0,
+                                    sgst: 0,
+                                    igst: 0,
+                                    cess: 0,
+                                    totalGst: 0,
+                                    amount: 0,
+                                };
+                                const calcFree = calcLineItem(bogoToAdd.qty, 0, 0, getProd.gstRate as any);
+                                bogoToAdd = { ...bogoToAdd, ...calcFree };
+                            }
+                            
+                            setShowSuggestions(false);
+                        }
+                    } else if (k === 'name') {
                         setShowSuggestions(false);
                     }
-                } else if (k === 'name') {
-                    setShowSuggestions(false);
                 }
-            }
 
-            const q = parseFloat(upd.qty) || 0;
-            const r = parseFloat(upd.rate) || 0;
-            const d = parseFloat(upd.discount) || 0;
-            const g = parseFloat(upd.gstRate) || 0;
-            const calc = calcLineItem(q, r, d, g as any);
-            return { ...upd, ...calc };
-        }));
+                const q = parseFloat(upd.qty) || 0;
+                const r = parseFloat(upd.rate) || 0;
+                const d = parseFloat(upd.discount) || 0;
+                const g = parseFloat(upd.gstRate) || 0;
+                const calc = calcLineItem(q, r, d, g as any);
+                return { ...upd, ...calc };
+            });
+
+            if (bogoToAdd) {
+                const next = [...nextItems];
+                next.splice(idx + 1, 0, bogoToAdd);
+                return next;
+            }
+            return nextItems;
+        });
     };
 
     const selectProduct = (idx: number, prod: any) => {
-        updateItem(idx, 'name', prod.name);
+        if (prod.isComboOffer) {
+            const combo = prod.comboOffer;
+            const comboPids = combo.comboProductIds || [];
+            const comboProds = comboPids.map((pid: any) => products.find((p: any) => p.id === pid)).filter(Boolean);
+            if (comboProds.length > 0) {
+                const normalPriceSum = comboProds.reduce((sum: number, p: any) => sum + (p.sellingPrice || 0), 0);
+                const factor = normalPriceSum > 0 ? (combo.comboPrice / normalPriceSum) : 1;
+                
+                setItems(prev => {
+                    const next = [...prev];
+                    // Remove the current search/input row
+                    next.splice(idx, 1);
+                    
+                    comboProds.forEach((p: any, cIdx: number) => {
+                        const calculatedRate = p.sellingPrice * factor;
+                        const itemRow = {
+                            name: `${p.name} (${combo.name})`,
+                            barcode: p.barcode || '',
+                            hsnCode: p.hsnCode || '',
+                            mfgDate: '',
+                            mrp: p.mrp || p.sellingPrice || 0,
+                            size: '',
+                            qty: 1,
+                            unit: p.unit || 'Pcs',
+                            rate: calculatedRate,
+                            originalPrice: p.sellingPrice,
+                            isComboItem: true,
+                            comboOfferId: combo.id,
+                            gstRate: p.gstRate || 0,
+                            productId: p.id,
+                            discount: 0,
+                            discountAmt: 0,
+                            taxableAmt: 0,
+                            cgst: 0,
+                            sgst: 0,
+                            igst: 0,
+                            cess: 0,
+                            totalGst: 0,
+                            amount: 0,
+                        };
+                        const calc = calcLineItem(1, calculatedRate, 0, p.gstRate as any);
+                        next.splice(idx + cIdx, 0, { ...itemRow, ...calc });
+                    });
+                    
+                    if (next.length === 0) {
+                        next.push(emptyRow());
+                    }
+                    return next;
+                });
+            }
+        } else {
+            updateItem(idx, 'name', prod.name);
+        }
         setShowSuggestions(false);
     };
 
@@ -200,7 +383,102 @@ function QuickBillingContent() {
     const validItems = items.filter(i => i.name.trim() !== '' && i.qty > 0 && i.rate > 0);
     const subTotal = r2(validItems.reduce((a, i) => a + i.taxableAmt, 0));
     const totalGst = r2(validItems.reduce((a, i) => a + i.totalGst, 0));
-    const preDiscountSum = subTotal + totalGst;
+
+    // Offers Engine Calculations
+    const { bogoDiscountsSum, comboDiscountsSum, activeOfferLogs } = useMemo(() => {
+        let bogoTotalDiscount = 0;
+        let comboTotalDiscount = 0;
+        const logs: string[] = [];
+        
+        const offers = company?.offers || [];
+        if (offers.length === 0 || validItems.length === 0) {
+            return { bogoDiscountsSum: 0, comboDiscountsSum: 0, activeOfferLogs: [] };
+        }
+
+        const flatDiscounts = offers.filter(o => o.isActive && o.type === 'discount');
+        const bogoOffers = offers.filter(o => o.isActive && o.type === 'bogo');
+        const productDiscounts = new Map<string, number>();
+
+        validItems.forEach(item => {
+            if (!item.productId) return;
+            // Exclude items already handled by line-level discount/BOGO/combo offers
+            if (item.originalPrice || item.isFree || item.isComboItem || item.bogoTriggered) return;
+            const pid = item.productId;
+            const itemPrice = item.rate || 0;
+            const itemQty = item.qty || 0;
+
+            const flat = flatDiscounts.find(o => o.buyProductId === pid);
+            if (flat) {
+                const discountVal = itemPrice * itemQty * ((flat.discountPercent || 0) / 100);
+                productDiscounts.set(pid, (productDiscounts.get(pid) || 0) + discountVal);
+                logs.push(`Flat ${flat.discountPercent}% off applied to ${item.name}`);
+            }
+
+            const bogo = bogoOffers.find(o => o.buyProductId === pid || o.getProductId === pid);
+            if (bogo) {
+                const buyPid = bogo.buyProductId;
+                const getPid = bogo.getProductId;
+                const buyQtyRule = bogo.buyQty || 1;
+                const getQtyRule = bogo.getQty || 1;
+                const discPercent = bogo.discountPercent || 100;
+
+                if (buyPid === getPid && buyPid === pid) {
+                    const bundleSize = buyQtyRule + getQtyRule;
+                    const bundles = Math.floor(itemQty / bundleSize);
+                    const freeQty = bundles * getQtyRule;
+                    if (freeQty > 0) {
+                        const discountVal = freeQty * itemPrice * (discPercent / 100);
+                        productDiscounts.set(pid, (productDiscounts.get(pid) || 0) + discountVal);
+                        logs.push(`BOGO: ${freeQty} free/discounted units of ${item.name}`);
+                    }
+                } else {
+                    const getProductInCart = validItems.find(it => it.productId === getPid);
+                    if (getPid && getProductInCart && pid === buyPid) {
+                        const buyItemQty = itemQty;
+                        const getItemQty = getProductInCart.qty;
+                        const getPrice = getProductInCart.rate || 0;
+
+                        const eligibleBundles = Math.floor(buyItemQty / buyQtyRule);
+                        const discountQty = Math.min(eligibleBundles * getQtyRule, getItemQty);
+                        if (discountQty > 0) {
+                            const discountVal = discountQty * getPrice * (discPercent / 100);
+                            productDiscounts.set(getPid, (productDiscounts.get(getPid) || 0) + discountVal);
+                            logs.push(`BOGO: ${discountQty} units of ${getProductInCart.name} discounted by ${item.name} purchase`);
+                        }
+                    }
+                }
+            }
+        });
+
+        bogoTotalDiscount = Array.from(productDiscounts.values()).reduce((a, b) => a + b, 0);
+
+        const comboOffers = offers.filter(o => o.isActive && o.type === 'combo');
+        comboOffers.forEach(combo => {
+            const pids = combo.comboProductIds || [];
+            if (pids.length < 2) return;
+
+            const cartItemsForCombo = pids.map(pid => validItems.find(it => it.productId === pid));
+            const allPresent = cartItemsForCombo.every(it => it !== undefined);
+            if (allPresent) {
+                const qtys = cartItemsForCombo.map(it => it!.qty);
+                const comboSets = Math.min(...qtys);
+
+                if (comboSets > 0) {
+                    const regularPriceSum = cartItemsForCombo.reduce((sum, it) => sum + (it!.rate || 0), 0);
+                    const comboPriceRule = combo.comboPrice || 0;
+                    const comboDiscountPerSet = Math.max(0, regularPriceSum - comboPriceRule);
+                    
+                    const discountVal = comboSets * comboDiscountPerSet;
+                    comboTotalDiscount += discountVal;
+                    logs.push(`Combo: "${combo.name}" bundle applied x${comboSets} (saved ₹${discountVal.toFixed(2)})`);
+                }
+            }
+        });
+
+        return { bogoDiscountsSum: bogoTotalDiscount, comboDiscountsSum: comboTotalDiscount, activeOfferLogs: logs };
+    }, [company, validItems]);
+
+    const preDiscountSum = Math.max(0, subTotal + totalGst - bogoDiscountsSum - comboDiscountsSum);
 
     const dVal = parseFloat(discountVal) || 0;
     const globalDiscount = discountType === '%' ? r2(preDiscountSum * dVal / 100) : dVal;
@@ -213,66 +491,109 @@ function QuickBillingContent() {
         if (roundOffEnabled) setRoundOffVal(roCalculated.toFixed(2));
     }, [roCalculated, roundOffEnabled]);
 
-    const grandTotal = r2(afterDiscount + (parseFloat(roundOffVal) || 0));
+    const grandTotalBeforePointsDiscount = r2(afterDiscount + (parseFloat(roundOffVal) || 0));
+
+    // Loyalty points calculations
+    const selectedCustomer = useMemo(() => {
+        if (!partyPhone.trim()) return null;
+        const normPhone = (ph: string) => (ph || '').replace(/\D/g, '');
+        const target = normPhone(partyPhone);
+        return parties.find(p => normPhone(p.phone) === target) || null;
+    }, [parties, partyPhone]);
+
+    const loyaltyPointsAvailable = selectedCustomer?.loyaltyPoints || 0;
+    const pointsEarningRatio = company?.loyaltyEarningRatio || 100;
+    const pointsRedemptionValue = company?.loyaltyRedemptionValue || 1;
+    const minPointsToRedeem = company?.loyaltyMinRedeemPoints || 10;
+    const loyaltyEnabled = company?.loyaltyPointsEnabled && pointsEarningRatio > 0 && pointsRedemptionValue > 0;
+
+    const canRedeemPoints = loyaltyEnabled && loyaltyPointsAvailable >= minPointsToRedeem;
+    const maxPointsForBill = Math.floor(grandTotalBeforePointsDiscount / pointsRedemptionValue);
+    const pointsToRedeemLimit = Math.min(loyaltyPointsAvailable, maxPointsForBill);
+    const pointsToRedeemAmount = Math.min(Math.max(0, isNaN(parseInt(redeemPointsAmount)) ? 0 : parseInt(redeemPointsAmount)), pointsToRedeemLimit);
+    const pointsDiscountValue = pointsToRedeemAmount * pointsRedemptionValue;
+
+    const grandTotal = r2(grandTotalBeforePointsDiscount - pointsDiscountValue);
+    const pointsEarned = loyaltyEnabled ? Math.floor(grandTotal / pointsEarningRatio) : 0;
 
     const handleSave = () => {
         if (validItems.length === 0) { toast.error('Add at least one complete row (Name, Qty, Price)'); return false; }
 
         const finalPartyName = partyName.trim() || 'Cash / Walk-in Customer';
 
-        const parsedAmountGiven = amountGiven.trim() !== '' ? parseFloat(amountGiven) || 0 : null;
-        
+        // --- Split payment calculations ---
         let calculatedAmountPaid = 0;
         let calculatedBalanceDue = grandTotal;
         let calculatedPaymentStatus: 'paid' | 'partial' | 'unpaid' = 'unpaid';
-        
-        if (parsedAmountGiven !== null) {
-            if (parsedAmountGiven >= grandTotal) {
-                calculatedAmountPaid = grandTotal;
-                calculatedBalanceDue = 0;
-                calculatedPaymentStatus = 'paid';
-            } else {
-                calculatedAmountPaid = parsedAmountGiven;
-                calculatedBalanceDue = grandTotal - parsedAmountGiven;
-                calculatedPaymentStatus = parsedAmountGiven > 0 ? 'partial' : 'unpaid';
-            }
+        let finalSplitPayments: { method: string; amount: number }[] | undefined;
+        let finalPaymentMethod = 'cash';
+
+        if (useSplitPayment) {
+            const entries = splitPayments
+                .map(s => ({ method: s.method, amount: parseFloat(s.amount) || 0 }))
+                .filter(s => s.amount > 0);
+            const totalSplit = entries.reduce((a, s) => a + s.amount, 0);
+            calculatedAmountPaid = Math.min(totalSplit, grandTotal);
+            calculatedBalanceDue = Math.max(0, grandTotal - totalSplit);
+            calculatedPaymentStatus = calculatedBalanceDue === 0 ? 'paid' : calculatedAmountPaid > 0 ? 'partial' : 'unpaid';
+            finalSplitPayments = entries.length > 0 ? entries : undefined;
+            // Dominant method = the one with highest amount
+            const dominant = entries.sort((a, b) => b.amount - a.amount)[0];
+            finalPaymentMethod = dominant?.method || 'cash';
         } else {
-            if (billType === 'CASH') {
-                calculatedAmountPaid = grandTotal;
-                calculatedBalanceDue = 0;
-                calculatedPaymentStatus = 'paid';
+            const parsedAmountGiven = amountGiven.trim() !== '' ? parseFloat(amountGiven) || 0 : null;
+            if (parsedAmountGiven !== null) {
+                if (parsedAmountGiven >= grandTotal) {
+                    calculatedAmountPaid = grandTotal;
+                    calculatedBalanceDue = 0;
+                    calculatedPaymentStatus = 'paid';
+                } else {
+                    calculatedAmountPaid = parsedAmountGiven;
+                    calculatedBalanceDue = grandTotal - parsedAmountGiven;
+                    calculatedPaymentStatus = parsedAmountGiven > 0 ? 'partial' : 'unpaid';
+                }
             } else {
-                calculatedAmountPaid = 0;
-                calculatedBalanceDue = grandTotal;
-                calculatedPaymentStatus = 'unpaid';
+                if (billType === 'CASH') {
+                    calculatedAmountPaid = grandTotal;
+                    calculatedBalanceDue = 0;
+                    calculatedPaymentStatus = 'paid';
+                } else {
+                    calculatedAmountPaid = 0;
+                    calculatedBalanceDue = grandTotal;
+                    calculatedPaymentStatus = 'unpaid';
+                }
             }
+            finalPaymentMethod = 'cash';
         }
 
+
         let finalPartyId = undefined;
-        if (finalPartyName !== 'Cash / Walk-in Customer') {
-            const matchingParty = parties.find(p => 
-                (partyPhone && (String(p.phone).trim() === partyPhone.trim() || String(p.mobile).trim() === partyPhone.trim())) ||
-                (p.name.toLowerCase().trim() === finalPartyName.toLowerCase().trim())
+        let finalPartyNameUsed = finalPartyName;
+        if (finalPartyName !== 'Cash / Walk-in Customer' || (partyPhone && partyPhone.trim() !== '')) {
+            const searchPhone = partyPhone ? partyPhone.trim() : '';
+            const searchName = finalPartyName !== 'Cash / Walk-in Customer' ? finalPartyName.toLowerCase().trim() : '';
+
+            const matchingParty = parties.find(p =>
+                (searchPhone && (String(p.phone).trim() === searchPhone || String(p.mobile).trim() === searchPhone)) ||
+                (searchName && p.name.toLowerCase().trim() === searchName)
             );
-            
+
             if (matchingParty) {
                 finalPartyId = matchingParty.id;
-                if (calculatedBalanceDue > 0) {
-                    updateParty(matchingParty.id, {
-                        balance: (matchingParty.balance || 0) + calculatedBalanceDue
-                    });
-                }
-            } else if (calculatedBalanceDue > 0) {
+                finalPartyNameUsed = matchingParty.name;
+            } else {
+                const newName = finalPartyName !== 'Cash / Walk-in Customer' ? finalPartyName : `Cust - ${searchPhone}`;
                 const newParty = addParty({
                     companyId: companyId!,
                     type: 'customer',
-                    name: finalPartyName,
-                    phone: partyPhone || '',
+                    name: newName,
+                    phone: searchPhone,
                     address: billingAddress || '',
                     openingBalance: 0,
-                    balance: calculatedBalanceDue
+                    balance: 0,
                 });
                 finalPartyId = newParty.id;
+                finalPartyNameUsed = newName;
             }
         }
 
@@ -285,7 +606,7 @@ function QuickBillingContent() {
             date, time,
             stateOfSupply,
             partyId: finalPartyId,
-            partyName: finalPartyName, partyPhone, billingAddress,
+            partyName: finalPartyNameUsed, partyPhone, billingAddress,
             items: validItems,
             subTotal, taxableAmount: subTotal,
             totalCgst: r2(validItems.reduce((a, i) => a + i.cgst, 0)),
@@ -297,14 +618,20 @@ function QuickBillingContent() {
             paymentStatus: calculatedPaymentStatus,
             amountPaid: calculatedAmountPaid,
             balanceDue: calculatedBalanceDue,
-            paymentMethod: 'cash',
+            paymentMethod: finalPaymentMethod,
+            splitPayments: finalSplitPayments,
+
             isGstBill: validItems.some(i => i.gstRate > 0),
             isHidden: false,
             notes: description,
             counter,
+            pointsEarned,
+            pointsRedeemed: pointsToRedeemAmount,
+            pointsValueRedeemed: pointsDiscountValue,
             createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
         };
         addInvoice(invoice as any);
+        setRedeemPointsAmount('');
         // Adjust stock based on transaction type
         if (invoice.invoiceType === 'sale') {
             validItems.forEach(item => { if (item.productId) adjustStock(item.productId, -item.qty); });
@@ -315,6 +642,22 @@ function QuickBillingContent() {
         // Auto-trigger print/PDF-save dialog
         toast.success('Bill saved! Opening print/save dialog…');
         setTimeout(() => window.print(), 600);
+
+        // Reset the inputs so the user can immediately enter a new bill
+        setItems([emptyRow()]);
+        setPartyName('');
+        setPartyPhone('');
+        setBillingAddress('');
+        setDiscountVal('');
+        setAmountGiven('');
+        setUseSplitPayment(false);
+        setSplitPayments([{ method: 'cash', amount: '' }]);
+
+        // Schedule clearing savedBill after the print dialog has been shown
+        setTimeout(() => {
+            setSavedBill(null);
+        }, 5000);
+
         return true;
     };
 
@@ -387,7 +730,7 @@ function QuickBillingContent() {
         setTimeout(() => window.print(), partyPhoneToUse ? 800 : 300);
     };
 
-    if (savedBill && !showPrintModal) {
+    if (false) { // Bypassed: always show the billing screen instead of intermediate success screen
         return (
             <div style={{ background: '#f8f9fa', minHeight: '100dvh' }}>
                 <div className="print-only">
@@ -506,6 +849,12 @@ function QuickBillingContent() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', flex: 1 }}>
                         <h1 style={{ fontSize: 20, fontWeight: 900, color: '#1A202C', margin: 0, minWidth: '140px' }}>Manual Invoice</h1>
 
+                        {(!user?.role || user?.role === 'owner' || user?.role === 'co_owner') && (
+                            <button onClick={() => setShowColumnConfig(true)} className="mi-btn" style={{ padding: '6px 12px', fontSize: 12, background: 'white', border: '1px solid #E2E8F0', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                                <Settings size={14} color="#718096" /> Edit Columns
+                            </button>
+                        )}
+
                         <select value={counter} onChange={e => setCounter(e.target.value)} className="e-select" style={{ width: 'auto', padding: '6px 10px', fontSize: 13, background: 'white', borderRadius: 8 }}>
                             <option>Counter 1</option>
                             <option>Counter 2</option>
@@ -527,9 +876,9 @@ function QuickBillingContent() {
                         {/* Balance Button */}
                         <button onClick={() => setShowBalanceModal(true)} className="mi-btn" style={{ border: '1px solid transparent', background: '#E6FFFA', color: '#2C7A7B', padding: '6px 14px', position: 'relative' }}>
                             <Wallet size={14} /> Balance
-                            {parties.filter((p: any) => p.balance > 0).length > 0 && (
+                            {outstandingBalanceCount > 0 && (
                                 <span style={{ position: 'absolute', top: -4, right: -4, background: '#E53E3E', color: 'white', borderRadius: '50%', width: 16, height: 16, fontSize: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900 }}>
-                                    {parties.filter((p: any) => p.balance > 0).length}
+                                    {outstandingBalanceCount}
                                 </span>
                             )}
                         </button>
@@ -626,16 +975,16 @@ function QuickBillingContent() {
                             <tr>
                                 <th style={{ width: 40, textAlign: 'center' }}>#</th>
                                 <th style={{ width: '15%' }}>ITEM</th>
-                                <th>BARCODE</th>
-                                <th>HSN</th>
-                                <th>MFG. DATE</th>
-                                <th style={{ textAlign: 'right' }}>MRP</th>
-                                <th style={{ textAlign: 'center' }}>SIZE</th>
+                                {cols.barcode && <th>BARCODE</th>}
+                                {cols.hsn && <th>HSN</th>}
+                                {cols.mfgDate && <th>MFG. DATE</th>}
+                                {cols.mrp && <th style={{ textAlign: 'right' }}>MRP</th>}
+                                {cols.size && <th style={{ textAlign: 'center' }}>SIZE</th>}
                                 <th style={{ textAlign: 'center', width: 60 }}>QTY</th>
                                 <th style={{ textAlign: 'center', width: 60 }}>UNIT</th>
                                 <th style={{ textAlign: 'right', width: 80 }}>PRICE</th>
-                                <th style={{ textAlign: 'center', color: '#4285F4' }}>DISCOUNT<br />%<span style={{ display: 'inline-block', width: 20 }} />AMT</th>
-                                <th style={{ textAlign: 'center', color: '#4285F4' }}>TAX<br />%<span style={{ display: 'inline-block', width: 20 }} />AMT</th>
+                                {cols.discount && <th style={{ textAlign: 'center', color: '#4285F4' }}>DISCOUNT<br />%<span style={{ display: 'inline-block', width: 20 }} />AMT</th>}
+                                {cols.tax && <th style={{ textAlign: 'center', color: '#4285F4' }}>TAX<br />%<span style={{ display: 'inline-block', width: 20 }} />AMT</th>}
                                 <th style={{ textAlign: 'right', width: 100 }}>AMOUNT</th>
                                 <th style={{ textAlign: 'center', width: 40 }}>ACT</th>
                             </tr>
@@ -713,8 +1062,12 @@ function QuickBillingContent() {
                                                         }}
                                                     >
                                                         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                                                            <span style={{ fontWeight: 700, fontSize: 13 }}>{p.name}</span>
-                                                            <span style={{ fontSize: 10, opacity: activeSuggestionIdx === pIdx ? 0.8 : 0.5 }}>₹{p.sellingPrice} • {p.stockQty} in stock</span>
+                                                            <span style={{ fontWeight: 700, fontSize: 13, color: p.isComboOffer ? '#7C3AED' : '#2D3748' }}>
+                                                                {p.isComboOffer ? `🎁 [COMBO] ${p.name}` : p.name}
+                                                            </span>
+                                                            <span style={{ fontSize: 10, opacity: activeSuggestionIdx === pIdx ? 0.8 : 0.5 }}>
+                                                                {p.isComboOffer ? `Combo Price: ₹${p.comboOffer.comboPrice}` : `₹${p.sellingPrice} • ${p.stockQty} in stock`}
+                                                             </span>
                                                         </div>
                                                         {p.barcode && <span style={{ fontSize: 9, fontFamily: 'monospace', background: activeSuggestionIdx === pIdx ? 'rgba(255,255,255,0.2)' : '#F1F5F9', padding: '2px 4px', borderRadius: 4 }}>{p.barcode}</span>}
                                                     </div>
@@ -722,40 +1075,64 @@ function QuickBillingContent() {
                                             </div>
                                         )}
                                     </td>
-                                    <td><input id={`barcode-input-${i}`} value={item.barcode} autoComplete="off" onChange={e => updateItem(i, 'barcode', e.target.value)} onKeyDown={e => {
-                                        if (e.key === 'Enter') {
-                                            e.preventDefault();
-                                            if (i === items.length - 1) {
-                                                setItems(prev => {
-                                                    const nextRows = [...prev, emptyRow()];
-                                                    // use a slightly longer timeout to guarantee render is complete
-                                                    setTimeout(() => { document.getElementById(`barcode-input-${i + 1}`)?.focus(); }, 100);
-                                                    return nextRows;
-                                                });
-                                            } else {
-                                                setTimeout(() => { document.getElementById(`barcode-input-${i + 1}`)?.focus(); }, 50);
-                                            }
-                                        }
-                                    }} /></td>
-                                    <td><input value={item.hsnCode} onChange={e => updateItem(i, 'hsnCode', e.target.value)} /></td>
-                                    <td><input type="date" value={item.mfgDate} onChange={e => updateItem(i, 'mfgDate', e.target.value)} style={{ padding: '8px 2px' }} /></td>
-                                    <td><input type="number" value={item.mrp || ''} onChange={e => updateItem(i, 'mrp', parseFloat(e.target.value) || 0)} style={{ textAlign: 'right' }} /></td>
-                                    <td><input value={item.size} onChange={e => updateItem(i, 'size', e.target.value)} style={{ textAlign: 'center' }} /></td>
-                                    <td><input type="number" min="0" value={item.qty} onChange={e => updateItem(i, 'qty', e.target.value)} style={{ textAlign: 'center', fontWeight: 'bold' }} /></td>
-                                    <td><input value={item.unit} onChange={e => updateItem(i, 'unit', e.target.value)} style={{ textAlign: 'center' }} /></td>
-                                    <td><input type="number" min="0" value={item.rate || ''} onChange={e => updateItem(i, 'rate', e.target.value)} style={{ textAlign: 'right' }} /></td>
-                                    <td style={{ textAlign: 'center' }}>
-                                        <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
-                                            <input type="number" value={item.discount} onChange={e => updateItem(i, 'discount', e.target.value)} style={{ width: 40, padding: '4px', textAlign: 'center', borderBottom: '1px solid #ddd' }} />
-                                            <input readOnly value={item.discountAmt.toFixed(2)} style={{ width: 50, padding: '4px', textAlign: 'center', color: '#A0AEC0' }} />
+                                    {cols.barcode && (
+                                        <td>
+                                            <input id={`barcode-input-${i}`} value={item.barcode ?? ''} autoComplete="off" onChange={e => updateItem(i, 'barcode', e.target.value)} onKeyDown={e => {
+                                                if (e.key === 'Enter') {
+                                                    e.preventDefault();
+                                                    if (i === items.length - 1) {
+                                                        setItems(prev => {
+                                                            const nextRows = [...prev, emptyRow()];
+                                                            setTimeout(() => { document.getElementById(`barcode-input-${i + 1}`)?.focus(); }, 100);
+                                                            return nextRows;
+                                                        });
+                                                    } else {
+                                                        setTimeout(() => { document.getElementById(`barcode-input-${i + 1}`)?.focus(); }, 50);
+                                                    }
+                                                }
+                                            }} />
+                                        </td>
+                                    )}
+                                    {cols.hsn && <td><input value={item.hsnCode ?? ''} onChange={e => updateItem(i, 'hsnCode', e.target.value)} /></td>}
+                                    {cols.mfgDate && <td><input type="date" value={item.mfgDate ?? ''} onChange={e => updateItem(i, 'mfgDate', e.target.value)} style={{ padding: '8px 2px' }} /></td>}
+                                    {cols.mrp && <td><input type="number" value={item.mrp || ''} onChange={e => updateItem(i, 'mrp', parseFloat(e.target.value) || 0)} style={{ textAlign: 'right' }} /></td>}
+                                    {cols.size && <td><input value={item.size ?? ''} onChange={e => updateItem(i, 'size', e.target.value)} style={{ textAlign: 'center' }} /></td>}
+                                    <td><input type="number" min="0" value={item.qty ?? 1} onChange={e => updateItem(i, 'qty', e.target.value)} style={{ textAlign: 'center', fontWeight: 'bold' }} /></td>
+                                    <td><input value={item.unit ?? 'Pcs'} onChange={e => updateItem(i, 'unit', e.target.value)} style={{ textAlign: 'center' }} /></td>
+                                    <td>
+                                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                                            {item.originalPrice && item.originalPrice !== item.rate && (
+                                                <span style={{ fontSize: 10, textDecoration: 'line-through', color: '#EA4335', marginRight: 4 }}>
+                                                    ₹{item.originalPrice.toFixed(2)}
+                                                </span>
+                                            )}
+                                            <input 
+                                                type="number" 
+                                                min="0" 
+                                                value={item.rate || ''} 
+                                                onChange={e => updateItem(i, 'rate', e.target.value)} 
+                                                style={{ textAlign: 'right', color: item.isFree ? '#2F855A' : 'inherit', fontWeight: item.isFree ? 'bold' : 'normal' }}
+                                                readOnly={item.isFree}
+                                            />
+                                            {item.isFree && <span style={{ fontSize: 9, color: '#34A853', fontWeight: 800 }}>FREE ITEM</span>}
                                         </div>
                                     </td>
-                                    <td style={{ textAlign: 'center' }}>
-                                        <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
-                                            <input type="number" value={item.gstRate} onChange={e => updateItem(i, 'gstRate', e.target.value)} style={{ width: 40, padding: '4px', textAlign: 'center', borderBottom: '1px solid #ddd' }} />
-                                            <input readOnly value={item.totalGst.toFixed(2)} style={{ width: 50, padding: '4px', textAlign: 'center', color: '#A0AEC0' }} />
-                                        </div>
-                                    </td>
+                                    {cols.discount && (
+                                        <td style={{ textAlign: 'center' }}>
+                                            <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
+                                                <input type="number" value={item.discount} onChange={e => updateItem(i, 'discount', e.target.value)} style={{ width: 40, padding: '4px', textAlign: 'center', borderBottom: '1px solid #ddd' }} />
+                                                <input readOnly value={item.discountAmt.toFixed(2)} style={{ width: 50, padding: '4px', textAlign: 'center', color: '#A0AEC0' }} />
+                                            </div>
+                                        </td>
+                                    )}
+                                    {cols.tax && (
+                                        <td style={{ textAlign: 'center' }}>
+                                            <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
+                                                <input type="number" value={item.gstRate} onChange={e => updateItem(i, 'gstRate', e.target.value)} style={{ width: 40, padding: '4px', textAlign: 'center', borderBottom: '1px solid #ddd' }} />
+                                                <input readOnly value={item.totalGst.toFixed(2)} style={{ width: 50, padding: '4px', textAlign: 'center', color: '#A0AEC0' }} />
+                                            </div>
+                                        </td>
+                                    )}
                                     <td style={{ textAlign: 'right', fontWeight: 800, paddingRight: 16 }}>{item.amount.toFixed(2)}</td>
                                     <td style={{ textAlign: 'center' }}>
                                         {items.length > 1 && (
@@ -813,7 +1190,222 @@ function QuickBillingContent() {
                         </div>
 
                         <div style={{ background: '#E2E8F0', height: 1, margin: '4px 0' }} />
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 12 }}>
+
+                        {/* Grand Total + Payment Section */}
+                        {grandTotalBeforePointsDiscount > 0 && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                 {/* Grand Total */}
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0' }}>
+                                    <span style={{ fontSize: 16, fontWeight: 900, color: '#1A202C' }}>GRAND TOTAL</span>
+                                    <span style={{ fontSize: 26, fontWeight: 900, color: '#1A202C' }}>
+                                        ₹{grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                                    </span>
+                                </div>
+
+                                {/* Promo Offers Summary */}
+                                {(bogoDiscountsSum > 0 || comboDiscountsSum > 0) && (
+                                    <div style={{ background: '#FFF5F5', borderRadius: 8, padding: '10px 12px', border: '1px solid #FED7D7', fontSize: 13, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                        <span style={{ fontWeight: 800, color: '#C53030', display: 'flex', alignItems: 'center', gap: 5 }}>🎁 Schemes/Offers Applied:</span>
+                                        {activeOfferLogs.map((log, idx) => (
+                                            <div key={idx} style={{ color: '#E53E3E', fontSize: 12, fontWeight: 600 }}>• {log}</div>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {/* Loyalty Points Panel */}
+                                {loyaltyEnabled && (partyPhone.trim() !== '' || selectedCustomer) && (
+                                    <div style={{ background: '#F0FFF4', border: '1.5px solid #C6F6D5', borderRadius: 12, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <span style={{ fontSize: 13, fontWeight: 800, color: '#22543D', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                🌟 Loyalty Points:
+                                            </span>
+                                            <span style={{ fontSize: 14, fontWeight: 900, color: '#22543D' }}>{loyaltyPointsAvailable}</span>
+                                        </div>
+                                        {canRedeemPoints ? (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                                <span style={{ fontSize: 12, fontWeight: 700, color: '#276749' }}>
+                                                    Redeem Points:
+                                                </span>
+                                                <input 
+                                                    type="number"
+                                                    value={redeemPointsAmount}
+                                                    onChange={e => {
+                                                        const rawVal = e.target.value;
+                                                        if (rawVal === '') {
+                                                            setRedeemPointsAmount('');
+                                                            return;
+                                                        }
+                                                        const val = Math.min(Math.max(0, parseInt(rawVal) || 0), pointsToRedeemLimit);
+                                                        setRedeemPointsAmount(String(val));
+                                                    }}
+                                                    placeholder="0"
+                                                    style={{
+                                                        width: 70,
+                                                        padding: '3px 8px',
+                                                        border: '1.5px solid #C6F6D5',
+                                                        borderRadius: 8,
+                                                        fontSize: 12,
+                                                        fontWeight: 800,
+                                                        color: '#276749',
+                                                        textAlign: 'center',
+                                                        outline: 'none',
+                                                        background: 'white'
+                                                    }}
+                                                    max={pointsToRedeemLimit}
+                                                    min={0}
+                                                />
+                                                <button
+                                                    onClick={() => setRedeemPointsAmount(String(pointsToRedeemLimit))}
+                                                    style={{
+                                                        padding: '3px 8px',
+                                                        borderRadius: 6,
+                                                        border: '1px solid #38A169',
+                                                        background: '#E6F4EA',
+                                                        color: '#276749',
+                                                        fontSize: 11,
+                                                        fontWeight: 800,
+                                                        cursor: 'pointer',
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center',
+                                                        transition: 'background 0.15s'
+                                                    }}
+                                                >
+                                                    Max
+                                                </button>
+                                                <span style={{ fontSize: 12, fontWeight: 700, color: '#276749', marginLeft: 2 }}>
+                                                    (Up to {pointsToRedeemLimit} pts · save ₹{(pointsToRedeemAmount * pointsRedemptionValue).toFixed(2)})
+                                                </span>
+                                            </div>
+                                        ) : (
+                                            <p style={{ fontSize: 11, color: '#718096', margin: 0 }}>
+                                                Need at least {minPointsToRedeem} points to redeem (Current: {loyaltyPointsAvailable}).
+                                            </p>
+                                        )}
+                                        
+                                        {/* Detailed Points Ledger Breakdown */}
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, borderTop: '1px dashed #C6F6D5', paddingTop: 8, marginTop: 4, fontSize: 12 }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#4A5568', fontWeight: 600 }}>
+                                                <span>Current Balance:</span>
+                                                <span>{loyaltyPointsAvailable} pts</span>
+                                            </div>
+                                            {pointsToRedeemAmount > 0 && (
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#E53E3E', fontWeight: 800 }}>
+                                                    <span>Points to Deduct:</span>
+                                                    <span>-{pointsToRedeemAmount} pts (-₹{pointsDiscountValue.toFixed(2)})</span>
+                                                </div>
+                                            )}
+                                            {pointsEarned > 0 && (
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#2F855A', fontWeight: 700 }}>
+                                                    <span>Points to Earn:</span>
+                                                    <span>+{pointsEarned} pts</span>
+                                                </div>
+                                            )}
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#22543D', fontWeight: 900, borderTop: '1.5px solid #C6F6D5', paddingTop: 6, marginTop: 2 }}>
+                                                <span>Remaining Balance (after save):</span>
+                                                <span>{Math.max(0, loyaltyPointsAvailable - pointsToRedeemAmount + pointsEarned)} pts</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Payment mode toggle */}
+                                <div style={{ display: 'flex', gap: 8 }}>
+                                    <button
+                                        onClick={() => setUseSplitPayment(false)}
+                                        style={{ flex: 1, padding: '9px', borderRadius: 8, border: '2px solid', borderColor: !useSplitPayment ? '#4285F4' : '#E2E8F0', background: !useSplitPayment ? '#E8F0FE' : '#F8FAFC', fontWeight: 800, fontSize: 12, cursor: 'pointer', color: !useSplitPayment ? '#1967D2' : '#718096', transition: 'all 0.15s' }}
+                                    >
+                                        💵 Single Payment
+                                    </button>
+                                    <button
+                                        onClick={() => setUseSplitPayment(true)}
+                                        style={{ flex: 1, padding: '9px', borderRadius: 8, border: '2px solid', borderColor: useSplitPayment ? '#6B46C1' : '#E2E8F0', background: useSplitPayment ? '#EDE9FE' : '#F8FAFC', fontWeight: 800, fontSize: 12, cursor: 'pointer', color: useSplitPayment ? '#553C9A' : '#718096', transition: 'all 0.15s' }}
+                                    >
+                                        ✂️ Split Payment
+                                    </button>
+                                </div>
+
+                                {/* Single Payment */}
+                                {!useSplitPayment && (
+                                    <div style={{ background: '#F8FAFC', borderRadius: 10, border: '1.5px solid #E2E8F0', padding: '10px 14px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                            <span style={{ fontSize: 13, fontWeight: 700, color: '#4A5568' }}>Amount Given (₹)</span>
+                                            <input
+                                                type="number"
+                                                value={amountGiven}
+                                                onChange={e => setAmountGiven(e.target.value)}
+                                                style={{ width: 130, border: '1.5px solid #CBD5E0', borderRadius: 8, outline: 'none', padding: '8px 12px', textAlign: 'right', fontSize: 16, fontWeight: 800 }}
+                                                placeholder="0.00"
+                                            />
+                                        </div>
+                                        {amountGiven && parseFloat(amountGiven) > 0 && (
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, fontSize: 14, fontWeight: 900 }}>
+                                                <span style={{ color: '#4A5568' }}>Balance Return:</span>
+                                                <span style={{ color: parseFloat(amountGiven) >= grandTotal ? '#38A169' : '#E53E3E' }}>
+                                                    {parseFloat(amountGiven) >= grandTotal ? '+' : ''}
+                                                    ₹{(parseFloat(amountGiven) - grandTotal).toFixed(2)}
+                                                </span>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* Split Payment Panel */}
+                                {useSplitPayment && (
+                                    <div style={{ background: '#FAFBFF', border: '1.5px solid #C3B8F8', borderRadius: 12, padding: '14px 16px' }}>
+                                        <div style={{ fontSize: 11, fontWeight: 800, color: '#553C9A', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>Split Payment Breakdown</div>
+                                        {splitPayments.map((sp, idx) => {
+                                            const methodInfo = SPLIT_METHODS.find(m => m.key === sp.method);
+                                            return (
+                                                <div key={idx} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
+                                                    <select
+                                                        value={sp.method}
+                                                        onChange={e => setSplitPayments(prev => prev.map((p, i) => i === idx ? { ...p, method: e.target.value } : p))}
+                                                        style={{ flex: 1, padding: '9px 10px', borderRadius: 8, border: '1.5px solid #E2E8F0', fontSize: 13, fontWeight: 700, color: methodInfo?.color || '#4A5568', background: 'white', outline: 'none' }}
+                                                    >
+                                                        {SPLIT_METHODS.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
+                                                    </select>
+                                                    <div style={{ position: 'relative', flex: 1 }}>
+                                                        <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 14, fontWeight: 800, color: '#4A5568' }}>₹</span>
+                                                        <input
+                                                            type="number"
+                                                            placeholder="0.00"
+                                                            value={sp.amount}
+                                                            onChange={e => setSplitPayments(prev => prev.map((p, i) => i === idx ? { ...p, amount: e.target.value } : p))}
+                                                            style={{ width: '100%', padding: '9px 8px 9px 24px', borderRadius: 8, border: '1.5px solid #E2E8F0', fontSize: 14, fontWeight: 800, outline: 'none', textAlign: 'right' }}
+                                                        />
+                                                    </div>
+                                                    {idx > 0 && (
+                                                        <button onClick={() => setSplitPayments(prev => prev.filter((_, i) => i !== idx))} style={{ background: '#FEE2E2', border: 'none', borderRadius: 8, width: 34, height: 38, cursor: 'pointer', color: '#C53030', fontWeight: 900, fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>×</button>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                        {splitPayments.length < 4 && (
+                                            <button
+                                                onClick={() => setSplitPayments(prev => [...prev, { method: prev[0]?.method === 'cash' ? 'upi' : 'cash', amount: '' }])}
+                                                style={{ width: '100%', padding: '8px', borderRadius: 8, border: '1.5px dashed #C3B8F8', background: 'white', color: '#6B46C1', fontWeight: 800, fontSize: 12, cursor: 'pointer', marginTop: 2 }}
+                                            >+ Add Payment Method</button>
+                                        )}
+                                        {/* Live totals summary */}
+                                        {(() => {
+                                            const totalSplit = splitPayments.reduce((a, s) => a + (parseFloat(s.amount) || 0), 0);
+                                            const remaining = grandTotal - totalSplit;
+                                            return (
+                                                <div style={{ marginTop: 10, padding: '10px 12px', background: remaining > 0.01 ? '#FFF5F5' : '#F0FFF4', borderRadius: 8, border: `1.5px solid ${remaining > 0.01 ? '#FED7D7' : '#9AE6B4'}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                    <span style={{ fontSize: 12, fontWeight: 800, color: remaining > 0.01 ? '#C53030' : '#276749' }}>
+                                                        {remaining > 0.01 ? `⚠️ Remaining: ₹${remaining.toFixed(2)}` : '✅ Fully covered'}
+                                                    </span>
+                                                    <span style={{ fontSize: 12, fontWeight: 700, color: '#4A5568' }}>Collected: ₹{Math.min(totalSplit, grandTotal).toFixed(2)}</span>
+                                                </div>
+                                            );
+                                        })()}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 12, marginTop: 8 }}>
                             <div style={{ display: 'flex', border: '1.5px solid #CBD5E0', borderRadius: 8, overflow: 'hidden' }}>
                                 <button onClick={handlePrintRequest} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '12px 20px', background: 'white', border: 'none', color: '#4285F4', fontWeight: 800, cursor: 'pointer', fontSize: 14 }}>
                                     <Printer size={16} /> PRINT (F12)
@@ -827,36 +1419,10 @@ function QuickBillingContent() {
                                 💾 SAVE INVOICE
                             </button>
                         </div>
-                        {grandTotal > 0 && (
-                            <>
-                                <div style={{ textAlign: 'right', fontSize: 24, fontWeight: 900, color: '#1A202C', marginTop: 8 }}>
-                                    ₹{grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                                </div>
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 12, padding: '12px', background: '#F8FAFC', borderRadius: 8, border: '1px solid #E2E8F0' }}>
-                                    <span style={{ fontSize: 14, fontWeight: 800, color: '#4A5568' }}>Amount Given</span>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                        <input
-                                            type="number"
-                                            value={amountGiven}
-                                            onChange={e => setAmountGiven(e.target.value)}
-                                            style={{ width: 120, border: 'none', borderRadius: 6, outline: 'none', padding: '8px 12px', textAlign: 'right', fontSize: 16, fontWeight: 800, boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.05)' }}
-                                            placeholder="0.00"
-                                        />
-                                    </div>
-                                </div>
-                                {amountGiven && parseFloat(amountGiven) > 0 && (
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 12, fontSize: 15, fontWeight: 900, padding: '0 12px' }}>
-                                        <span style={{ color: '#4A5568' }}>Balance:</span>
-                                        <span style={{ color: parseFloat(amountGiven) >= grandTotal ? '#38A169' : '#E53E3E' }}>
-                                            {parseFloat(amountGiven) >= grandTotal ? '+' : ''}
-                                            {(parseFloat(amountGiven) - grandTotal).toFixed(2)}
-                                        </span>
-                                    </div>
-                                )}
-                            </>
-                        )}
+
                     </div>
                 </div>
+
 
                 {/* Print Modal */}
                 {showPrintModal && (
@@ -952,6 +1518,58 @@ function QuickBillingContent() {
                     </div>
                 )}
 
+                {/* Column Configuration Modal */}
+                {showColumnConfig && (
+                    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }} onClick={() => setShowColumnConfig(false)}>
+                        <div onClick={e => e.stopPropagation()} style={{ background: 'white', padding: 24, borderRadius: 16, width: 360, display: 'flex', flexDirection: 'column', animation: 'fadeUp 0.2s ease' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                                <h3 style={{ fontWeight: 900, fontSize: 18, color: '#1A202C', margin: 0 }}>Configure Billing Columns</h3>
+                                <button onClick={() => setShowColumnConfig(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}>
+                                    <X size={20} color="#718096" />
+                                </button>
+                            </div>
+                            <p style={{ fontSize: 13, color: '#718096', marginBottom: 20 }}>
+                                Toggle billing columns on or off. These changes will be applied to all staff and role logins instantly.
+                            </p>
+
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 24 }}>
+                                {[
+                                    { key: 'barcode', label: 'Barcode' },
+                                    { key: 'hsn', label: 'HSN / SAC Code' },
+                                    { key: 'mfgDate', label: 'Mfg Date' },
+                                    { key: 'mrp', label: 'MRP' },
+                                    { key: 'size', label: 'Size' },
+                                    { key: 'discount', label: 'Discount Columns' },
+                                    { key: 'tax', label: 'Tax Columns' }
+                                ].map(col => {
+                                    const isChecked = cols[col.key as keyof typeof cols] ?? true;
+                                    return (
+                                        <label key={col.key} style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, fontWeight: 700, color: '#2D3748', cursor: 'pointer', userSelect: 'none' }}>
+                                            <input 
+                                                type="checkbox" 
+                                                checked={isChecked}
+                                                onChange={e => {
+                                                    const updatedCols = {
+                                                        ...cols,
+                                                        [col.key]: e.target.checked
+                                                    };
+                                                    updateCompany(companyId!, { quickBillingColumns: updatedCols });
+                                                }}
+                                                style={{ width: 18, height: 18, cursor: 'pointer' }}
+                                            />
+                                            {col.label}
+                                        </label>
+                                    );
+                                })}
+                            </div>
+
+                            <button onClick={() => setShowColumnConfig(false)} className="mi-btn" style={{ background: '#4285F4', color: 'white', border: 'none', width: '100%', padding: '12px', borderRadius: 10, justifyContent: 'center', fontSize: 14, fontWeight: 800 }}>
+                                Save Settings
+                            </button>
+                        </div>
+                    </div>
+                )}
+
                 {/* Suspend Modal */}
                 {showSuspendModal && (
                     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }} onClick={() => setShowSuspendModal(false)}>
@@ -1019,76 +1637,104 @@ function QuickBillingContent() {
                 )}
 
                 {/* Balance Modal */}
-                {showBalanceModal && (
-                    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }} onClick={() => setShowBalanceModal(false)}>
-                        <div onClick={e => e.stopPropagation()} style={{ background: 'white', padding: 32, borderRadius: 16, width: 600, maxHeight: '85vh', display: 'flex', flexDirection: 'column', animation: 'fadeUp 0.2s ease' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                                <h3 style={{ fontWeight: 900, fontSize: 18, color: '#1A202C', margin: 0 }}>Customer Balance Tracker</h3>
-                                <span style={{ background: '#E6FFFA', color: '#2C7A7B', padding: '4px 10px', borderRadius: 999, fontSize: 11, fontWeight: 800 }}>
-                                    Total Pending: ₹{parties.filter((p: any) => p.balance > 0).reduce((a: number, p: any) => a + p.balance, 0).toLocaleString('en-IN')}
-                                </span>
-                            </div>
-                            <p style={{ fontSize: 13, color: '#718096', marginBottom: 16 }}>
-                                View pending balance amounts from each customer. Click a customer to quickly auto-populate details.
-                            </p>
+                {showBalanceModal && (() => {
+                    // Compute accurate balances from actual unpaid invoices (not party.balance which can be corrupted)
+                    const normPhone = (ph: string) => {
+                        const d = (ph || '').replace(/\D/g, '');
+                        return d.startsWith('91') && d.length > 10 ? d.slice(2) : d;
+                    };
+                    const DRAFT = ['estimate', 'proforma', 'delivery_challan'];
+                    type TrackerEntry = { party: any; computedBalance: number; };
+                    const trackerMap = new Map<string, TrackerEntry>();
+                    // Build map from parties
+                    parties.filter((p: any) => p.companyId === companyId).forEach((p: any) => {
+                        const key = normPhone(p.phone) || p.id;
+                        if (!trackerMap.has(key)) trackerMap.set(key, { party: p, computedBalance: 0 });
+                    });
+                    // Sum up unpaid invoice balanceDue per party key
+                    invoices
+                        .filter((i: any) => i.invoiceType === 'sale' && !DRAFT.includes(i.invoiceType) && i.paymentStatus !== 'paid' && (i.balanceDue ?? 0) > 0)
+                        .forEach((i: any) => {
+                            const key = normPhone(i.partyPhone) || i.partyId || '';
+                            if (!key) return;
+                            if (trackerMap.has(key)) {
+                                trackerMap.get(key)!.computedBalance += i.balanceDue;
+                            } else {
+                                // Invoice references a party not in parties list — find by id
+                                const p = parties.find((p: any) => p.id === i.partyId) ||
+                                          parties.find((p: any) => normPhone(p.phone) === key);
+                                if (p) trackerMap.set(key, { party: p, computedBalance: i.balanceDue });
+                                else trackerMap.set(key, { party: { id: i.partyId, name: i.partyName, phone: i.partyPhone }, computedBalance: i.balanceDue });
+                            }
+                        });
+                    const trackerEntries = Array.from(trackerMap.values())
+                        .filter(e => e.computedBalance > 0)
+                        .filter(e => {
+                            if (!balanceSearchQuery) return true;
+                            const q = balanceSearchQuery.toLowerCase().trim();
+                            return e.party.name?.toLowerCase().includes(q) || (e.party.phone || '').includes(q);
+                        })
+                        .sort((a, b) => b.computedBalance - a.computedBalance);
+                    const grandTotal = trackerEntries.reduce((a, e) => a + e.computedBalance, 0);
+                    return (
+                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }} onClick={() => setShowBalanceModal(false)}>
+                    <div onClick={e => e.stopPropagation()} style={{ background: 'white', padding: 32, borderRadius: 16, width: 600, maxHeight: '85vh', display: 'flex', flexDirection: 'column', animation: 'fadeUp 0.2s ease' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                            <h3 style={{ fontWeight: 900, fontSize: 18, color: '#1A202C', margin: 0 }}>Customer Balance Tracker</h3>
+                            <span style={{ background: '#E6FFFA', color: '#2C7A7B', padding: '4px 10px', borderRadius: 999, fontSize: 11, fontWeight: 800 }}>
+                                Total Pending: ₹{grandTotal.toLocaleString('en-IN')}
+                            </span>
+                        </div>
+                        <p style={{ fontSize: 13, color: '#718096', marginBottom: 16 }}>
+                            View pending balance amounts from each customer. Click a customer to quickly auto-populate details.
+                        </p>
 
-                            {/* Search bar */}
-                            <div style={{ position: 'relative', marginBottom: 16 }}>
-                                <input
-                                    type="text"
-                                    placeholder="Search customer by name or phone..."
-                                    value={balanceSearchQuery}
-                                    onChange={e => setBalanceSearchQuery(e.target.value)}
-                                    style={{
-                                        width: '100%',
-                                        padding: '10px 14px 10px 36px',
-                                        borderRadius: 8,
-                                        border: '1px solid #CBD5E0',
-                                        fontSize: 13,
-                                        outline: 'none',
-                                        boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.05)'
-                                    }}
-                                />
-                                <Search size={16} color="#A0AEC0" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)' }} />
-                                {balanceSearchQuery && (
-                                    <button 
-                                        onClick={() => setBalanceSearchQuery('')}
-                                        style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#A0AEC0' }}
-                                    >
-                                        <X size={14} />
-                                    </button>
-                                )}
-                            </div>
+                        {/* Search bar */}
+                        <div style={{ position: 'relative', marginBottom: 16 }}>
+                            <input
+                                type="text"
+                                placeholder="Search customer by name or phone..."
+                                value={balanceSearchQuery}
+                                onChange={e => setBalanceSearchQuery(e.target.value)}
+                                style={{
+                                    width: '100%',
+                                    padding: '10px 14px 10px 36px',
+                                    borderRadius: 8,
+                                    border: '1px solid #CBD5E0',
+                                    fontSize: 13,
+                                    outline: 'none',
+                                    boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.05)'
+                                }}
+                            />
+                            <Search size={16} color="#A0AEC0" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)' }} />
+                            {balanceSearchQuery && (
+                                <button
+                                    onClick={() => setBalanceSearchQuery('')}
+                                    style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#A0AEC0' }}
+                                >
+                                    <X size={14} />
+                                </button>
+                            )}
+                        </div>
 
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, overflowY: 'auto', flex: 1 }}>
-                                {parties.filter((p: any) => {
-                                    if (p.balance <= 0) return false;
-                                    if (!balanceSearchQuery) return true;
-                                    const query = balanceSearchQuery.toLowerCase().trim();
-                                    return p.name.toLowerCase().includes(query) || (p.phone && p.phone.toLowerCase().includes(query)) || (p.mobile && p.mobile.toLowerCase().includes(query));
-                                }).length === 0 ? (
-                                    <div style={{ textAlign: 'center', color: '#A0AEC0', padding: '40px 0', fontSize: 13 }}>No customers found matching the search.</div>
-                                ) : (
-                                    parties.filter((p: any) => {
-                                        if (p.balance <= 0) return false;
-                                        if (!balanceSearchQuery) return true;
-                                        const query = balanceSearchQuery.toLowerCase().trim();
-                                        return p.name.toLowerCase().includes(query) || (p.phone && p.phone.toLowerCase().includes(query)) || (p.mobile && p.mobile.toLowerCase().includes(query));
-                                    }).map((party: any) => (
-                                        <div key={party.id} style={{ padding: 14, border: '1px solid #E2E8F0', borderRadius: 10, display: 'flex', flexDirection: 'column', gap: 10, background: '#F8FAFC' }}>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                <div>
-                                                    <div style={{ fontWeight: 800, fontSize: 14, color: '#2D3748' }}>{party.name}</div>
-                                                    <div style={{ fontSize: 11, color: '#A0AEC0', marginTop: 2 }}>{party.phone || 'No phone'}</div>
-                                                </div>
-                                                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                                                    <span style={{ fontWeight: 900, color: '#E53E3E', fontSize: 15 }}>₹{party.balance.toLocaleString('en-IN')}</span>
-                                                    <button onClick={() => {
-                                                        setPartyName(party.name);
-                                                        setPartyPhone(party.phone || '');
-                                                        setBillingAddress(party.billingAddress || party.address || '');
-                                                        setShowBalanceModal(false);
-                                                        toast.success(`Selected customer "${party.name}"`);
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, overflowY: 'auto', flex: 1 }}>
+                            {trackerEntries.length === 0 ? (
+                                <div style={{ textAlign: 'center', color: '#A0AEC0', padding: '40px 0', fontSize: 13 }}>No customers with outstanding balance.</div>
+                            ) : trackerEntries.map(({ party, computedBalance }) => (
+                                <div key={party.id} style={{ padding: 14, border: '1px solid #E2E8F0', borderRadius: 10, display: 'flex', flexDirection: 'column', gap: 10, background: '#F8FAFC' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <div>
+                                            <div style={{ fontWeight: 800, fontSize: 14, color: '#2D3748' }}>{party.name}</div>
+                                            <div style={{ fontSize: 11, color: '#A0AEC0', marginTop: 2 }}>{party.phone || 'No phone'}</div>
+                                        </div>
+                                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                                            <span style={{ fontWeight: 900, color: '#E53E3E', fontSize: 15 }}>₹{computedBalance.toLocaleString('en-IN')}</span>
+                                            <button onClick={() => {
+                                                setPartyName(party.name);
+                                                setPartyPhone(party.phone || '');
+                                                setBillingAddress(party.billingAddress || party.address || '');
+                                                setShowBalanceModal(false);
+                                                toast.success(`Selected customer "${party.name}"`);
                                                     }} className="mi-btn" style={{ background: '#E6FFFA', color: '#2C7A7B', border: 'none', padding: '6px 12px', fontSize: 12 }}>
                                                         Select
                                                     </button>
@@ -1096,27 +1742,33 @@ function QuickBillingContent() {
                                             </div>
                                             <div style={{ display: 'flex', gap: 8, alignItems: 'center', borderTop: '1px solid #EDF2F7', paddingTop: 10, flexWrap: 'wrap' }}>
                                                 <span style={{ fontSize: 12, color: '#718096', fontWeight: 600 }}>Amount Paid:</span>
-                                                <input 
-                                                    type="number" 
-                                                    placeholder="0.00" 
-                                                    value={customPayments[party.id] || ''}
-                                                    onChange={e => setCustomPayments(prev => ({ ...prev, [party.id]: e.target.value }))}
-                                                    style={{ width: 90, padding: '4px 8px', border: '1px solid #CBD5E0', borderRadius: 6, fontSize: 12, outline: 'none' }}
-                                                />
-                                                <button onClick={() => {
+                                                 <input
+                                                     type="number"
+                                                     placeholder="0.00"
+                                                     value={customPayments[party.id] || ''}
+                                                     onChange={e => setCustomPayments(prev => ({ ...prev, [party.id]: e.target.value }))}
+                                                     style={{ width: 90, padding: '4px 8px', border: '1px solid #CBD5E0', borderRadius: 6, fontSize: 12, outline: 'none' }}
+                                                 />
+                                                 <button onClick={() => {
                                                     const amt = parseFloat(customPayments[party.id]) || 0;
                                                     if (amt <= 0) {
                                                         toast.error('Please enter a valid amount greater than 0');
                                                         return;
                                                     }
-                                                    if (amt > party.balance) {
-                                                        toast.error(`Amount exceeds pending balance of ₹${party.balance}`);
+                                                    if (amt > computedBalance) {
+                                                        toast.error(`Amount exceeds pending balance of ₹${computedBalance.toLocaleString('en-IN')}`);
                                                         return;
                                                     }
-                                                    
-                                                    const newBalance = Math.max(0, party.balance - amt);
-                                                    updateParty(party.id, { balance: newBalance });
-                                                    
+
+                                                    // addBalancePayment handles the balance update + records into paymentHistory
+                                                    addBalancePayment(party.id, {
+                                                        type: 'received',
+                                                        amount: amt,
+                                                        method: 'cash',
+                                                        date: new Date().toLocaleDateString('en-CA'),
+                                                        note: 'Recorded via Balance Tracker'
+                                                    });
+
                                                     let remainingPayment = amt;
                                                     const sortedInvoices = [...invoices].reverse();
                                                     sortedInvoices.forEach((inv: any) => {
@@ -1144,12 +1796,20 @@ function QuickBillingContent() {
                                                 <button onClick={async () => {
                                                     const confirmed = await confirm({
                                                         title: 'Clear Outstanding Balance',
-                                                        message: `Are you sure you want to mark the balance of ₹${party.balance.toLocaleString('en-IN')} as fully paid for "${party.name}"?`,
+                                                        message: `Are you sure you want to mark the balance of ₹${computedBalance.toLocaleString('en-IN')} as fully paid for "${party.name}"?`,
                                                         confirmLabel: 'Mark Fully Paid',
                                                         success: true
                                                     });
                                                     if (confirmed) {
-                                                        updateParty(party.id, { balance: 0 });
+                                                        const fullAmt = computedBalance;
+                                                        // addBalancePayment handles the balance update (sets to 0) + records history
+                                                        addBalancePayment(party.id, {
+                                                            type: 'received',
+                                                            amount: fullAmt,
+                                                            method: 'cash',
+                                                            date: new Date().toLocaleDateString('en-CA'),
+                                                            note: 'Marked fully paid via Balance Tracker'
+                                                        });
                                                         invoices.forEach((inv: any) => {
                                                             if (inv.partyId === party.id || (party.phone && inv.partyPhone === party.phone)) {
                                                                 if (inv.balanceDue > 0) {
@@ -1168,16 +1828,16 @@ function QuickBillingContent() {
                                                 </button>
                                             </div>
                                         </div>
-                                    ))
-                                )}
-                            </div>
+                                    ))}
+                                </div>
 
-                            <div style={{ display: 'flex', gap: 12, marginTop: 24 }}>
-                                <button onClick={() => setShowBalanceModal(false)} style={{ flex: 1, padding: '10px', borderRadius: 8, background: 'white', border: '1px solid #E2E8F0', fontWeight: 700, color: '#4A5568', cursor: 'pointer' }}>Close</button>
+                                <div style={{ display: 'flex', gap: 12, marginTop: 24 }}>
+                                    <button onClick={() => setShowBalanceModal(false)} style={{ flex: 1, padding: '10px', borderRadius: 8, background: 'white', border: '1px solid #E2E8F0', fontWeight: 700, color: '#4A5568', cursor: 'pointer' }}>Close</button>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                )}
+                    );
+                })()}
             <ConfirmDialog />
             </div>
         </div>

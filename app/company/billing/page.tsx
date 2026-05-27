@@ -1,19 +1,21 @@
 'use client';
 import { useState, useMemo, useEffect } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { useStore, useCompanyData, useActiveCompany } from '@/lib/store';
-import { formatDate, formatShort } from '@/lib/utils';
+import { formatDate, formatShort, buildWhatsAppReminderUrl } from '@/lib/utils';
 import Link from 'next/link';
 import {
     Plus, Search, FileText, ChevronRight, Filter, Download, Eye, EyeOff,
-    ShoppingCart, FileCheck, FileX, Truck
+    ShoppingCart, FileCheck, FileX, Truck, MessageCircle
 } from 'lucide-react';
+
 import toast from 'react-hot-toast';
 
 const TABS = ['All GST Bills', 'Sale', 'Purchase', 'Estimate', 'Due', 'Returns'];
 
 export default function BillingListPage() {
     const { activeCompanyId } = useStore();
+    const router = useRouter();
     const companyId = activeCompanyId;
     const company = useActiveCompany();
     const allInvoices = useCompanyData('invoices') as any[];
@@ -252,9 +254,22 @@ export default function BillingListPage() {
                                                         </span>
                                                     </td>
                                                     <td>
-                                                        <Link href={`/company/billing/invoice?id=${inv.id}`} style={{ fontSize: 12, color: '#4285F4', fontWeight: 700, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 2 }}>
-                                                            View <ChevronRight size={12} />
-                                                        </Link>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                            <Link href={`/company/billing/invoice?id=${inv.id}`} style={{ fontSize: 12, color: '#4285F4', fontWeight: 700, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 2 }}>
+                                                                View <ChevronRight size={12} />
+                                                            </Link>
+                                                            {inv.paymentStatus !== 'paid' && inv.balanceDue > 0 && (
+                                                                <a
+                                                                    href={buildWhatsAppReminderUrl(inv)}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    title={`Send WhatsApp reminder to ${inv.partyName || 'customer'}`}
+                                                                    style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 700, color: '#25D366', textDecoration: 'none', padding: '4px 8px', borderRadius: 6, background: '#F0FDF4', border: '1px solid #BBF7D0', whiteSpace: 'nowrap' }}
+                                                                >
+                                                                    <MessageCircle size={12} /> WA
+                                                                </a>
+                                                            )}
+                                                        </div>
                                                     </td>
                                                 </tr>
                                             );
@@ -268,8 +283,8 @@ export default function BillingListPage() {
                                                                 {[...(showHidden && (!company?.invoicePassword || passwordVerified) ? hiddenInvoices : []), ...filtered].map((inv: any) => {
                                     const c = typeColor(inv.invoiceType);
                                     return (
-                                        <Link key={inv.id} href={`/company/billing/invoice?id=${inv.id}`}
-                                            style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', borderBottom: '1px solid #F8F9FA', textDecoration: 'none' }}>
+                                        <div key={inv.id} onClick={() => router.push(`/company/billing/invoice?id=${inv.id}`)}
+                                            style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', borderBottom: '1px solid #F8F9FA', cursor: 'pointer' }}>
                                             <div style={{ width: 42, height: 42, borderRadius: 12, background: c + '15', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 15, color: c, flexShrink: 0 }}>
                                                 {(inv.partyName || '#')[0]}
                                             </div>
@@ -279,9 +294,22 @@ export default function BillingListPage() {
                                             </div>
                                             <div style={{ textAlign: 'right', flexShrink: 0 }}>
                                                 <p style={{ fontSize: 14, fontWeight: 900, color: '#1A1A2E' }}>₹{inv.grandTotal.toLocaleString('en-IN')}</p>
-                                                <span className={`badge ${inv.paymentStatus === 'paid' ? 'badge-green' : inv.paymentStatus === 'partial' ? 'badge-yellow' : 'badge-red'}`}>{inv.paymentStatus}</span>
+                                                <div style={{ display: 'flex', gap: 6, alignItems: 'center', justifyContent: 'flex-end', marginTop: 2 }}>
+                                                    <span className={`badge ${inv.paymentStatus === 'paid' ? 'badge-green' : inv.paymentStatus === 'partial' ? 'badge-yellow' : 'badge-red'}`}>{inv.paymentStatus}</span>
+                                                    {inv.paymentStatus !== 'paid' && inv.balanceDue > 0 && (
+                                                        <a
+                                                            href={buildWhatsAppReminderUrl(inv)}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            onClick={e => e.stopPropagation()}
+                                                            style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, fontWeight: 800, color: '#25D366', textDecoration: 'none', padding: '3px 7px', borderRadius: 5, background: '#F0FDF4', border: '1px solid #BBF7D0' }}
+                                                        >
+                                                            <MessageCircle size={11} /> WA
+                                                        </a>
+                                                    )}
+                                                </div>
                                             </div>
-                                        </Link>
+                                        </div>
                                     );
                                 })}
                             </div>
