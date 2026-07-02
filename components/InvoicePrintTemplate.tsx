@@ -1,17 +1,27 @@
 import React from 'react';
 import { formatDate, amountInWords } from '@/lib/utils';
 import Barcode from 'react-barcode';
+import { useStore } from '@/lib/store';
 
 export const InvoicePrintTemplate = ({ invoice, company, copies = 1, previewMode = false, themeOverride }: { invoice: any, company: any, copies?: number, previewMode?: boolean, themeOverride?: string }) => {
     if (!invoice) return null;
 
+    const templates = useStore.getState().templates;
+    const activeTemplate = templates?.find((t: any) => t.id === company?.templateId) || templates?.[0];
+
     const theme = themeOverride || company?.templateTheme || 'classic';
     const showColumns = company?.templateColumns || { sn: true, hsn: true, discount: true, tax: true, rate: true };
-    const showQrCode = !!company?.bankDetails?.upiId;
+    const themeColor = company?.templateThemeColor || '';
+    const showLogo = company?.templateColumns?.showLogo !== false;
+    const showQrCode = (!!company?.bankDetails?.upiId || !!company?.bankDetails?.qrCodeUrl) && (
+        company?.templateColumns?.showQrCode !== undefined 
+            ? company.templateColumns.showQrCode 
+            : (activeTemplate ? activeTemplate.showQrCode : true) // default to true if template showQrCode is not explicitly false
+    );
     const labels = company?.customLabels || {};
 
-    const upiLink = showQrCode ? `upi://pay?pa=${company.bankDetails.upiId}&pn=${encodeURIComponent(company.name)}&am=${invoice.grandTotal.toFixed(2)}&cu=INR` : null;
-    const qrUrl = upiLink ? `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(upiLink)}` : null;
+    const upiLink = (showQrCode && company?.bankDetails?.upiId) ? `upi://pay?pa=${company.bankDetails.upiId}&pn=${encodeURIComponent(company.name)}&am=${invoice.grandTotal.toFixed(2)}&cu=INR` : null;
+    const qrUrl = company?.bankDetails?.qrCodeUrl || (upiLink ? `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(upiLink)}` : null);
 
     let lTitle = labels.invoiceTitle || 'TAX INVOICE';
     let lNo = labels.invoiceNo || 'Invoice No';
@@ -181,20 +191,20 @@ export const InvoicePrintTemplate = ({ invoice, company, copies = 1, previewMode
     // THEME 1: CLASSIC (Traditional & Professional)
     // ==========================================
     const renderClassic = (copyIndex: number) => (
-        <div key={copyIndex} style={{ fontFamily: 'Arial, sans-serif', width: '100%', maxWidth: '210mm', minHeight: '100vh', margin: '0 auto', background: 'white', color: 'black', position: 'relative', overflow: 'hidden', padding: '40px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ textAlign: 'center', marginBottom: 24, borderBottom: '2px solid black', paddingBottom: 16, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                {company?.logo && <img src={company.logo} alt="Logo" style={{ height: 60, objectFit: 'contain', marginBottom: 8 }} />}
-                <h1 style={{ fontSize: 26, fontWeight: 'bold', margin: '0 0 8px 0', textTransform: 'uppercase', letterSpacing: '1px' }}>{company?.name || 'Company Name'}</h1>
+        <div key={`classic-${copyIndex}`} style={{ fontFamily: 'Arial, sans-serif', width: '100%', maxWidth: '210mm', minHeight: '100vh', margin: '0 auto', background: 'white', color: 'black', position: 'relative', overflow: 'hidden', padding: '40px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ textAlign: 'center', marginBottom: 24, borderBottom: `2px solid ${themeColor || 'black'}`, paddingBottom: 16, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                {showLogo && (company?.logoUrl || company?.logo) && <img src={company.logoUrl || company.logo} alt="Logo" style={{ height: 60, objectFit: 'contain', marginBottom: 8 }} />}
+                <h1 style={{ fontSize: 26, fontWeight: 'bold', margin: '0 0 8px 0', textTransform: 'uppercase', letterSpacing: '1px', color: themeColor || 'black' }}>{company?.name || 'Company Name'}</h1>
                 <p style={{ fontSize: 12, margin: '0 0 4px 0' }}>{company?.address || 'Address Line 1'}, {company?.city || 'City'}</p>
                 <p style={{ fontSize: 12, margin: '0 0 4px 0' }}>Phone: {company?.phone || 'N/A'}</p>
                 {company?.gstNumber && <p style={{ fontSize: 12, margin: '0 0 4px 0', fontWeight: 'bold' }}>GSTIN: {company.gstNumber}</p>}
             </div>
 
             <div style={{ textAlign: 'center', marginBottom: 24 }}>
-                <h2 style={{ fontSize: 18, fontWeight: 'bold', textDecoration: 'underline', textTransform: 'uppercase', margin: 0 }}>{lTitle}</h2>
+                <h2 style={{ fontSize: 18, fontWeight: 'bold', textDecoration: 'underline', textTransform: 'uppercase', margin: 0, color: themeColor || 'black' }}>{lTitle}</h2>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 24, fontSize: 12, border: '1px solid black', padding: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 24, fontSize: 12, border: `1px solid ${themeColor || 'black'}`, padding: 12 }}>
                 <div style={{ flex: 1 }}>
                     <p style={{ margin: '0 0 6px', fontWeight: 'bold' }}>{lBilledTo}:</p>
                     <p style={{ margin: '0 0 4px' }}>{invoice.partyName || 'Cash Customer'}</p>
@@ -275,9 +285,9 @@ export const InvoicePrintTemplate = ({ invoice, company, copies = 1, previewMode
     // THEME 2: CREATIVE (Dark Left Column)
     // ==========================================
     const renderCreative = (copyIndex: number) => (
-        <div key={copyIndex} className="theme-container theme-creative" style={{ fontFamily: "'Inter', sans-serif", width: '100%', maxWidth: '210mm', minHeight: '100vh', margin: '0 auto', background: '#F8FAFC', color: '#1A202C', position: 'relative', overflow: 'hidden', padding: '24px', boxSizing: 'border-box', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' as any, display: 'flex', flexDirection: 'column' }}>
+        <div key={`creative-${copyIndex}`} className="theme-container theme-creative" style={{ fontFamily: "'Inter', sans-serif", width: '100%', maxWidth: '210mm', minHeight: '100vh', margin: '0 auto', background: '#F8FAFC', color: '#1A202C', position: 'relative', overflow: 'hidden', padding: '24px', boxSizing: 'border-box', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' as any, display: 'flex', flexDirection: 'column' }}>
             <div className="creative-layout" style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
-                <div className="creative-sidebar" style={{ width: 130, flexShrink: 0, background: '#1A202C', color: 'white', padding: '40px 16px 24px', borderRadius: '12px', wordBreak: 'break-word' }}>
+                <div className="creative-sidebar" style={{ width: 130, flexShrink: 0, background: themeColor || '#1A202C', color: 'white', padding: '40px 16px 24px', borderRadius: '12px', wordBreak: 'break-word' }}>
                     <p style={{ fontSize: 11, fontWeight: 700, color: '#A0AEC0', marginBottom: 2 }}>{lDate}</p>
                     <p style={{ fontSize: 12, fontWeight: 600, marginBottom: 20 }}>{formatDate(invoice.date)}</p>
                     <p style={{ fontSize: 11, fontWeight: 700, color: '#A0AEC0', marginBottom: 2 }}>{lDueDate}</p>
@@ -290,16 +300,16 @@ export const InvoicePrintTemplate = ({ invoice, company, copies = 1, previewMode
                 <div style={{ flex: 1, minWidth: 280, paddingTop: 0, display: 'flex', flexDirection: 'column' }}>
                     <div style={{ textAlign: 'right', marginBottom: 20, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 16 }}>
                         <div style={{ textAlign: 'right' }}>
-                            <p style={{ fontSize: 20, fontWeight: 900, margin: '0 0 4px 0' }}>{company?.name || 'Your Company Name'}</p>
+                            <p style={{ fontSize: 20, fontWeight: 900, margin: '0 0 4px 0', color: themeColor || '#1A202C' }}>{company?.name || 'Your Company Name'}</p>
                             <p style={{ fontSize: 11, color: '#718096', margin: 0 }}>{company?.city}</p>
                             <p style={{ fontSize: 11, color: '#718096', margin: 0 }}>{company?.phone}</p>
                             <p style={{ fontSize: 11, color: '#718096', margin: 0 }}>{company?.gstNumber ? `GSTIN: ${company.gstNumber}` : ''}</p>
                         </div>
-                        {company?.logo && <img src={company.logo} alt="Logo" style={{ height: 50, objectFit: 'contain' }} />}
+                        {showLogo && (company?.logoUrl || company?.logo) && <img src={company.logoUrl || company.logo} alt="Logo" style={{ height: 50, objectFit: 'contain' }} />}
                     </div>
-                    <h1 style={{ fontSize: 36, fontWeight: 900, margin: '10px 0 0', letterSpacing: '-1px' }}>{lTitle}</h1>
+                    <h1 style={{ fontSize: 36, fontWeight: 900, margin: '10px 0 0', letterSpacing: '-1px', color: themeColor || '#1A202C' }}>{lTitle}</h1>
                     <p style={{ fontSize: 13, fontWeight: 600, color: '#A0AEC0', marginBottom: 24 }}>#{invoice.invoiceNumber}</p>
-                    <div style={{ background: 'white', minHeight: 200, padding: '24px', borderRadius: 12, borderTop: '4px solid #1A202C', overflowX: 'auto' }}>
+                    <div style={{ background: 'white', minHeight: 200, padding: '24px', borderRadius: 12, borderTop: `4px solid ${themeColor || '#1A202C'}`, overflowX: 'auto' }}>
                         <ItemsTableModern headerColor="#F7FAFC" textColor="#4A5568" />
                         <TotalsBlock />
                         <div style={{ marginTop: 24, paddingTop: 16, borderTop: '1px solid #E2E8F0' }}>
@@ -319,8 +329,8 @@ export const InvoicePrintTemplate = ({ invoice, company, copies = 1, previewMode
     // THEME 3: MODERN EDGE (Blue Accents)
     // ==========================================
     const renderModern = (copyIndex: number) => (
-        <div key={copyIndex} style={{ fontFamily: "'Inter', sans-serif", width: '100%', maxWidth: '210mm', minHeight: '100vh', margin: '0 auto', background: 'white', color: '#2D3748', position: 'relative', overflow: 'hidden', padding: '0 0 24px 0', boxSizing: 'border-box', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' as any, display: 'flex', flexDirection: 'column' }}>
-            <div style={{ display: 'flex', background: '#4285F4', color: 'white', padding: '40px 40px', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div key={`modern-${copyIndex}`} style={{ fontFamily: "'Inter', sans-serif", width: '100%', maxWidth: '210mm', minHeight: '100vh', margin: '0 auto', background: 'white', color: '#2D3748', position: 'relative', overflow: 'hidden', padding: '0 0 24px 0', boxSizing: 'border-box', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' as any, display: 'flex', flexDirection: 'column' }}>
+            <div style={{ display: 'flex', background: themeColor || '#4285F4', color: 'white', padding: '40px 40px', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
                     <h1 style={{ fontSize: 40, fontWeight: 900, margin: '0 0 8px 0', letterSpacing: '-1px' }}>{lTitle}</h1>
                     <p style={{ fontSize: 15, margin: 0, opacity: 0.9 }}>{lNo}: <b>{invoice.invoiceNumber}</b></p>
@@ -332,34 +342,34 @@ export const InvoicePrintTemplate = ({ invoice, company, copies = 1, previewMode
                         <p style={{ fontSize: 12, margin: 0, opacity: 0.8 }}>{company?.phone}</p>
                         {company?.gstNumber && <p style={{ fontSize: 12, margin: 0, opacity: 0.8 }}>GSTIN: {company.gstNumber}</p>}
                     </div>
-                    {company?.logo && <img src={company.logo} alt="Logo" style={{ height: 60, objectFit: 'contain', background: 'white', padding: 4, borderRadius: 8 }} />}
+                    {showLogo && (company?.logoUrl || company?.logo) && <img src={company.logoUrl || company.logo} alt="Logo" style={{ height: 60, objectFit: 'contain', background: 'white', padding: 4, borderRadius: 8 }} />}
                 </div>
             </div>
 
             <div style={{ padding: '40px 40px', display: 'flex', justifyContent: 'space-between' }}>
                 <div>
-                    <p style={{ fontSize: 12, fontWeight: 800, color: '#4285F4', textTransform: 'uppercase', marginBottom: 8, margin: 0 }}>{lBilledTo}</p>
+                    <p style={{ fontSize: 12, fontWeight: 800, color: themeColor || '#4285F4', textTransform: 'uppercase', marginBottom: 8, margin: 0 }}>{lBilledTo}</p>
                     <p style={{ fontSize: 16, fontWeight: 800, margin: '0 0 4px 0' }}>{invoice.partyName || 'Cash Customer'}</p>
                     <p style={{ fontSize: 13, color: '#718096', margin: 0 }}>{invoice.partyPhone}</p>
                     <p style={{ fontSize: 13, color: '#718096', margin: 0 }}>{invoice.billingAddress}</p>
                 </div>
                 <div style={{ textAlign: 'right', display: 'flex', gap: 40 }}>
                     <div>
-                        <p style={{ fontSize: 12, fontWeight: 800, color: '#4285F4', textTransform: 'uppercase', marginBottom: 8, margin: 0 }}>{lDate}</p>
+                        <p style={{ fontSize: 12, fontWeight: 800, color: themeColor || '#4285F4', textTransform: 'uppercase', marginBottom: 8, margin: 0 }}>{lDate}</p>
                         <p style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>{formatDate(invoice.date)}</p>
                     </div>
                     <div>
-                        <p style={{ fontSize: 12, fontWeight: 800, color: '#4285F4', textTransform: 'uppercase', marginBottom: 8, margin: 0 }}>{lPayment}</p>
+                        <p style={{ fontSize: 12, fontWeight: 800, color: themeColor || '#4285F4', textTransform: 'uppercase', marginBottom: 8, margin: 0 }}>{lPayment}</p>
                         <PaymentMethodDisplay style={{ fontSize: 15, fontWeight: 700 }} />
                     </div>
                 </div>
             </div>
 
             <div style={{ padding: '0 40px' }}>
-                <ItemsTableModern headerColor="#E8F0FE" textColor="#1967D2" />
+                <ItemsTableModern headerColor={themeColor ? themeColor + '15' : '#E8F0FE'} textColor={themeColor || '#1967D2'} />
                 <TotalsBlock />
-                <div style={{ marginTop: 40, padding: 24, background: '#F8FAFC', borderRadius: 8, borderLeft: '4px solid #4285F4' }}>
-                    <p style={{ fontSize: 12, fontWeight: 800, color: '#4285F4', margin: '0 0 8px 0' }}>Terms & Remarks</p>
+                <div style={{ marginTop: 40, padding: 24, background: '#F8FAFC', borderRadius: 8, borderLeft: `4px solid ${themeColor || '#4285F4'}` }}>
+                    <p style={{ fontSize: 12, fontWeight: 800, color: themeColor || '#4285F4', margin: '0 0 8px 0' }}>Terms & Remarks</p>
                     <p style={{ fontSize: 12, color: '#4A5568', margin: 0, whiteSpace: 'pre-wrap' }}>{invoice.notes || defaultFooter}</p>
                 </div>
             </div>
@@ -374,11 +384,11 @@ export const InvoicePrintTemplate = ({ invoice, company, copies = 1, previewMode
     // THEME 4: WAVES (Playful & Smooth)
     // ==========================================
     const renderWaves = (copyIndex: number) => (
-        <div key={copyIndex} style={{ fontFamily: "'Inter', sans-serif", width: '100%', maxWidth: '210mm', minHeight: '100vh', margin: '0 auto', background: '#FAFAFA', color: '#1A202C', position: 'relative', overflow: 'hidden', padding: '0 0 24px 0', boxSizing: 'border-box', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' as any, display: 'flex', flexDirection: 'column' }}>
-            <div style={{ background: 'linear-gradient(135deg, #FF6B6B 0%, #FF8E53 100%)', color: 'white', padding: '40px 40px 60px', borderBottomLeftRadius: '50% 20%', borderBottomRightRadius: '50% 20%' }}>
+        <div key={`waves-${copyIndex}`} style={{ fontFamily: "'Inter', sans-serif", width: '100%', maxWidth: '210mm', minHeight: '100vh', margin: '0 auto', background: '#FAFAFA', color: '#1A202C', position: 'relative', overflow: 'hidden', padding: '0 0 24px 0', boxSizing: 'border-box', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' as any, display: 'flex', flexDirection: 'column' }}>
+            <div style={{ background: themeColor ? `linear-gradient(135deg, ${themeColor} 0%, ${themeColor}CC 100%)` : 'linear-gradient(135deg, #FF6B6B 0%, #FF8E53 100%)', color: 'white', padding: '40px 40px 60px', borderBottomLeftRadius: '50% 20%', borderBottomRightRadius: '50% 20%' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <div style={{ width: 280, background: 'rgba(255,255,255,0.2)', padding: 20, borderRadius: 16, backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', gap: 12 }}>
-                        {company?.logo && <img src={company.logo} alt="Logo" style={{ height: 40, objectFit: 'contain', background: 'white', padding: 4, borderRadius: 8 }} />}
+                        {showLogo && (company?.logoUrl || company?.logo) && <img src={company.logoUrl || company.logo} alt="Logo" style={{ height: 40, objectFit: 'contain', background: 'white', padding: 4, borderRadius: 8 }} />}
                         <div>
                             <p style={{ fontSize: 16, fontWeight: 900, margin: '0 0 4px 0' }}>{company?.name}</p>
                             <p style={{ fontSize: 11, margin: 0 }}>{company?.city} • {company?.phone}</p>
@@ -394,7 +404,7 @@ export const InvoicePrintTemplate = ({ invoice, company, copies = 1, previewMode
             <div style={{ padding: '40px', marginTop: -20 }}>
                 <div style={{ display: 'flex', gap: 24, marginBottom: 32 }}>
                     <div style={{ flex: 1, background: 'white', padding: 20, borderRadius: 16, boxShadow: '0 4px 20px rgba(0,0,0,0.03)' }}>
-                        <p style={{ fontSize: 11, color: '#A0AEC0', textTransform: 'uppercase', fontWeight: 800, margin: '0 0 8px 0' }}>{lBilledTo}</p>
+                        <p style={{ fontSize: 11, color: themeColor || '#FF6B6B', textTransform: 'uppercase', fontWeight: 800, margin: '0 0 8px 0' }}>{lBilledTo}</p>
                         <p style={{ fontSize: 16, fontWeight: 800, margin: '0 0 4px 0', color: '#2D3748' }}>{invoice.partyName || 'Cash / Walk-in Customer'}</p>
                         <p style={{ fontSize: 13, color: '#718096', margin: 0 }}>{invoice.partyPhone}</p>
                     </div>
@@ -411,7 +421,7 @@ export const InvoicePrintTemplate = ({ invoice, company, copies = 1, previewMode
                 </div>
 
                 <div style={{ background: 'white', padding: 24, borderRadius: 16, boxShadow: '0 4px 20px rgba(0,0,0,0.03)' }}>
-                    <ItemsTableModern headerColor="#FFF5F5" textColor="#E53E3E" />
+                    <ItemsTableModern headerColor={themeColor ? themeColor + '15' : '#FFF5F5'} textColor={themeColor || '#E53E3E'} />
                     <TotalsBlock />
                 </div>
 
@@ -434,17 +444,18 @@ export const InvoicePrintTemplate = ({ invoice, company, copies = 1, previewMode
         const printTitle = titles[titleIndex] || titles[0];
 
         return (
-            <div key={titleIndex} style={{ padding: '40px', background: 'white', color: 'black', fontFamily: 'Arial, sans-serif', width: '100%', maxWidth: '210mm', minHeight: '100vh', margin: '0 auto', boxSizing: 'border-box', position: 'relative' }}>
-                {previewMode ? null : <p style={{ textAlign: 'center', fontSize: 10, fontWeight: 'bold', border: '1px solid black', display: 'inline-block', padding: '2px 8px', position: 'absolute', top: 40, right: 40, textTransform: 'uppercase' }}>{printTitle}</p>}
+            <div key={`quick_bill-${titleIndex}`} style={{ padding: '40px', background: 'white', color: 'black', fontFamily: 'Arial, sans-serif', width: '100%', maxWidth: '210mm', minHeight: '100vh', margin: '0 auto', boxSizing: 'border-box', position: 'relative' }}>
+                {previewMode ? null : <p style={{ textAlign: 'center', fontSize: 10, fontWeight: 'bold', border: `1px solid ${themeColor || 'black'}`, display: 'inline-block', padding: '2px 8px', position: 'absolute', top: 40, right: 40, textTransform: 'uppercase', color: themeColor || 'black' }}>{printTitle}</p>}
 
-                <div style={{ textAlign: 'center', marginBottom: 20 }}>
-                    <h1 style={{ fontSize: 24, fontWeight: 'bold', margin: 0, textTransform: 'uppercase' }}>{company?.name || 'Your Company'}</h1>
+                <div style={{ textAlign: 'center', marginBottom: 20, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                    {showLogo && (company?.logoUrl || company?.logo) && <img src={company.logoUrl || company.logo} alt="Logo" style={{ height: 50, objectFit: 'contain', marginBottom: 8 }} />}
+                    <h1 style={{ fontSize: 24, fontWeight: 'bold', margin: 0, textTransform: 'uppercase', color: themeColor || 'black' }}>{company?.name || 'Your Company'}</h1>
                     <p style={{ fontSize: 12, margin: '4px 0 0' }}>{company?.address || 'Shop Address'}, {company?.city || ''}</p>
                     <p style={{ fontSize: 12, margin: '2px 0 0' }}>Phone: {company?.phone} {company?.gstNumber ? `| GSTIN: ${company?.gstNumber}` : ''}</p>
-                    <p style={{ fontSize: 14, fontWeight: 'bold', margin: '8px 0 0', textTransform: 'uppercase', letterSpacing: '1px' }}>{lTitle}</p>
+                    <p style={{ fontSize: 14, fontWeight: 'bold', margin: '8px 0 0', textTransform: 'uppercase', letterSpacing: '1px', color: themeColor || 'black' }}>{lTitle}</p>
                 </div>
 
-                <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '2px solid black', borderBottom: '2px solid black', padding: '10px 0', fontSize: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: `2px solid ${themeColor || 'black'}`, borderBottom: `2px solid ${themeColor || 'black'}`, padding: '10px 0', fontSize: 12 }}>
                     <div>
                         <p><b>{lBilledTo}:</b> {invoice.partyName || 'Cash / Walk-in'}</p>
                         {invoice.partyPhone && <p>Phone: {invoice.partyPhone}</p>}
@@ -459,7 +470,7 @@ export const InvoicePrintTemplate = ({ invoice, company, copies = 1, previewMode
 
                 <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 16, fontSize: 12 }}>
                     <thead>
-                        <tr style={{ borderBottom: '1px solid black' }}>
+                        <tr style={{ borderBottom: `1px solid ${themeColor || 'black'}` }}>
                             <th style={{ textAlign: 'left', padding: '8px 4px' }}>SN</th>
                             <th style={{ textAlign: 'left', padding: '8px 4px' }}>Description of Goods</th>
                             {showColumns.hsn && <th style={{ textAlign: 'center', padding: '8px 4px' }}>HSN</th>}
@@ -525,15 +536,16 @@ export const InvoicePrintTemplate = ({ invoice, company, copies = 1, previewMode
     // THEME 6: MINIMALIST (Clean & Spaced)
     // ==========================================
     const renderMinimalist = (copyIndex: number) => (
-        <div key={copyIndex} style={{ fontFamily: "'Inter', sans-serif", width: '100%', maxWidth: '210mm', minHeight: '100vh', margin: '0 auto', background: 'white', color: '#1A202C', position: 'relative', overflow: 'hidden', padding: '60px 50px', boxSizing: 'border-box', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' as any, display: 'flex', flexDirection: 'column' }}>
+        <div key={`minimalist-${copyIndex}`} style={{ fontFamily: "'Inter', sans-serif", width: '100%', maxWidth: '210mm', minHeight: '100vh', margin: '0 auto', background: 'white', color: '#1A202C', position: 'relative', overflow: 'hidden', padding: '60px 50px', boxSizing: 'border-box', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' as any, display: 'flex', flexDirection: 'column' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 60 }}>
                 <div>
-                    <h1 style={{ fontSize: 28, fontWeight: 300, letterSpacing: '4px', margin: '0 0 16px 0', textTransform: 'uppercase', color: '#718096' }}>{lTitle}</h1>
+                    <h1 style={{ fontSize: 28, fontWeight: 300, letterSpacing: '4px', margin: '0 0 16px 0', textTransform: 'uppercase', color: themeColor || '#718096' }}>{lTitle}</h1>
                     <p style={{ fontSize: 13, margin: '0 0 4px', fontWeight: 600 }}>{lNo}: {invoice.invoiceNumber}</p>
                     <p style={{ fontSize: 13, margin: 0, color: '#718096' }}>{lDate}: {formatDate(invoice.date)}</p>
                 </div>
                 <div style={{ textAlign: 'right' }}>
-                    {company?.logo ? <img src={company.logo} alt="Logo" style={{ height: 40, objectFit: 'contain', marginBottom: 12 }} /> : <h2 style={{ fontSize: 22, fontWeight: 800, margin: '0 0 12px 0' }}>{company?.name}</h2>}
+                    {showLogo && (company?.logoUrl || company?.logo) && <img src={company.logoUrl || company.logo} alt="Logo" style={{ height: 40, objectFit: 'contain', marginBottom: 12 }} />}
+                    <h2 style={{ fontSize: 22, fontWeight: 800, margin: '0 0 12px 0', color: themeColor || '#1A202C' }}>{company?.name}</h2>
                     <p style={{ fontSize: 12, margin: '0 0 4px', color: '#4A5568' }}>{company?.address}</p>
                     <p style={{ fontSize: 12, margin: '0 0 4px', color: '#4A5568' }}>{company?.city}</p>
                     <p style={{ fontSize: 12, margin: '0', color: '#4A5568' }}>{company?.phone}</p>
@@ -542,7 +554,7 @@ export const InvoicePrintTemplate = ({ invoice, company, copies = 1, previewMode
 
             <div style={{ display: 'flex', gap: 60, marginBottom: 50 }}>
                 <div>
-                    <p style={{ fontSize: 10, fontWeight: 700, color: '#A0AEC0', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 8 }}>{lBilledTo}</p>
+                    <p style={{ fontSize: 10, fontWeight: 700, color: themeColor || '#A0AEC0', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 8 }}>{lBilledTo}</p>
                     <p style={{ fontSize: 16, fontWeight: 600, margin: '0 0 4px 0' }}>{invoice.partyName || 'Walk-in Customer'}</p>
                     {invoice.partyPhone && <p style={{ fontSize: 13, margin: '0 0 4px', color: '#718096' }}>{invoice.partyPhone}</p>}
                     {invoice.billingAddress && <p style={{ fontSize: 13, margin: 0, color: '#718096' }}>{invoice.billingAddress}</p>}
@@ -652,19 +664,22 @@ export const InvoicePrintTemplate = ({ invoice, company, copies = 1, previewMode
     );
 
     const renderVibrant = (copyIndex: number) => (
-        <div key={copyIndex} style={{ fontFamily: "'Inter', sans-serif", width: '100%', maxWidth: '210mm', minHeight: '100vh', margin: '0 auto', background: '#FFFFFF', color: '#1E3A8A', position: 'relative', overflow: 'hidden', padding: '0', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ background: '#EFF6FF', padding: '50px', borderBottom: '4px solid #3B82F6', display: 'flex', justifyContent: 'space-between' }}>
+        <div key={`vibrant-${copyIndex}`} style={{ fontFamily: "'Inter', sans-serif", width: '100%', maxWidth: '210mm', minHeight: '100vh', margin: '0 auto', background: '#FFFFFF', color: themeColor || '#1E3A8A', position: 'relative', overflow: 'hidden', padding: '0', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ background: themeColor ? themeColor + '10' : '#EFF6FF', padding: '50px', borderBottom: `4px solid ${themeColor || '#3B82F6'}`, display: 'flex', justifyContent: 'space-between' }}>
                 <div>
-                    <h1 style={{ fontSize: 40, fontWeight: 900, color: '#1E40AF', margin: '0 0 8px 0' }}>{lTitle}</h1>
-                    <div style={{ display: 'inline-block', background: '#3B82F6', color: 'white', padding: '4px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700 }}>#{invoice.invoiceNumber}</div>
+                    <h1 style={{ fontSize: 40, fontWeight: 900, color: themeColor || '#1E40AF', margin: '0 0 8px 0' }}>{lTitle}</h1>
+                    <div style={{ display: 'inline-block', background: themeColor || '#3B82F6', color: 'white', padding: '4px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700 }}>#{invoice.invoiceNumber}</div>
                 </div>
-                <div style={{ textAlign: 'right' }}>
-                    <p style={{ fontSize: 24, fontWeight: 900, color: '#1E40AF', margin: '0 0 4px 0' }}>{company?.name}</p>
-                    <p style={{ fontSize: 13, color: '#60A5FA' }}>{company?.phone}</p>
+                <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: 16 }}>
+                    {showLogo && (company?.logoUrl || company?.logo) && <img src={company.logoUrl || company.logo} alt="Logo" style={{ height: 50, objectFit: 'contain' }} />}
+                    <div style={{ textAlign: 'right' }}>
+                        <p style={{ fontSize: 24, fontWeight: 900, color: themeColor || '#1E40AF', margin: '0 0 4px 0' }}>{company?.name}</p>
+                        <p style={{ fontSize: 13, color: themeColor || '#60A5FA' }}>{company?.phone}</p>
+                    </div>
                 </div>
             </div>
             <div style={{ padding: '50px', flex: 1 }}>
-                <ItemsTableModern headerColor="#DBEAFE" textColor="#1E40AF" />
+                <ItemsTableModern headerColor={themeColor ? themeColor + '15' : '#DBEAFE'} textColor={themeColor || '#1E40AF'} />
                 <TotalsBlock />
             </div>
             <div style={{ padding: '0 50px 40px' }}>
@@ -890,13 +905,16 @@ export const InvoicePrintTemplate = ({ invoice, company, copies = 1, previewMode
     );
 
     const renderSeaGreen = (copyIndex: number) => (
-        <div key={copyIndex} style={{ fontFamily: "'Inter', sans-serif", width: '100%', maxWidth: '210mm', minHeight: '100vh', margin: '0 auto', background: '#F1F5F9', color: '#1E293B', position: 'relative', overflow: 'hidden', padding: '0', boxSizing: 'border-box', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' as any, display: 'flex', flexDirection: 'column' }}>
-            <div style={{ background: '#45C4A0', color: 'white', padding: '50px 40px', paddingBottom: '70px' }}>
+        <div key={`sea_green-${copyIndex}`} style={{ fontFamily: "'Inter', sans-serif", width: '100%', maxWidth: '210mm', minHeight: '100vh', margin: '0 auto', background: '#F1F5F9', color: '#1E293B', position: 'relative', overflow: 'hidden', padding: '0', boxSizing: 'border-box', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' as any, display: 'flex', flexDirection: 'column' }}>
+            <div style={{ background: themeColor || '#45C4A0', color: 'white', padding: '50px 40px', paddingBottom: '70px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <div>
-                        <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 20 }}>{company?.name}</div>
-                        <h1 style={{ fontSize: 56, fontWeight: 900, margin: '0 0 10px', letterSpacing: '-2px' }}>{lTitle}.</h1>
-                        <p style={{ fontSize: 16, fontWeight: 600 }}>{lNo === 'Invoice No' ? 'No.' : lNo} {invoice.invoiceNumber}</p>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                        {showLogo && (company?.logoUrl || company?.logo) && <img src={company.logoUrl || company.logo} alt="Logo" style={{ height: 50, objectFit: 'contain', background: 'white', padding: 4, borderRadius: 8 }} />}
+                        <div>
+                            <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}>{company?.name}</div>
+                            <h1 style={{ fontSize: 40, fontWeight: 900, margin: '0 0 10px', letterSpacing: '-2px' }}>{lTitle}.</h1>
+                            <p style={{ fontSize: 16, fontWeight: 600 }}>{lNo === 'Invoice No' ? 'No.' : lNo} {invoice.invoiceNumber}</p>
+                        </div>
                     </div>
                     <div style={{ textAlign: 'right', paddingTop: 40 }}>
                         <p style={{ fontSize: 14, fontWeight: 600, opacity: 0.9, margin: '0 0 4px' }}>{lDate}:</p>
@@ -908,18 +926,18 @@ export const InvoicePrintTemplate = ({ invoice, company, copies = 1, previewMode
             <div style={{ padding: '0 40px', flex: 1, marginTop: '-40px' }}>
                 <div style={{ display: 'flex', gap: 20, marginBottom: 30 }}>
                     <div style={{ background: 'white', padding: '24px', borderRadius: '16px', flex: 1, boxShadow: '0 4px 20px rgba(0,0,0,0.05)' }}>
-                        <p style={{ fontSize: 13, fontWeight: 800, color: '#45C4A0', textTransform: 'uppercase', marginBottom: 8 }}>{lBilledTo}:</p>
+                        <p style={{ fontSize: 13, fontWeight: 800, color: themeColor || '#45C4A0', textTransform: 'uppercase', marginBottom: 8 }}>{lBilledTo}:</p>
                         <p style={{ fontSize: 18, fontWeight: 800, color: '#1E293B', marginBottom: 12 }}>{invoice.partyName || 'Customer'}</p>
                         <p style={{ fontSize: 12, color: '#64748B', display: 'flex', gap: 8, marginBottom: 4 }}><strong style={{ width: 60 }}>Phone:</strong> {invoice.partyPhone || '-'}</p>
                         <p style={{ fontSize: 12, color: '#64748B', display: 'flex', gap: 8 }}><strong style={{ width: 60 }}>Addr:</strong> {invoice.billingAddress || '-'}</p>
                     </div>
                     <div style={{ background: 'white', padding: '24px', borderRadius: '16px', flex: 0.8, boxShadow: '0 4px 20px rgba(0,0,0,0.05)' }}>
-                        <p style={{ fontSize: 13, fontWeight: 800, color: '#45C4A0', textTransform: 'uppercase', marginBottom: 8 }}>Payment Info:</p>
+                        <p style={{ fontSize: 13, fontWeight: 800, color: themeColor || '#45C4A0', textTransform: 'uppercase', marginBottom: 8 }}>Payment Info:</p>
                         <p style={{ fontSize: 14, fontWeight: 700, color: '#1E293B', marginBottom: 12 }}>{invoice.paymentMethod || 'Cash'}</p>
                         {company?.bankDetails?.upiId && <p style={{ fontSize: 12, color: '#64748B', display: 'flex', gap: 8, marginBottom: 4 }}><strong style={{ width: 40 }}>UPI:</strong> {company.bankDetails.upiId}</p>}
 
-                        <div style={{ background: '#E8F6F3', padding: '10px 16px', borderRadius: '10px', display: 'inline-block', marginTop: 10 }}>
-                            <span style={{ fontSize: 12, fontWeight: 800, color: '#45C4A0', marginRight: 10 }}>Amount Due:</span>
+                        <div style={{ background: themeColor ? themeColor + '15' : '#E8F6F3', padding: '10px 16px', borderRadius: '10px', display: 'inline-block', marginTop: 10 }}>
+                            <span style={{ fontSize: 12, fontWeight: 800, color: themeColor || '#45C4A0', marginRight: 10 }}>Amount Due:</span>
                             <span style={{ fontSize: 18, fontWeight: 900, color: '#1E293B' }}>₹{invoice.grandTotal.toLocaleString('en-IN')}</span>
                         </div>
                     </div>
@@ -928,7 +946,7 @@ export const InvoicePrintTemplate = ({ invoice, company, copies = 1, previewMode
                 <div style={{ background: 'white', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 4px 20px rgba(0,0,0,0.05)' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                         <thead>
-                            <tr style={{ background: '#45C4A0', color: 'white' }}>
+                            <tr style={{ background: themeColor || '#45C4A0', color: 'white' }}>
                                 <th style={{ textAlign: 'center', padding: '14px', width: '10%' }}>No.</th>
                                 <th style={{ textAlign: 'left', padding: '14px' }}>Product Description</th>
                                 <th style={{ textAlign: 'right', padding: '14px' }}>Price</th>
@@ -949,7 +967,7 @@ export const InvoicePrintTemplate = ({ invoice, company, copies = 1, previewMode
                         </tbody>
                     </table>
                     <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '20px 24px', background: '#F8FAFC' }}>
-                        <div style={{ background: '#45C4A0', color: 'white', padding: '10px 24px', borderRadius: '20px', display: 'flex', alignItems: 'center', gap: 16 }}>
+                        <div style={{ background: themeColor || '#45C4A0', color: 'white', padding: '10px 24px', borderRadius: '20px', display: 'flex', alignItems: 'center', gap: 16 }}>
                             <span style={{ fontSize: 14, fontWeight: 600 }}>Total Due:</span>
                             <span style={{ fontSize: 20, fontWeight: 900 }}>₹{invoice.grandTotal.toLocaleString('en-IN')}</span>
                         </div>
@@ -957,7 +975,7 @@ export const InvoicePrintTemplate = ({ invoice, company, copies = 1, previewMode
                 </div>
 
                 <div style={{ display: 'flex', gap: 20, marginTop: 30 }}>
-                    <div style={{ background: '#45C4A0', color: 'white', padding: '20px', borderRadius: '16px', flex: 1 }}>
+                    <div style={{ background: themeColor || '#45C4A0', color: 'white', padding: '20px', borderRadius: '16px', flex: 1 }}>
                         <h4 style={{ fontSize: 14, fontWeight: 800, margin: '0 0 8px 0' }}>Terms & Conditions:</h4>
                         <p style={{ fontSize: 11, lineHeight: 1.5, margin: 0, opacity: 0.9 }}>{invoice.notes || defaultFooter}</p>
                     </div>
@@ -972,40 +990,40 @@ export const InvoicePrintTemplate = ({ invoice, company, copies = 1, previewMode
             <div style={{ padding: '30px 40px', background: 'white', marginTop: 40 }}>
                 <FooterBrand />
             </div>
-            <div style={{ height: 20, background: '#45C4A0', width: '100%' }}></div>
+            <div style={{ height: 20, background: themeColor || '#45C4A0', width: '100%' }}></div>
         </div>
     );
 
     const renderFormalQuote = (copyIndex: number) => (
-        <div key={copyIndex} style={{ fontFamily: "Arial, sans-serif", width: '100%', maxWidth: '210mm', minHeight: '100vh', margin: '0 auto', background: 'white', color: 'black', position: 'relative', overflow: 'hidden', padding: '50px', boxSizing: 'border-box', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' as any, display: 'flex', flexDirection: 'column' }}>
+        <div key={`formal_quote-${copyIndex}`} style={{ fontFamily: "Arial, sans-serif", width: '100%', maxWidth: '210mm', minHeight: '100vh', margin: '0 auto', background: 'white', color: 'black', position: 'relative', overflow: 'hidden', padding: '50px', boxSizing: 'border-box', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' as any, display: 'flex', flexDirection: 'column' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 40 }}>
                 <div>
-                    {(company?.logoUrl || company?.logo) && <img src={company.logoUrl || company.logo} alt="Logo" style={{ height: 60, marginBottom: 10, objectFit: 'contain' }} />}
-                    <h2 style={{ fontSize: 20, fontWeight: 'bold', margin: '0 0 10px 0' }}>{company?.name || '[Company Name]'}</h2>
+                    {showLogo && (company?.logoUrl || company?.logo) && <img src={company.logoUrl || company.logo} alt="Logo" style={{ height: 60, marginBottom: 10, objectFit: 'contain' }} />}
+                    <h2 style={{ fontSize: 20, fontWeight: 'bold', margin: '0 0 10px 0', color: themeColor || 'black' }}>{company?.name || '[Company Name]'}</h2>
                     <p style={{ fontSize: 12, margin: '0 0 4px 0' }}>{company?.address || '[Street Address]'}</p>
                     <p style={{ fontSize: 12, margin: '0 0 4px 0' }}>{company?.city || '[City, ST ZIP]'}</p>
                     <p style={{ fontSize: 12, margin: '0 0 4px 0' }}>Phone: {company?.phone || '(000) 000-0000'}</p>
                     {company?.gstNumber && <p style={{ fontSize: 12, margin: '0 0 4px 0' }}>GSTIN: {company?.gstNumber}</p>}
                 </div>
                 <div style={{ textAlign: 'right' }}>
-                    <h1 style={{ fontSize: 36, fontWeight: 'bold', color: '#1F2937', margin: '0 0 20px 0', letterSpacing: '1px' }}>{lTitle}</h1>
-                    <table style={{ borderCollapse: 'collapse', fontSize: 12, float: 'right', width: 250 }}>
+                    <h1 style={{ fontSize: 36, fontWeight: 'bold', color: themeColor || '#1F2937', margin: '0 0 20px 0', letterSpacing: '1px' }}>{lTitle}</h1>
+                    <table style={{ borderCollapse: 'collapse', fontSize: 12, float: 'right', width: 250, border: `1px solid ${themeColor || 'black'}` }}>
                         <tbody>
                             <tr>
-                                <td style={{ border: '1px solid black', padding: '6px', fontWeight: 'bold', background: '#E5E7EB', width: '50%' }}>{lNo} #</td>
+                                <td style={{ border: `1px solid ${themeColor || 'black'}`, padding: '6px', fontWeight: 'bold', background: themeColor ? themeColor + '20' : '#E5E7EB', width: '50%', color: themeColor || 'black' }}>{lNo} #</td>
                                 <td style={{ border: '1px solid black', padding: '6px', textAlign: 'center' }}>{invoice.invoiceNumber}</td>
                             </tr>
                             <tr>
-                                <td style={{ border: '1px solid black', padding: '6px', fontWeight: 'bold', background: '#E5E7EB' }}>DATE</td>
-                                <td style={{ border: '1px solid black', padding: '6px', textAlign: 'center' }}>{formatDate(invoice.date)}</td>
+                                <td style={{ border: `1px solid ${themeColor || 'black'}`, padding: '6px', fontWeight: 'bold', background: themeColor ? themeColor + '20' : '#E5E7EB', color: themeColor || 'black' }}>DATE</td>
+                                <td style={{ border: `1px solid ${themeColor || 'black'}`, padding: '6px', textAlign: 'center' }}>{formatDate(invoice.date)}</td>
                             </tr>
                             <tr>
-                                <td style={{ border: '1px solid black', padding: '6px', fontWeight: 'bold', background: '#E5E7EB' }}>CUSTOMER ID</td>
-                                <td style={{ border: '1px solid black', padding: '6px', textAlign: 'center' }}>{invoice.partyId || 'CASH'}</td>
+                                <td style={{ border: `1px solid ${themeColor || 'black'}`, padding: '6px', fontWeight: 'bold', background: themeColor ? themeColor + '20' : '#E5E7EB', color: themeColor || 'black' }}>CUSTOMER ID</td>
+                                <td style={{ border: `1px solid ${themeColor || 'black'}`, padding: '6px', textAlign: 'center' }}>{invoice.partyId || 'CASH'}</td>
                             </tr>
                             <tr>
-                                <td style={{ border: '1px solid black', padding: '6px', fontWeight: 'bold', background: '#E5E7EB' }}>VALID UNTIL</td>
-                                <td style={{ border: '1px solid black', padding: '6px', textAlign: 'center' }}>{invoice.dueDate ? formatDate(invoice.dueDate) : '-'}</td>
+                                <td style={{ border: `1px solid ${themeColor || 'black'}`, padding: '6px', fontWeight: 'bold', background: themeColor ? themeColor + '20' : '#E5E7EB', color: themeColor || 'black' }}>VALID UNTIL</td>
+                                <td style={{ border: `1px solid ${themeColor || 'black'}`, padding: '6px', textAlign: 'center' }}>{invoice.dueDate ? formatDate(invoice.dueDate) : '-'}</td>
                             </tr>
                         </tbody>
                     </table>
@@ -1014,8 +1032,8 @@ export const InvoicePrintTemplate = ({ invoice, company, copies = 1, previewMode
 
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 30 }}>
                 <div style={{ width: '45%' }}>
-                    <div style={{ background: '#E5E7EB', padding: '6px 10px', fontWeight: 'bold', border: '1px solid black', borderBottom: 'none', fontSize: 12 }}>CUSTOMER INFO</div>
-                    <div style={{ border: '1px solid black', padding: '10px', fontSize: 12, minHeight: 80 }}>
+                    <div style={{ background: themeColor ? themeColor + '20' : '#E5E7EB', padding: '6px 10px', fontWeight: 'bold', border: `1px solid ${themeColor || 'black'}`, borderBottom: 'none', fontSize: 12, color: themeColor || 'black' }}>CUSTOMER INFO</div>
+                    <div style={{ border: `1px solid ${themeColor || 'black'}`, padding: '10px', fontSize: 12, minHeight: 80 }}>
                         <p style={{ margin: '0 0 4px', fontWeight: 'bold' }}>{invoice.partyName || '[Name]'}</p>
                         <p style={{ margin: '0 0 4px' }}>Phone: {invoice.partyPhone || '[Phone]'}</p>
                         <p style={{ margin: '0 0 4px' }}>{invoice.billingAddress || '[Address]'}</p>
@@ -1030,57 +1048,57 @@ export const InvoicePrintTemplate = ({ invoice, company, copies = 1, previewMode
 
             {invoice.notes && (
                 <div style={{ marginBottom: 30 }}>
-                    <div style={{ background: '#E5E7EB', padding: '6px 10px', fontWeight: 'bold', border: '1px solid black', borderBottom: 'none', fontSize: 12 }}>DESCRIPTION OF WORK / NOTES</div>
-                    <div style={{ border: '1px solid black', padding: '10px', fontSize: 12, minHeight: 60, whiteSpace: 'pre-wrap' }}>
+                    <div style={{ background: themeColor ? themeColor + '20' : '#E5E7EB', padding: '6px 10px', fontWeight: 'bold', border: `1px solid ${themeColor || 'black'}`, borderBottom: 'none', fontSize: 12, color: themeColor || 'black' }}>DESCRIPTION OF WORK / NOTES</div>
+                    <div style={{ border: `1px solid ${themeColor || 'black'}`, padding: '10px', fontSize: 12, minHeight: 60, whiteSpace: 'pre-wrap' }}>
                         {invoice.notes}
                     </div>
                 </div>
             )}
 
             <div style={{ flex: 1 }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, border: '1px solid black' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, border: `1px solid ${themeColor || 'black'}` }}>
                     <thead>
-                        <tr style={{ background: '#E5E7EB' }}>
-                            <th style={{ border: '1px solid black', padding: '8px 10px', textAlign: 'left' }}>ITEMIZED COSTS</th>
-                            <th style={{ border: '1px solid black', padding: '8px 10px', textAlign: 'center', width: '10%' }}>QTY</th>
-                            <th style={{ border: '1px solid black', padding: '8px 10px', textAlign: 'right', width: '15%' }}>UNIT PRICE</th>
-                            <th style={{ border: '1px solid black', padding: '8px 10px', textAlign: 'right', width: '15%' }}>AMOUNT</th>
+                        <tr style={{ background: themeColor ? themeColor + '20' : '#E5E7EB', color: themeColor || 'black' }}>
+                            <th style={{ border: `1px solid ${themeColor || 'black'}`, padding: '8px 10px', textAlign: 'left' }}>ITEMIZED COSTS</th>
+                            <th style={{ border: `1px solid ${themeColor || 'black'}`, padding: '8px 10px', textAlign: 'center', width: '10%' }}>QTY</th>
+                            <th style={{ border: `1px solid ${themeColor || 'black'}`, padding: '8px 10px', textAlign: 'right', width: '15%' }}>UNIT PRICE</th>
+                            <th style={{ border: `1px solid ${themeColor || 'black'}`, padding: '8px 10px', textAlign: 'right', width: '15%' }}>AMOUNT</th>
                         </tr>
                     </thead>
                     <tbody>
                         {invoice.items.map((it: any, i: number) => (
                             <tr key={i}>
-                                <td style={{ border: '1px solid black', borderBottom: 'none', borderTop: 'none', padding: '6px 10px' }}>{it.name}</td>
-                                <td style={{ border: '1px solid black', borderBottom: 'none', borderTop: 'none', padding: '6px 10px', textAlign: 'center' }}>{it.qty}</td>
-                                <td style={{ border: '1px solid black', borderBottom: 'none', borderTop: 'none', padding: '6px 10px', textAlign: 'right' }}>{it.rate.toFixed(2)}</td>
-                                <td style={{ border: '1px solid black', borderBottom: 'none', borderTop: 'none', padding: '6px 10px', textAlign: 'right' }}>{it.amount.toFixed(2)}</td>
+                                <td style={{ border: `1px solid ${themeColor || 'black'}`, borderBottom: 'none', borderTop: 'none', padding: '6px 10px' }}>{it.name}</td>
+                                <td style={{ border: `1px solid ${themeColor || 'black'}`, borderBottom: 'none', borderTop: 'none', padding: '6px 10px', textAlign: 'center' }}>{it.qty}</td>
+                                <td style={{ border: `1px solid ${themeColor || 'black'}`, borderBottom: 'none', borderTop: 'none', padding: '6px 10px', textAlign: 'right' }}>{it.rate.toFixed(2)}</td>
+                                <td style={{ border: `1px solid ${themeColor || 'black'}`, borderBottom: 'none', borderTop: 'none', padding: '6px 10px', textAlign: 'right' }}>{it.amount.toFixed(2)}</td>
                             </tr>
                         ))}
                         {/* Fill empty space if few items */}
                         {Array.from({ length: Math.max(0, 10 - invoice.items.length) }).map((_, i) => (
                             <tr key={'empty-' + i}>
-                                <td style={{ borderLeft: '1px solid black', borderRight: '1px solid black', padding: '12px' }}></td>
-                                <td style={{ borderLeft: '1px solid black', borderRight: '1px solid black', padding: '12px' }}></td>
-                                <td style={{ borderLeft: '1px solid black', borderRight: '1px solid black', padding: '12px' }}></td>
-                                <td style={{ borderLeft: '1px solid black', borderRight: '1px solid black', padding: '12px' }}></td>
+                                <td style={{ borderLeft: `1px solid ${themeColor || 'black'}`, borderRight: `1px solid ${themeColor || 'black'}`, padding: '12px' }}></td>
+                                <td style={{ borderLeft: `1px solid ${themeColor || 'black'}`, borderRight: `1px solid ${themeColor || 'black'}`, padding: '12px' }}></td>
+                                <td style={{ borderLeft: `1px solid ${themeColor || 'black'}`, borderRight: `1px solid ${themeColor || 'black'}`, padding: '12px' }}></td>
+                                <td style={{ borderLeft: `1px solid ${themeColor || 'black'}`, borderRight: `1px solid ${themeColor || 'black'}`, padding: '12px' }}></td>
                             </tr>
                         ))}
                     </tbody>
                     <tfoot>
                         <tr>
-                            <td colSpan={2} rowSpan={3} style={{ border: '1px solid black', padding: '10px', textAlign: 'center', fontStyle: 'italic', fontSize: 13, verticalAlign: 'middle' }}>
+                            <td colSpan={2} rowSpan={3} style={{ border: `1px solid ${themeColor || 'black'}`, padding: '10px', textAlign: 'center', fontStyle: 'italic', fontSize: 13, verticalAlign: 'middle' }}>
                                 Thank you for your business!
                             </td>
-                            <td style={{ border: '1px solid black', padding: '8px 10px', fontWeight: 'bold' }}>SUBTOTAL</td>
-                            <td style={{ border: '1px solid black', padding: '8px 10px', textAlign: 'right', fontWeight: 'bold' }}>{invoice.subTotal.toFixed(2)}</td>
+                            <td style={{ border: `1px solid ${themeColor || 'black'}`, padding: '8px 10px', fontWeight: 'bold' }}>SUBTOTAL</td>
+                            <td style={{ border: `1px solid ${themeColor || 'black'}`, padding: '8px 10px', textAlign: 'right', fontWeight: 'bold' }}>{invoice.subTotal.toFixed(2)}</td>
                         </tr>
                         <tr>
-                            <td style={{ border: '1px solid black', padding: '8px 10px', fontWeight: 'bold', background: '#E5E7EB' }}>CGST / SGST</td>
-                            <td style={{ border: '1px solid black', padding: '8px 10px', textAlign: 'right', background: '#E5E7EB' }}>{invoice.totalGst.toFixed(2)}</td>
+                            <td style={{ border: `1px solid ${themeColor || 'black'}`, padding: '8px 10px', fontWeight: 'bold', background: themeColor ? themeColor + '20' : '#E5E7EB', color: themeColor || 'black' }}>CGST / SGST</td>
+                            <td style={{ border: `1px solid ${themeColor || 'black'}`, padding: '8px 10px', textAlign: 'right', background: themeColor ? themeColor + '20' : '#E5E7EB' }}>{invoice.totalGst.toFixed(2)}</td>
                         </tr>
                         <tr>
-                            <td style={{ border: '1px solid black', padding: '10px', fontWeight: 'bold', fontSize: 14 }}>TOTAL {lTitle}</td>
-                            <td style={{ border: '1px solid black', padding: '10px', textAlign: 'right', fontWeight: 'bold', fontSize: 14 }}>₹{invoice.grandTotal.toLocaleString('en-IN')}</td>
+                            <td style={{ border: `1px solid ${themeColor || 'black'}`, padding: '10px', fontWeight: 'bold', fontSize: 14, color: themeColor || 'black' }}>TOTAL {lTitle}</td>
+                            <td style={{ border: `1px solid ${themeColor || 'black'}`, padding: '10px', textAlign: 'right', fontWeight: 'bold', fontSize: 14, color: themeColor || 'black' }}>₹{invoice.grandTotal.toLocaleString('en-IN')}</td>
                         </tr>
                     </tfoot>
                 </table>
@@ -1089,12 +1107,12 @@ export const InvoicePrintTemplate = ({ invoice, company, copies = 1, previewMode
             <div style={{ marginTop: 30, fontSize: 11 }}>
                 <p style={{ margin: '0 0 10px 0' }}>This quotation is not a contract or a bill. It is our best guess at the total price for the service and goods described above. The customer will be billed after indicating acceptance of this quote. Payment will be due prior to the delivery of service and goods.</p>
                 <div style={{ fontWeight: 'bold', marginBottom: 4 }}>Customer Acceptance</div>
-                <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid black' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', border: `1px solid ${themeColor || 'black'}` }}>
                     <tbody>
                         <tr>
-                            <td style={{ border: '1px solid black', height: 40, width: '40%', verticalAlign: 'bottom', padding: 4 }}>Signature</td>
-                            <td style={{ border: '1px solid black', height: 40, width: '40%', verticalAlign: 'bottom', padding: 4 }}>Printed Name</td>
-                            <td style={{ border: '1px solid black', height: 40, width: '20%', verticalAlign: 'bottom', padding: 4 }}>Date</td>
+                            <td style={{ border: `1px solid ${themeColor || 'black'}`, height: 40, width: '40%', verticalAlign: 'bottom', padding: 4 }}>Signature</td>
+                            <td style={{ border: `1px solid ${themeColor || 'black'}`, height: 40, width: '40%', verticalAlign: 'bottom', padding: 4 }}>Printed Name</td>
+                            <td style={{ border: `1px solid ${themeColor || 'black'}`, height: 40, width: '20%', verticalAlign: 'bottom', padding: 4 }}>Date</td>
                         </tr>
                     </tbody>
                 </table>
@@ -1183,7 +1201,7 @@ export const InvoicePrintTemplate = ({ invoice, company, copies = 1, previewMode
     return (
         <div className={previewMode ? '' : 'print-only'} style={{ width: '100%' }}>
             {Array.from({ length: copies }).map((_, i) => (
-                <React.Fragment key={i}>
+                <React.Fragment key={`${theme}-${i}`}>
                     {renderCopy(i)}
                     {i < copies - 1 && <div style={{ pageBreakBefore: 'always' }} />}
                 </React.Fragment>
@@ -1212,49 +1230,76 @@ export const InvoicePrintTemplate = ({ invoice, company, copies = 1, previewMode
                 }
                 
                 /* Size overrides */
-                .page-size-a5 {
+                .page-size-a5, .page-size-a5 * {
                     font-size: 11px !important;
                 }
                 .page-size-a5 td, .page-size-a5 th {
                     padding: 8px 6px !important;
                 }
-                .page-size-a5 h1 {
+                .page-size-a5 h1, .page-size-a5 h1 * {
                     font-size: 24px !important;
                 }
+                .page-size-a5 h2, .page-size-a5 h2 * {
+                    font-size: 18px !important;
+                }
+                .page-size-a5 h3, .page-size-a5 h3 * {
+                    font-size: 14px !important;
+                }
+                .page-size-a5 .theme-container, .page-size-a5 [style*="padding: 50px"], .page-size-a5 [style*="padding: 40px"] {
+                    padding: 20px !important;
+                }
                 
-                .page-size-a6 {
+                .page-size-a6, .page-size-a6 * {
                     font-size: 9px !important;
                 }
                 .page-size-a6 td, .page-size-a6 th {
                     padding: 4px 2px !important;
                 }
-                .page-size-a6 h1 {
-                    font-size: 18px !important;
+                .page-size-a6 h1, .page-size-a6 h1 * {
+                    font-size: 16px !important;
+                }
+                .page-size-a6 h2, .page-size-a6 h2 * {
+                    font-size: 13px !important;
+                }
+                .page-size-a6 h3, .page-size-a6 h3 * {
+                    font-size: 11px !important;
                 }
                 .page-size-a6 img, .page-size-a6 svg {
                     max-height: 40px !important;
                 }
+                .page-size-a6 .theme-container, .page-size-a6 [style*="padding: 50px"], .page-size-a6 [style*="padding: 40px"], .page-size-a6 [style*="padding: 30px"] {
+                    padding: 10px !important;
+                }
                 
-                .page-size-3inch {
+                .page-size-3inch, .page-size-3inch * {
                     font-size: 10px !important;
                     font-family: monospace !important;
                 }
                 .page-size-3inch td, .page-size-3inch th {
                     padding: 4px 2px !important;
                 }
-                .page-size-3inch h1 {
-                    font-size: 16px !important;
+                .page-size-3inch h1, .page-size-3inch h1 * {
+                    font-size: 14px !important;
+                }
+                .page-size-3inch h2, .page-size-3inch h2 * {
+                    font-size: 12px !important;
+                }
+                .page-size-3inch h3, .page-size-3inch h3 * {
+                    font-size: 11px !important;
                 }
                 .page-size-3inch img, .page-size-3inch svg {
                     max-height: 35px !important;
                 }
-                .page-size-3inch .creative-layout, .page-size-3inch .elegant-layout {
+                .page-size-3inch .creative-layout, .page-size-3inch .elegant-layout, .page-size-3inch .modern-layout {
                     flex-direction: column !important;
                 }
                 .page-size-3inch .creative-sidebar {
                     width: 100% !important;
                     padding: 10px !important;
                     margin-bottom: 10px !important;
+                }
+                .page-size-3inch .theme-container, .page-size-3inch [style*="padding: 50px"], .page-size-3inch [style*="padding: 40px"], .page-size-3inch [style*="padding: 30px"], .page-size-3inch [style*="padding: 20px"] {
+                    padding: 6px !important;
                 }
             `}</style>
         </div>

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
-import { UserData, CompanyData, PartyData, ProductData, InvoiceData, ExpenseData } from '@/lib/models';
+import { UserData, CompanyData, PartyData, ProductData, InvoiceData, ExpenseData, StockTransferData, AgencyClientData, AgencyProjectData, InvoiceTemplateData, PurchaseOrderData } from '@/lib/models';
 
 export const dynamic = 'force-dynamic';
 
@@ -54,11 +54,16 @@ export async function GET(req: Request) {
         }
 
         // Fetch all related data ONLY for the allowed companyIds
-        const [parties, products, invoices, expenses] = await Promise.all([
+        const [parties, products, invoices, expenses, purchaseOrders, stockTransfers, agencyClients, agencyProjects, templates] = await Promise.all([
             PartyData.find({ companyId: { $in: companyIds } }).lean(),
             ProductData.find({ companyId: { $in: companyIds } }).lean(),
             InvoiceData.find({ companyId: { $in: companyIds } }).lean(),
-            ExpenseData.find({ companyId: { $in: companyIds } }).lean()
+            ExpenseData.find({ companyId: { $in: companyIds } }).lean(),
+            PurchaseOrderData.find({ companyId: { $in: companyIds } }).lean(),
+            StockTransferData.find({ companyId: { $in: companyIds } }).lean(),
+            AgencyClientData.find({ companyId: { $in: companyIds } }).lean(),
+            AgencyProjectData.find({ companyId: { $in: companyIds } }).lean(),
+            InvoiceTemplateData.find({ companyId: { $in: companyIds } }).lean()
         ]);
 
         // Transform _id to id (as string) to match frontend Zustand expectations
@@ -74,10 +79,11 @@ export async function GET(req: Request) {
             products: formatDocs(products),
             invoices: formatDocs(invoices),
             expenses: formatDocs(expenses),
-            // Stub empty for models not ported yet but requested by Zustand
-            agencyClients: [],
-            agencyProjects: [],
-            templates: [],
+            purchaseOrders: formatDocs(purchaseOrders),
+            stockTransfers: formatDocs(stockTransfers),
+            agencyClients: formatDocs(agencyClients),
+            agencyProjects: formatDocs(agencyProjects),
+            templates: formatDocs(templates),
             hsnCache: [],
             aiApiKey: '',
             aiUsageCount: 0,
@@ -91,7 +97,10 @@ export async function GET(req: Request) {
 
         // Get max updatedAt across all collections to serve as "cloudTime"
         let cloudTime = 0;
-        const allDocs = [user, ...companies, ...parties, ...products, ...invoices, ...expenses];
+        const allDocs = [
+            user, ...companies, ...parties, ...products, ...invoices, ...expenses,
+            ...purchaseOrders, ...stockTransfers, ...agencyClients, ...agencyProjects, ...templates
+        ];
         allDocs.forEach((d: any) => {
              if (d.updatedAt) {
                  const time = new Date(d.updatedAt).getTime();
@@ -118,6 +127,9 @@ export async function POST(req: Request) {
         }
 
         await dbConnect();
+
+        const now = Date.now();
+        const nowStr = new Date(now).toISOString();
 
         // 1. Concurrency Check (Temporarily disabled for migration stability)
         /*
@@ -153,10 +165,8 @@ export async function POST(req: Request) {
                     doc[optionalRefField.name] = optionalRefField.value;
                 }
 
-                // Standardize updatedAt to ISO string for MongoDB
-                if (doc.updatedAt && typeof doc.updatedAt === 'number') {
-                    doc.updatedAt = new Date(doc.updatedAt).toISOString();
-                }
+                // Always set updatedAt to the current sync time
+                doc.updatedAt = nowStr;
 
                 return {
                     updateOne: {
@@ -169,7 +179,7 @@ export async function POST(req: Request) {
             await Model.bulkWrite(ops);
         };
 
-        let { user, companies, parties, products, invoices, expenses } = payload;
+        let { user, companies, parties, products, invoices, expenses, purchaseOrders, stockTransfers, agencyClients, agencyProjects, templates } = payload;
         const isOwner = !role || role === 'owner' || role === 'co_owner';
         const isStaff = !isOwner;
 
@@ -178,6 +188,11 @@ export async function POST(req: Request) {
         products = products || [];
         invoices = invoices || [];
         expenses = expenses || [];
+        purchaseOrders = purchaseOrders || [];
+        stockTransfers = stockTransfers || [];
+        agencyClients = agencyClients || [];
+        agencyProjects = agencyProjects || [];
+        templates = templates || [];
         
         console.log(`[Sync] User: ${userId} (${role}), Companies: ${companies.length}`);
         if (companies.length > 0) {
@@ -189,6 +204,7 @@ export async function POST(req: Request) {
             const userDoc = { ...user, _id: user.uid };
             delete userDoc.uid;
             delete userDoc.id;
+            userDoc.updatedAt = nowStr;
             await UserData.findByIdAndUpdate(userId, { $set: userDoc }, { upsert: true });
         }
 
@@ -205,8 +221,13 @@ export async function POST(req: Request) {
         await syncCollection(ProductData, products, dataFilter);
         await syncCollection(InvoiceData, invoices, dataFilter);
         await syncCollection(ExpenseData, expenses, dataFilter);
+        await syncCollection(PurchaseOrderData, purchaseOrders, dataFilter);
+        await syncCollection(StockTransferData, stockTransfers, dataFilter);
+        await syncCollection(AgencyClientData, agencyClients, dataFilter);
+        await syncCollection(AgencyProjectData, agencyProjects, dataFilter);
+        await syncCollection(InvoiceTemplateData, templates, dataFilter);
 
-        return NextResponse.json({ success: true, updatedAt: Date.now() });
+        return NextResponse.json({ success: true, updatedAt: now });
 
     } catch (error: any) {
         console.error('POST /api/sync error:', error);

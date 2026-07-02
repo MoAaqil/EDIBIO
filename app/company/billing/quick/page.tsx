@@ -26,6 +26,11 @@ function QuickBillingContent() {
     const parties = useCompanyData('parties') as any[];
     const { addInvoice, nextInvoiceNumber, adjustStock, addParty, updateParty, updateInvoice, addBalancePayment, updateCompany } = useStore();
 
+    const normPhone = useCallback((ph: string) => {
+        const d = (ph || '').replace(/\D/g, '');
+        return d.startsWith('91') && d.length > 10 ? d.slice(2) : d;
+    }, []);
+
     useEffect(() => {
         const handlePopState = () => {
             if (user?.role === 'staff') {
@@ -61,6 +66,8 @@ function QuickBillingContent() {
     const [showPrintModal, setShowPrintModal] = useState(false);
     const [amountGiven, setAmountGiven] = useState('');
     const [showColumnConfig, setShowColumnConfig] = useState(false);
+    const [showSuccess, setShowSuccess] = useState(false);
+    const [tallyWithBalance, setTallyWithBalance] = useState(true);
 
     useEffect(() => {
         if (user && company?.team) {
@@ -101,10 +108,28 @@ function QuickBillingContent() {
     const [showSuggestions, setShowSuggestions] = useState(false);
     const [filteredProducts, setFilteredProducts] = useState<any[]>([]);
 
-    // Action modal (Fetch/Refund)
     const [actionModal, setActionModal] = useState<{ isOpen: boolean, isRefund: boolean }>({ isOpen: false, isRefund: false });
     const [actionQuery, setActionQuery] = useState('');
     const [recurringModalOpen, setRecurringModalOpen] = useState(false);
+
+    const filteredPreviousInvoices = useMemo(() => {
+        const list = invoices.filter(inv => inv.companyId === companyId);
+        list.sort((a, b) => {
+            const dateA = new Date(a.date).getTime() || 0;
+            const dateB = new Date(b.date).getTime() || 0;
+            if (dateB !== dateA) return dateB - dateA;
+            return (b.invoiceNumber || '').localeCompare(a.invoiceNumber || '');
+        });
+
+        const q = actionQuery.trim().toLowerCase();
+        if (!q) return list.slice(0, 10);
+
+        return list.filter(inv => 
+            inv.invoiceNumber.toLowerCase().includes(q) ||
+            inv.partyName.toLowerCase().includes(q) ||
+            (inv.partyPhone && inv.partyPhone.includes(q))
+        ).slice(0, 10);
+    }, [invoices, companyId, actionQuery]);
 
     // Suspended bills
     const [suspendedBills, setSuspendedBills] = useState<any[]>(() => {
@@ -122,10 +147,6 @@ function QuickBillingContent() {
     const [redeemPointsAmount, setRedeemPointsAmount] = useState('');
 
     const outstandingBalanceCount = useMemo(() => {
-        const normPhone = (ph: string) => {
-            const d = (ph || '').replace(/\D/g, '');
-            return d.startsWith('91') && d.length > 10 ? d.slice(2) : d;
-        };
         const DRAFT = ['estimate', 'proforma', 'delivery_challan'];
         const trackerMap = new Map<string, { party: any; computedBalance: number }>();
         // Build map from parties
@@ -149,31 +170,47 @@ function QuickBillingContent() {
                 }
             });
         return Array.from(trackerMap.values()).filter(e => e.computedBalance > 0).length;
-    }, [parties, invoices, companyId]);
+    }, [parties, invoices, companyId, normPhone]);
 
     const saveSuspendedBills = (bills: any[]) => {
         setSuspendedBills(bills);
         if (typeof window !== 'undefined') localStorage.setItem('edibio_suspended_bills', JSON.stringify(bills));
     };
 
-    useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'F12') {
-                e.preventDefault();
-                setShowPrintModal(true);
-            }
-            if (e.key === 'Enter' && e.shiftKey) {
-                e.preventDefault();
-                setItems(prev => [...prev, emptyRow()]);
-            }
-        };
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, []);
+
 
     const handleFetchBill = (isRefund = false) => {
         setActionModal({ isOpen: true, isRefund });
         setActionQuery('');
+    };
+
+    const selectInvoice = (inv: any) => {
+        setPartyName(inv.partyName);
+        setPartyPhone(inv.partyPhone || '');
+        setBillingAddress(inv.billingAddress || '');
+        setStateOfSupply(inv.stateOfSupply || 'Tamil Nadu');
+        setItems(inv.items.map((it: any) => ({
+            ...it,
+            qty: actionModal.isRefund ? -Math.abs(it.qty) : Math.abs(it.qty), // Negative qty for refund
+            amount: actionModal.isRefund ? -Math.abs(it.amount) : Math.abs(it.amount)
+        })));
+        setDiscountVal(inv.totalDiscount.toString());
+        setDiscountType('Amt');
+
+        if (actionModal.isRefund) {
+            setAmountGiven('');
+            setSavedBill(null);
+            setDate(new Date().toISOString().slice(0, 10));
+            setTime(new Date().toTimeString().slice(0, 5));
+        } else {
+            setAmountGiven(inv.amountPaid !== undefined && inv.amountPaid !== null ? inv.amountPaid.toString() : '');
+            setSavedBill(inv);
+            setDate(inv.date || new Date().toISOString().slice(0, 10));
+            setTime(inv.time || new Date().toTimeString().slice(0, 5));
+        }
+
+        toast.success(`Bill ${actionModal.isRefund ? 'refunded' : 'fetched'} successfully!`);
+        setActionModal({ isOpen: false, isRefund: false });
     };
 
     const executeAction = () => {
@@ -181,19 +218,7 @@ function QuickBillingContent() {
         if (!q) return;
         const inv = invoices.find(i => i.invoiceNumber.toLowerCase() === q.toLowerCase() || i.id === q);
         if (inv) {
-            setPartyName(inv.partyName);
-            setPartyPhone(inv.partyPhone || '');
-            setBillingAddress(inv.billingAddress || '');
-            setStateOfSupply(inv.stateOfSupply || 'Tamil Nadu');
-            setItems(inv.items.map((it: any) => ({
-                ...it,
-                qty: actionModal.isRefund ? -Math.abs(it.qty) : Math.abs(it.qty), // Negative qty for refund
-                amount: actionModal.isRefund ? -Math.abs(it.amount) : Math.abs(it.amount)
-            })));
-            setDiscountVal(inv.totalDiscount.toString());
-            setDiscountType('Amt');
-            toast.success(`Bill ${actionModal.isRefund ? 'refunded' : 'fetched'} successfully!`);
-            setActionModal({ isOpen: false, isRefund: false });
+            selectInvoice(inv);
         } else {
             toast.error('Invoice not found!');
         }
@@ -495,11 +520,44 @@ function QuickBillingContent() {
 
     // Loyalty points calculations
     const selectedCustomer = useMemo(() => {
-        if (!partyPhone.trim()) return null;
-        const normPhone = (ph: string) => (ph || '').replace(/\D/g, '');
-        const target = normPhone(partyPhone);
-        return parties.find(p => normPhone(p.phone) === target) || null;
-    }, [parties, partyPhone]);
+        const phoneTarget = partyPhone.trim() ? normPhone(partyPhone) : '';
+        const nameTarget = partyName.trim().toLowerCase();
+
+        if (!phoneTarget && !nameTarget) return null;
+
+        let foundParty = null;
+        if (phoneTarget) {
+            foundParty = parties.find(p => 
+                (p.phone && normPhone(p.phone) === phoneTarget) || 
+                (p.mobile && normPhone(p.mobile) === phoneTarget)
+            );
+        }
+        if (!foundParty && nameTarget) {
+            foundParty = parties.find(p => 
+                p.name && p.name.toLowerCase().trim() === nameTarget
+            );
+        }
+
+        if (!foundParty) return null;
+
+        // Compute balance dynamically to avoid corruption issues
+        const DRAFT = ['estimate', 'proforma', 'delivery_challan'];
+        const unpaidInvoices = invoices.filter((i: any) => 
+            i.invoiceType === 'sale' && 
+            !DRAFT.includes(i.invoiceType) && 
+            i.paymentStatus !== 'paid' && 
+            (i.balanceDue ?? 0) > 0 &&
+            (i.partyId === foundParty.id || 
+             (foundParty.phone && normPhone(i.partyPhone) === normPhone(foundParty.phone)) ||
+             (foundParty.mobile && normPhone(i.partyPhone) === normPhone(foundParty.mobile)))
+        );
+        const computedBalance = unpaidInvoices.reduce((sum: number, i: any) => sum + i.balanceDue, 0);
+
+        return {
+            ...foundParty,
+            balance: computedBalance
+        };
+    }, [parties, invoices, partyPhone, partyName, normPhone]);
 
     const loyaltyPointsAvailable = selectedCustomer?.loyaltyPoints || 0;
     const pointsEarningRatio = company?.loyaltyEarningRatio || 100;
@@ -516,8 +574,14 @@ function QuickBillingContent() {
     const grandTotal = r2(grandTotalBeforePointsDiscount - pointsDiscountValue);
     const pointsEarned = loyaltyEnabled ? Math.floor(grandTotal / pointsEarningRatio) : 0;
 
-    const handleSave = () => {
+    const handleSave = async (isPrintFlow: boolean | React.MouseEvent<any> = false) => {
+        const isPrint = isPrintFlow === true;
         if (validItems.length === 0) { toast.error('Add at least one complete row (Name, Qty, Price)'); return false; }
+
+        if (!useSplitPayment && (amountGiven === null || amountGiven === undefined || amountGiven.trim() === '')) {
+            toast.error('Please enter Amount Given (enter 0 if no payment was received)');
+            return false;
+        }
 
         const finalPartyName = partyName.trim() || 'Cash / Walk-in Customer';
 
@@ -541,7 +605,10 @@ function QuickBillingContent() {
             const dominant = entries.sort((a, b) => b.amount - a.amount)[0];
             finalPaymentMethod = dominant?.method || 'cash';
         } else {
-            const parsedAmountGiven = amountGiven.trim() !== '' ? parseFloat(amountGiven) || 0 : null;
+            const parsedAmountGiven = (amountGiven && typeof amountGiven === 'string' && amountGiven.trim() !== '') 
+                ? parseFloat(amountGiven) || 0 
+                : (typeof amountGiven === 'number' ? amountGiven : null);
+
             if (parsedAmountGiven !== null) {
                 if (parsedAmountGiven >= grandTotal) {
                     calculatedAmountPaid = grandTotal;
@@ -597,53 +664,274 @@ function QuickBillingContent() {
             }
         }
 
-        const invNo = nextInvoiceNumber(companyId!, 'MN');
-        const invoice = {
-            id: 'mb_' + Date.now().toString(36),
-            companyId: companyId!,
-            invoiceType: 'sale',
-            invoiceNumber: invNo,
-            date, time,
-            stateOfSupply,
-            partyId: finalPartyId,
-            partyName: finalPartyNameUsed, partyPhone, billingAddress,
-            items: validItems,
-            subTotal, taxableAmount: subTotal,
-            totalCgst: r2(validItems.reduce((a, i) => a + i.cgst, 0)),
-            totalSgst: r2(validItems.reduce((a, i) => a + i.sgst, 0)),
-            totalIgst: 0, totalCess: 0, totalGst,
-            totalDiscount: globalDiscount + r2(validItems.reduce((a, i) => a + i.discountAmt, 0)), // global + line items
-            roundOff: parseFloat(roundOffVal) || 0,
-            grandTotal,
-            paymentStatus: calculatedPaymentStatus,
-            amountPaid: calculatedAmountPaid,
-            balanceDue: calculatedBalanceDue,
-            paymentMethod: finalPaymentMethod,
-            splitPayments: finalSplitPayments,
+        const isUpdate = !!savedBill;
+        const oldInvoice = savedBill;
 
-            isGstBill: validItems.some(i => i.gstRate > 0),
-            isHidden: false,
-            notes: description,
-            counter,
-            pointsEarned,
-            pointsRedeemed: pointsToRedeemAmount,
-            pointsValueRedeemed: pointsDiscountValue,
-            createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
-        };
-        addInvoice(invoice as any);
-        setRedeemPointsAmount('');
-        // Adjust stock based on transaction type
-        if (invoice.invoiceType === 'sale') {
-            validItems.forEach(item => { if (item.productId) adjustStock(item.productId, -item.qty); });
-        } else if (invoice.invoiceType === 'purchase') {
-            validItems.forEach(item => { if (item.productId) adjustStock(item.productId, item.qty); });
+        let invoice: any;
+
+        if (isUpdate && oldInvoice) {
+            // Revert any old excess payment applied to this invoice from the customer's balance/history
+            if (oldInvoice.partyId) {
+                const party = useStore.getState().parties.find((p: any) => p.id === oldInvoice.partyId);
+                if (party && party.paymentHistory) {
+                    const searchNote = `on invoice #${oldInvoice.invoiceNumber}`;
+                    const oldPayment = party.paymentHistory.find((p: any) => p.note && p.note.includes(searchNote));
+                    if (oldPayment) {
+                        const revertedBalance = (party.balance || 0) + oldPayment.amount;
+                        const updatedHistory = party.paymentHistory.filter((p: any) => p.id !== oldPayment.id);
+                        
+                        updateParty(oldInvoice.partyId, {
+                            balance: revertedBalance,
+                            paymentHistory: updatedHistory
+                        });
+
+                        // Revert the deduction from past invoices' balanceDue
+                        let remainingRevert = oldPayment.amount;
+                        const currentInvoices = useStore.getState().invoices;
+                        const customerInvoices = currentInvoices.filter((inv: any) => 
+                            inv.id !== oldInvoice.id &&
+                            (inv.partyId === oldInvoice.partyId || (party.phone && inv.partyPhone === party.phone))
+                        );
+                        
+                        for (const inv of customerInvoices) {
+                            if (remainingRevert <= 0) break;
+                            const maxRestore = inv.amountPaid;
+                            if (maxRestore > 0) {
+                                const restoreAmt = Math.min(maxRestore, remainingRevert);
+                                const newPaid = inv.amountPaid - restoreAmt;
+                                const newDue = inv.balanceDue + restoreAmt;
+                                updateInvoice(inv.id, {
+                                    amountPaid: newPaid,
+                                    balanceDue: newDue,
+                                    paymentStatus: newDue === 0 ? 'paid' : newPaid === 0 ? 'unpaid' : 'partial'
+                                });
+                                remainingRevert -= restoreAmt;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 1. Revert old stock changes
+            if (oldInvoice.invoiceType === 'sale') {
+                oldInvoice.items.forEach((item: any) => {
+                    if (item.productId) adjustStock(item.productId, item.qty, 'skip');
+                });
+            } else if (oldInvoice.invoiceType === 'purchase') {
+                oldInvoice.items.forEach((item: any) => {
+                    if (item.productId) adjustStock(item.productId, -item.qty, 'skip');
+                });
+            }
+
+            // 2. Revert old party balance
+            if (oldInvoice.partyId && oldInvoice.balanceDue > 0) {
+                const party = parties.find((p: any) => p.id === oldInvoice.partyId);
+                if (party) {
+                    updateParty(oldInvoice.partyId, {
+                        balance: (party.balance || 0) - oldInvoice.balanceDue
+                    });
+                }
+            }
+
+            // 3. Revert old loyalty points
+            if (oldInvoice.partyId && oldInvoice.invoiceType === 'sale') {
+                const earned = oldInvoice.pointsEarned || 0;
+                const redeemed = oldInvoice.pointsRedeemed || 0;
+                if (earned !== 0 || redeemed !== 0) {
+                    const party = parties.find((p: any) => p.id === oldInvoice.partyId);
+                    if (party) {
+                        updateParty(oldInvoice.partyId, {
+                            loyaltyPoints: Math.max(0, (party.loyaltyPoints || 0) - earned + redeemed)
+                        });
+                    }
+                }
+            }
+
+            // Construct invoice object preserving id, invoiceNumber, and createdAt
+            invoice = {
+                id: oldInvoice.id,
+                companyId: companyId!,
+                invoiceType: 'sale',
+                invoiceNumber: oldInvoice.invoiceNumber,
+                date, time,
+                stateOfSupply,
+                partyId: finalPartyId,
+                partyName: finalPartyNameUsed, partyPhone, billingAddress,
+                items: validItems,
+                subTotal, taxableAmount: subTotal,
+                totalCgst: r2(validItems.reduce((a, i) => a + i.cgst, 0)),
+                totalSgst: r2(validItems.reduce((a, i) => a + i.sgst, 0)),
+                totalIgst: 0, totalCess: 0, totalGst,
+                totalDiscount: globalDiscount + r2(validItems.reduce((a, i) => a + i.discountAmt, 0)),
+                roundOff: parseFloat(roundOffVal) || 0,
+                grandTotal,
+                paymentStatus: calculatedPaymentStatus,
+                amountPaid: calculatedAmountPaid,
+                balanceDue: calculatedBalanceDue,
+                paymentMethod: finalPaymentMethod,
+                splitPayments: finalSplitPayments,
+
+                isGstBill: validItems.some(i => i.gstRate > 0),
+                isHidden: false,
+                notes: description,
+                counter,
+                pointsEarned,
+                pointsRedeemed: pointsToRedeemAmount,
+                pointsValueRedeemed: pointsDiscountValue,
+                createdAt: oldInvoice.createdAt,
+                updatedAt: new Date().toISOString(),
+            };
+
+            // Save the update
+            updateInvoice(oldInvoice.id, invoice);
+
+            // 4. Apply new stock changes
+            if (invoice.invoiceType === 'sale') {
+                validItems.forEach(item => { if (item.productId) adjustStock(item.productId, -item.qty, `Sale - ${invoice.invoiceNumber}`); });
+            } else if (invoice.invoiceType === 'purchase') {
+                validItems.forEach(item => { if (item.productId) adjustStock(item.productId, item.qty, `Purchase - ${invoice.invoiceNumber}`); });
+            }
+
+            // 5. Apply new party balance (use getState to get the updated party balance)
+            if (invoice.partyId && invoice.balanceDue > 0) {
+                const latestParty = useStore.getState().parties.find((p: any) => p.id === invoice.partyId);
+                if (latestParty) {
+                    updateParty(invoice.partyId, {
+                        balance: (latestParty.balance || 0) + invoice.balanceDue
+                    });
+                }
+            }
+
+            // 6. Apply new loyalty points
+            if (invoice.partyId && invoice.invoiceType === 'sale') {
+                if (pointsEarned !== 0 || pointsToRedeemAmount !== 0) {
+                    const latestParty = useStore.getState().parties.find((p: any) => p.id === invoice.partyId);
+                    if (latestParty) {
+                        updateParty(invoice.partyId, {
+                            loyaltyPoints: Math.max(0, (latestParty.loyaltyPoints || 0) + pointsEarned - pointsToRedeemAmount)
+                        });
+                    }
+                }
+            }
+        } else {
+            const invNo = nextInvoiceNumber(companyId!, 'MN');
+            invoice = {
+                id: 'mb_' + Date.now().toString(36),
+                companyId: companyId!,
+                invoiceType: 'sale',
+                invoiceNumber: invNo,
+                date, time,
+                stateOfSupply,
+                partyId: finalPartyId,
+                partyName: finalPartyNameUsed, partyPhone, billingAddress,
+                items: validItems,
+                subTotal, taxableAmount: subTotal,
+                totalCgst: r2(validItems.reduce((a, i) => a + i.cgst, 0)),
+                totalSgst: r2(validItems.reduce((a, i) => a + i.sgst, 0)),
+                totalIgst: 0, totalCess: 0, totalGst,
+                totalDiscount: globalDiscount + r2(validItems.reduce((a, i) => a + i.discountAmt, 0)),
+                roundOff: parseFloat(roundOffVal) || 0,
+                grandTotal,
+                paymentStatus: calculatedPaymentStatus,
+                amountPaid: calculatedAmountPaid,
+                balanceDue: calculatedBalanceDue,
+                paymentMethod: finalPaymentMethod,
+                splitPayments: finalSplitPayments,
+
+                isGstBill: validItems.some(i => i.gstRate > 0),
+                isHidden: false,
+                notes: description,
+                counter,
+                pointsEarned,
+                pointsRedeemed: pointsToRedeemAmount,
+                pointsValueRedeemed: pointsDiscountValue,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+            };
+
+            // Adjust stock based on transaction type (run before addInvoice so balanceAfter is resolved correctly)
+            if (invoice.invoiceType === 'sale') {
+                validItems.forEach(item => { if (item.productId) adjustStock(item.productId, -item.qty, 'skip'); });
+            } else if (invoice.invoiceType === 'purchase') {
+                validItems.forEach(item => { if (item.productId) adjustStock(item.productId, item.qty, 'skip'); });
+            }
+
+            addInvoice(invoice as any);
         }
-        setSavedBill(invoice as any);
-        // Auto-trigger print/PDF-save dialog
-        toast.success('Bill saved! Opening print/save dialog…');
-        setTimeout(() => window.print(), 600);
 
-        // Reset the inputs so the user can immediately enter a new bill
+        // Calculate and apply excess payment to outstanding balance in the store
+        const parsedAmountGiven = (amountGiven && typeof amountGiven === 'string' && amountGiven.trim() !== '') 
+            ? parseFloat(amountGiven) || 0 
+            : (typeof amountGiven === 'number' ? amountGiven : null);
+
+        let excessAppliedToBalance = 0;
+        let latestSelectedCustomerBalance = 0;
+        const latestSelectedCustomer = finalPartyId 
+            ? useStore.getState().parties.find((p: any) => p.id === finalPartyId)
+            : null;
+
+        if (latestSelectedCustomer) {
+            const DRAFT = ['estimate', 'proforma', 'delivery_challan'];
+            const unpaidInvoices = useStore.getState().invoices.filter((i: any) => 
+                i.invoiceType === 'sale' && 
+                !DRAFT.includes(i.invoiceType) && 
+                i.paymentStatus !== 'paid' && 
+                (i.balanceDue ?? 0) > 0 &&
+                (i.partyId === finalPartyId || 
+                 (latestSelectedCustomer.phone && normPhone(i.partyPhone) === normPhone(latestSelectedCustomer.phone)) ||
+                 ((latestSelectedCustomer as any).mobile && normPhone(i.partyPhone) === normPhone((latestSelectedCustomer as any).mobile)))
+            );
+            latestSelectedCustomerBalance = unpaidInvoices.reduce((sum: number, i: any) => sum + i.balanceDue, 0);
+        }
+
+        if (parsedAmountGiven !== null && finalPartyId && latestSelectedCustomerBalance > 0 && tallyWithBalance && !useSplitPayment) {
+            if (parsedAmountGiven > grandTotal) {
+                excessAppliedToBalance = Math.min(parsedAmountGiven - grandTotal, latestSelectedCustomerBalance);
+            }
+        }
+
+        if (finalPartyId && excessAppliedToBalance > 0) {
+            addBalancePayment(finalPartyId, {
+                type: 'received',
+                amount: excessAppliedToBalance,
+                method: finalPaymentMethod as any,
+                date,
+                note: `Adjusted from excess payment on invoice #${invoice.invoiceNumber}`
+            });
+
+            // Update past invoices' balanceDue
+            let remainingPayment = excessAppliedToBalance;
+            const currentInvoices = useStore.getState().invoices;
+            const sortedInvoices = [...currentInvoices].reverse();
+            sortedInvoices.forEach((inv: any) => {
+                if (remainingPayment <= 0) return;
+                // Exclude the current invoice we just saved
+                if (inv.id === invoice.id) return;
+                if (inv.partyId === finalPartyId || (latestSelectedCustomer && latestSelectedCustomer.phone && inv.partyPhone === latestSelectedCustomer.phone)) {
+                    if (inv.balanceDue > 0) {
+                        const deduction = Math.min(inv.balanceDue, remainingPayment);
+                        const newPaid = inv.amountPaid + deduction;
+                        const newDue = inv.balanceDue - deduction;
+                        updateInvoice(inv.id, {
+                            amountPaid: newPaid,
+                            balanceDue: newDue,
+                            paymentStatus: newDue === 0 ? 'paid' : 'partial'
+                        });
+                        remainingPayment -= deduction;
+                    }
+                }
+            });
+        }
+
+        setRedeemPointsAmount('');
+        setSavedBill(invoice as any);
+
+        if (!isPrint) {
+            // Save-only flow: await browser PDF download capture before resetting the UI state
+            await handleDownloadPDF(invoice);
+        }
+
+        // Reset the inputs immediately after PDF generation/download starts
         setItems([emptyRow()]);
         setPartyName('');
         setPartyPhone('');
@@ -652,13 +940,20 @@ function QuickBillingContent() {
         setAmountGiven('');
         setUseSplitPayment(false);
         setSplitPayments([{ method: 'cash', amount: '' }]);
+        setDate(new Date().toISOString().slice(0, 10));
+        setTime(new Date().toTimeString().slice(0, 5));
 
-        // Schedule clearing savedBill after the print dialog has been shown
-        setTimeout(() => {
+        if (!isPrint) {
             setSavedBill(null);
-        }, 5000);
+        } else {
+            // Schedule clearing savedBill after a delay
+            setTimeout(() => {
+                setSavedBill(null);
+                setShowSuccess(false);
+            }, 5000);
+        }
 
-        return true;
+        return invoice;
     };
 
     const handleSuspend = () => {
@@ -698,28 +993,62 @@ function QuickBillingContent() {
         toast.success('Suspended bill removed.');
     };
 
-    const handlePrintRequest = () => {
+    const handlePrintRequest = useCallback(() => {
         if (validItems.length === 0) { toast.error('Add items first!'); return; }
+        if (!useSplitPayment && (amountGiven === null || amountGiven === undefined || amountGiven.trim() === '')) {
+            toast.error('Please enter Amount Given (enter 0 if no payment was received) before printing');
+            return;
+        }
         setCopies(2); // Request specifies print 2 copies
         setShowPrintModal(true);
-    };
+    }, [validItems, amountGiven, useSplitPayment]);
 
-    const executePrint = () => {
-        if (!savedBill) {
-            const success = handleSave();
-            if (!success) return;
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'F12') {
+                e.preventDefault();
+                handlePrintRequest();
+            }
+            if (e.key === 'Enter' && e.shiftKey) {
+                e.preventDefault();
+                setItems(prev => [...prev, emptyRow()]);
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [handlePrintRequest]);
+
+    const executePrint = async () => {
+        const inputsModified = savedBill && (
+            (savedBill.partyName || 'Cash / Walk-in Customer') !== (partyName.trim() || 'Cash / Walk-in Customer') ||
+            (savedBill.partyPhone || '') !== partyPhone.trim() ||
+            (savedBill.billingAddress || '') !== billingAddress.trim() ||
+            (savedBill.totalDiscount?.toString() || '0') !== (discountVal.trim() || '0') ||
+            (savedBill.amountPaid?.toString() || '0') !== (amountGiven.trim() || '0') ||
+            savedBill.items.length !== validItems.length ||
+            savedBill.items.some((it: any, idx: number) => {
+                const cur = validItems[idx];
+                return !cur || cur.name !== it.name || Number(cur.qty) !== Number(it.qty) || Number(cur.rate) !== Number(it.rate);
+            })
+        );
+
+        let billToPrint = savedBill;
+        if (!billToPrint || inputsModified) {
+            const result = await handleSave(true);
+            if (!result) return;
+            billToPrint = result;
         }
 
-        const partyPhoneToUse = savedBill?.partyPhone || partyPhone;
-        const currentBill = savedBill || invoices.find(i => i.invoiceNumber === nextInvoiceNumber(companyId!, 'MN')) || { items: validItems, invoiceNumber: nextInvoiceNumber(companyId!, 'MN'), grandTotal, balanceDue: billType === 'CASH' ? 0 : grandTotal };
+        const partyPhoneToUse = billToPrint.partyPhone;
+        const currentBill = billToPrint;
 
-        if (partyPhoneToUse) {
+        if (company?.whatsappEnabled && partyPhoneToUse) {
             let itemsText = '';
             currentBill.items.forEach((item: any) => {
                 itemsText += `• ${item.name} (${item.qty} ${item.unit}) - ₹${item.amount.toLocaleString('en-IN')}\n`;
             });
             const bal = currentBill.balanceDue || 0;
-            const msg = `*${company?.name || 'Tax Invoice'}*\n\nHello ${partyName || 'Customer'},\nHere is your bill summary (Inv: ${currentBill.invoiceNumber}):\nDate: ${date} ${time}\n\n*Items Purchased:*\n${itemsText}\n*Total Amount:* ₹${currentBill.grandTotal.toLocaleString('en-IN')}\n${bal > 0 ? `\n*Please clear the due balance:* ₹${bal.toLocaleString('en-IN')}\n` : ''}\nThanks for shopping with us!\n\n_Powered by Edibio_`;
+            const msg = `*${company?.name || 'Tax Invoice'}*\n\nHello ${billToPrint.partyName || 'Customer'},\nHere is your bill summary (Inv: ${billToPrint.invoiceNumber}):\nDate: ${billToPrint.date} ${billToPrint.time || ''}\n\n*Items Purchased:*\n${itemsText}\n*Total Amount:* ₹${billToPrint.grandTotal.toLocaleString('en-IN')}\n${bal > 0 ? `\n*Please clear the due balance:* ₹${bal.toLocaleString('en-IN')}\n` : ''}\nThanks for shopping with us!\n\n_Powered by Edibio_`;
 
             setTimeout(() => {
                 window.open(`https://wa.me/91${partyPhoneToUse.replace(/\D/g, '')}?text=${encodeURIComponent(msg)}`, '_blank');
@@ -727,84 +1056,168 @@ function QuickBillingContent() {
         }
 
         setShowPrintModal(false);
-        setTimeout(() => window.print(), partyPhoneToUse ? 800 : 300);
+        setShowSuccess(true);
+        setTimeout(() => window.print(), (company?.whatsappEnabled && partyPhoneToUse) ? 800 : 300);
     };
 
-    if (false) { // Bypassed: always show the billing screen instead of intermediate success screen
-        return (
-            <div style={{ background: '#f8f9fa', minHeight: '100dvh' }}>
-                <div className="print-only">
-                    <InvoicePrintTemplate invoice={savedBill} company={company} copies={copies} themeOverride={company?.quickBillingTheme || 'quick_bill'} />
-                </div>
+    const handleDownloadPDF = async (invoiceToDownload?: any) => {
+        const invoice = invoiceToDownload || savedBill;
+        if (!invoice) return;
 
-                <div className="no-print" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '80vh', padding: 20 }}>
-                    <h2 style={{ fontSize: 28, fontWeight: 900, marginBottom: 12, color: '#1A202C' }}>Bill Generated Successfully!</h2>
-                    <p style={{ fontSize: 16, color: '#718096', marginBottom: 32 }}>Invoice {savedBill.invoiceNumber} has been saved to the database.</p>
+        // Await a minimal delay (0ms) to allow React to flush state updates to the DOM
+        await new Promise(resolve => setTimeout(resolve, 0));
 
-                    <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', justifyContent: 'center', maxWidth: 900 }}>
-                        {/* Google Ad Simulator / Space */}
-                        <div style={{ width: 320, background: 'white', borderRadius: 20, boxShadow: '0 10px 30px rgba(0,0,0,0.05)', display: 'flex', flexDirection: 'column', overflow: 'hidden', border: '1px solid #E2E8F0' }}>
-                            <div style={{ height: 160, background: '#F7FAFC', display: 'flex', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid #E2E8F0' }}>
-                                <span style={{ color: '#A0AEC0', fontWeight: 700, fontSize: 13, letterSpacing: 1 }}>ADVERTISEMENT</span>
-                            </div>
-                            <div style={{ padding: 20 }}>
-                                <h3 style={{ fontSize: 17, fontWeight: 800, marginBottom: 8, color: '#2D3748' }}>Grow Your Business Locally</h3>
-                                <p style={{ fontSize: 13, color: '#718096', lineHeight: 1.5 }}>Reach more customers in your area with Google Ads. Start now and get $500 free ad credit.</p>
-                                <button style={{ marginTop: 16, width: '100%', padding: '10px', background: '#4285F4', color: 'white', border: 'none', borderRadius: 8, fontWeight: 700, cursor: 'pointer' }}>Start Advertising</button>
-                            </div>
-                        </div>
+        const loadToast = toast.loading('Generating PDF...');
+        const element = document.getElementById('quick-invoice-print');
+        if (!element) {
+            toast.error('Invoice print element not found', { id: loadToast });
+            return;
+        }
 
-                        {/* Edibio Premium Poster */}
-                        <div style={{ width: 320, padding: 32, background: 'linear-gradient(135deg, #1A1A2E, #FF7F50)', borderRadius: 20, boxShadow: '0 20px 40px rgba(255,127,80,0.2)', textAlign: 'center', color: 'white', display: 'flex', flexDirection: 'column', justifyContent: 'center', position: 'relative', overflow: 'hidden' }}>
-                            <div style={{ position: 'absolute', top: -40, right: -40, width: 120, height: 120, background: 'rgba(255,255,255,0.1)', borderRadius: '50%' }} />
-                            <span style={{ fontSize: 32, fontWeight: 900, letterSpacing: '-1px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginBottom: 16 }}>
-                                edibio<span style={{ color: '#2D3748' }}>.</span>
-                            </span>
-                            <h2 style={{ fontSize: 20, fontWeight: 900, marginBottom: 12, lineHeight: 1.2 }}>Upgrade to Edibio Pro</h2>
-                            <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.8)', lineHeight: 1.5, margin: 0 }}>
-                                Unlock deeper analytics, AI insights, unlimited staff accounts, and priority VIP support today.
-                            </p>
-                            <button style={{ marginTop: 24, width: '100%', padding: '12px', background: 'white', color: '#1A1A2E', border: 'none', borderRadius: 8, fontWeight: 800, cursor: 'pointer' }}>Upgrade Now</button>
-                        </div>
-                    </div>
-                </div>
+        // Temporarily replace min-height with auto to avoid vertical page splits/blank pages
+        const vhElements = element.querySelectorAll('[style*="min-height"], [style*="minHeight"]');
+        const originalMinHeights: { el: Element; style: string | null }[] = [];
+        vhElements.forEach(el => {
+            originalMinHeights.push({ el, style: el.getAttribute('style') });
+            const currStyle = el.getAttribute('style') || '';
+            const replaced = currStyle
+                .replace(/min-height\s*:\s*[^;]+/gi, 'min-height: auto')
+                .replace(/minHeight\s*:\s*[^;]+/gi, 'min-height: auto');
+            el.setAttribute('style', replaced);
+        });
 
-                <div className="no-print" style={{ position: 'fixed', bottom: 0, left: 0, right: 0, padding: 20, background: 'white', borderTop: '1px solid #ddd', display: 'flex', justifyContent: 'center', gap: 16 }}>
-                    <button onClick={() => setShowPrintModal(true)} className="mi-btn" style={{ border: '1px solid #E2E8F0', padding: '10px 20px', background: 'white', cursor: 'pointer' }}><Printer size={16} /> Print</button>
-                    <button onClick={() => { setSavedBill(null); setItems([emptyRow(), emptyRow()]); setPartyName(''); setPartyPhone(''); setBillingAddress(''); setDiscountVal(''); }} className="mi-btn" style={{ background: '#4285F4', color: 'white', border: 'none', padding: '10px 20px', cursor: 'pointer' }}><Plus size={16} /> New Bill</button>
-                    <button onClick={() => router.push(`/company/dashboard`)} className="mi-btn" style={{ background: 'transparent', padding: '10px 20px', border: 'none', cursor: 'pointer', fontWeight: 700 }}>Back to Dashboard</button>
-                </div>
-                <style>{`
-            @media print {
-              body * { visibility: hidden; }
-              .print-only, .print-only * { visibility: visible; }
-              .print-only { position: absolute; left: 0; top: 0; width: 100%; display: block !important; }
-              .no-print { display: none !important; }
+        const triggerVirtualDownload = (blob: Blob, filename: string) => {
+            const downloadUrl = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = downloadUrl;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(downloadUrl);
+            toast.success('PDF downloaded successfully!', { id: loadToast });
+        };
+
+        try {
+            const html2pdf = (await import('html2pdf.js')).default;
+
+            const opt: any = {
+                margin: 0, // Set to 0 to prevent template scaling/shifting
+                filename: `${invoice.invoiceNumber || 'Invoice'}.pdf`,
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { 
+                    scale: 2, 
+                    useCORS: true, 
+                    logging: false,
+                    letterRendering: true,
+                    scrollX: 0,
+                    scrollY: 0
+                },
+                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+                pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+            };
+
+            const worker = html2pdf().set(opt).from(element);
+            const pdfBlob = await worker.output('blob');
+            const fileName = `${invoice.invoiceNumber || 'Invoice'}.pdf`;
+
+            // Use browser File System Access API if supported to allow selecting folder
+            if (typeof window !== 'undefined' && 'showSaveFilePicker' in window) {
+                try {
+                    const handle = await (window as any).showSaveFilePicker({
+                        suggestedName: fileName,
+                        types: [{
+                            description: 'PDF Document',
+                            accept: { 'application/pdf': ['.pdf'] }
+                        }]
+                    });
+                    const writable = await handle.createWritable();
+                    await writable.write(pdfBlob);
+                    await writable.close();
+                    toast.success('PDF saved successfully!', { id: loadToast });
+                } catch (err: any) {
+                    if (err.name !== 'AbortError') {
+                        console.error('File System Access API failed, falling back:', err);
+                        triggerVirtualDownload(pdfBlob, fileName);
+                    } else {
+                        toast.dismiss(loadToast);
+                    }
+                }
+            } else {
+                triggerVirtualDownload(pdfBlob, fileName);
             }
-            .print-only { display: none; }
-          `}</style>
-            </div>
-        );
-    }
+        } catch (err: any) {
+            console.error('PDF generation failed:', err);
+            toast.error('Failed to generate PDF. Try printing instead.', { id: loadToast });
+        } finally {
+            // Restore original min-height styles
+            originalMinHeights.forEach(item => {
+                if (item.style !== null) item.el.setAttribute('style', item.style);
+                else item.el.removeAttribute('style');
+            });
+        }
+    };
+
+    const getPaymentStatusColor = (status: string) => {
+        if (status === 'paid') return { bg: '#E6FFFA', text: '#319795', border: '#B2F5EA' };
+        if (status === 'partial') return { bg: '#FEFCBF', text: '#B7791F', border: '#FEEBC8' };
+        return { bg: '#FFF5F5', text: '#E53E3E', border: '#FED7D7' };
+    };
 
     return (
         <div style={{ minHeight: '100dvh', background: '#F8F9FA', fontFamily: 'Inter, sans-serif' }}>
             {/* Print template (hidden normally) */}
-            <div className="print-only">
-                {savedBill ? <InvoicePrintTemplate invoice={savedBill} company={company} copies={copies} themeOverride={company?.quickBillingTheme || 'quick_bill'} /> :
-                    (validItems.length > 0 ? <InvoicePrintTemplate invoice={{
-                        partyName: partyName || 'Cash / Walk-in Customer', partyPhone, billingAddress, date, invoiceNumber: nextInvoiceNumber(companyId as string, 'MN'),
-                        items: validItems, grandTotal, totalDiscount: globalDiscount, roundOff: parseFloat(roundOffVal) || 0, subTotal, totalGst
-                    }} company={company} copies={copies} themeOverride={company?.quickBillingTheme || 'quick_bill'} /> : null)}
+            <div className="print-only-container" id="quick-invoice-print-container">
+                <div id="quick-invoice-print" style={{ width: 800, background: 'white', padding: '20px', boxSizing: 'border-box' }}>
+                    {savedBill ? <InvoicePrintTemplate invoice={savedBill} company={company} copies={copies} themeOverride={company?.quickBillingTheme || company?.templateTheme || 'classic'} previewMode={true} /> :
+                        (validItems.length > 0 ? <InvoicePrintTemplate invoice={{
+                            partyName: partyName || 'Cash / Walk-in Customer', partyPhone, billingAddress, date, invoiceNumber: nextInvoiceNumber(companyId as string, 'MN'),
+                            items: validItems, grandTotal, totalDiscount: globalDiscount, roundOff: parseFloat(roundOffVal) || 0, subTotal, totalGst
+                        }} company={company} copies={copies} themeOverride={company?.quickBillingTheme || company?.templateTheme || 'classic'} previewMode={true} /> : null)}
+                </div>
             </div>
+
             <style>{`
         @media print {
-            body * { visibility: hidden; }
-            .print-only, .print-only * { visibility: visible; }
-            .print-only { position: absolute; left: 0; top: 0; width: 100%; display: block !important; }
-            .no-print { display: none !important; }
+            .app-sidebar, .topbar, .bottom-nav, .demo-banner, .no-print, aside, header, nav, footer, .sidebar, .navbar {
+                display: none !important;
+            }
+            html, body, .app-shell, .app-main, .app-content, .app-content-inner {
+                display: block !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                width: 100% !important;
+                height: auto !important;
+                min-height: auto !important;
+                background: white !important;
+                border: none !important;
+                box-shadow: none !important;
+            }
+            .print-only-container, .print-only-container * {
+                visibility: visible !important;
+            }
+            .print-only-container {
+                display: block !important;
+                position: absolute !important;
+                left: 0 !important;
+                top: 0 !important;
+                width: 100% !important;
+                height: auto !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                z-index: 9999999 !important;
+                background: white !important;
+            }
         }
-        .print-only { display: none; }
+        .print-only-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 800px;
+            z-index: -9999;
+            pointer-events: none;
+            background: white;
+        }
         
         .mi-input {
             border: 1px solid #E2E8F0;
@@ -838,12 +1251,91 @@ function QuickBillingContent() {
         }
       `}</style>
 
-            <div className="no-print" style={{ padding: '24px 32px', maxWidth: 1440, margin: '0 auto' }}>
+            {savedBill && showSuccess ? (() => {
+                const payStatus = getPaymentStatusColor(savedBill.paymentStatus);
+                return (
+                    <div style={{ background: 'linear-gradient(135deg, #F8FAFC 0%, #E2E8F0 100%)', minHeight: '100dvh', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', fontFamily: 'Inter, sans-serif', padding: '24px', boxSizing: 'border-box' }} className="no-print">
+                        {/* Premium Receipt Card */}
+                        <div style={{ background: 'rgba(255, 255, 255, 0.85)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255, 255, 255, 0.4)', borderRadius: '24px', boxShadow: '0 20px 45px rgba(0, 0, 0, 0.05), 0 10px 20px rgba(0, 0, 0, 0.03)', padding: '40px', width: '100%', maxWidth: '520px', display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative', boxSizing: 'border-box' }}>
+                            
+                            {/* Floating Success Indicator */}
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '72px', height: '72px', borderRadius: '50%', background: '#DEF7EC', border: '3px solid #10B981', color: '#10B981', marginBottom: '20px', boxShadow: '0 10px 20px rgba(16, 185, 129, 0.2)' }}>
+                                <Check size={36} strokeWidth={3} />
+                            </div>
 
-                {/* Top Header */}
-                <datalist id="parties-list">
-                    {parties.map(p => <option key={p.id || p.name} value={p.name}>{p.phone || p.id || ''}</option>)}
-                </datalist>
+                            <h2 style={{ fontSize: '24px', fontWeight: 900, color: '#1E293B', margin: '0 0 4px 0', textAlign: 'center' }}>Bill Generated Successfully!</h2>
+                            <p style={{ fontSize: '14px', color: '#64748B', margin: '0 0 32px 0', textAlign: 'center' }}>
+                                Invoice <strong style={{ color: '#0F172A' }}>{savedBill.invoiceNumber}</strong> has been saved and is ready.
+                            </p>
+
+                            {/* Quick Amount Section */}
+                            <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '16px', padding: '20px', width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '28px', boxSizing: 'border-box' }}>
+                                <span style={{ fontSize: '11px', fontWeight: 800, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Grand Total</span>
+                                <span style={{ fontSize: '32px', fontWeight: 950, color: '#0F172A', fontFamily: 'monospace' }}>
+                                    ₹{savedBill.grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                                </span>
+                            </div>
+
+                            {/* Receipt Metadata Grid */}
+                            <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '36px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px dashed #E2E8F0', paddingBottom: '12px' }}>
+                                    <span style={{ fontSize: '13px', fontWeight: 600, color: '#64748B' }}>Customer</span>
+                                    <span style={{ fontSize: '14px', fontWeight: 800, color: '#0F172A' }}>{savedBill.partyName || 'Cash / Walk-in Customer'}</span>
+                                </div>
+                                {savedBill.partyPhone && (
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px dashed #E2E8F0', paddingBottom: '12px' }}>
+                                        <span style={{ fontSize: '13px', fontWeight: 600, color: '#64748B' }}>Phone / ID</span>
+                                        <span style={{ fontSize: '14px', fontWeight: 800, color: '#0F172A' }}>{savedBill.partyPhone}</span>
+                                    </div>
+                                )}
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px dashed #E2E8F0', paddingBottom: '12px' }}>
+                                    <span style={{ fontSize: '13px', fontWeight: 600, color: '#64748B' }}>Date & Time</span>
+                                    <span style={{ fontSize: '14px', fontWeight: 700, color: '#334155' }}>{savedBill.date} {savedBill.time || ''}</span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <span style={{ fontSize: '13px', fontWeight: 600, color: '#64748B' }}>Payment Status</span>
+                                    <span style={{ fontSize: '12px', fontWeight: 800, color: payStatus.text, background: payStatus.bg, border: `1px solid ${payStatus.border}`, borderRadius: '999px', padding: '4px 12px', textTransform: 'uppercase' }}>
+                                        {savedBill.paymentStatus}
+                                    </span>
+                                </div>
+                            </div>
+
+                            {/* Elegant Button Group */}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '100%' }}>
+                                <div style={{ display: 'flex', gap: '12px', width: '100%' }}>
+                                    <button onClick={() => handleDownloadPDF(savedBill)} style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '14px 20px', borderRadius: '12px', border: 'none', background: '#34A853', color: 'white', fontSize: '14px', fontWeight: 800, cursor: 'pointer', boxShadow: '0 4px 12px rgba(52, 168, 83, 0.25)', transition: 'transform 0.1s, opacity 0.1s' }} className="btn-scale">
+                                        <Download size={16} /> Download PDF
+                                    </button>
+                                    <button onClick={() => setShowPrintModal(true)} style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '14px 20px', borderRadius: '12px', border: '1px solid #CBD5E0', background: 'white', color: '#334155', fontSize: '14px', fontWeight: 800, cursor: 'pointer', transition: 'background 0.15s' }} className="btn-hover-gray">
+                                        <Printer size={16} /> Print
+                                    </button>
+                                </div>
+
+                                <button onClick={() => { setSavedBill(null); setShowSuccess(false); setItems([emptyRow()]); setPartyName(''); setPartyPhone(''); setBillingAddress(''); setDiscountVal(''); setAmountGiven(''); setDate(new Date().toISOString().slice(0, 10)); setTime(new Date().toTimeString().slice(0, 5)); }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '14px 20px', borderRadius: '12px', border: 'none', background: '#4285F4', color: 'white', fontSize: '14px', fontWeight: 800, cursor: 'pointer', boxShadow: '0 4px 12px rgba(66, 133, 244, 0.25)' }} className="btn-scale">
+                                    <Plus size={16} /> New Bill
+                                </button>
+                                
+                                <button onClick={() => router.push(`/company/dashboard`)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px 20px', borderRadius: '12px', border: 'none', background: 'transparent', color: '#64748B', fontSize: '14px', fontWeight: 700, cursor: 'pointer', textDecoration: 'none' }}>
+                                    Back to Dashboard
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Micro animation styles */}
+                        <style>{`
+                            .btn-scale:active { transform: scale(0.98); }
+                            .btn-hover-gray:hover { background: #F8FAFC !important; border-color: #A0AEC0 !important; }
+                            .btn-scale:hover { opacity: 0.95; }
+                        `}</style>
+                    </div>
+                );
+            })() : (
+                <div className="no-print" style={{ padding: '24px 32px', maxWidth: 1440, margin: '0 auto' }}>
+                    <datalist id="parties-list">
+                        {parties.map(p => <option key={p.id || p.name} value={p.name}>{p.phone || p.id || ''}</option>)}
+                    </datalist>
+
+
 
                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', flex: 1 }}>
@@ -883,10 +1375,10 @@ function QuickBillingContent() {
                             )}
                         </button>
                         {/* Suspend Button */}
-                        <button onClick={() => setShowSuspendModal(true)} className="mi-btn" style={{ border: '1px solid transparent', background: suspendedBills.length > 0 ? '#FFF5F5' : '#F7FAFC', color: suspendedBills.length > 0 ? '#C53030' : '#4A5568', padding: '6px 14px', position: 'relative' }}>
+                        <button onClick={() => setShowSuspendModal(true)} className="mi-btn" style={{ border: '1px solid #FEB2B2', background: '#FFF5F5', color: '#E53E3E', padding: '6px 14px', position: 'relative' }}>
                             <PauseCircle size={14} /> Suspend
                             {suspendedBills.length > 0 && (
-                                <span style={{ position: 'absolute', top: -4, right: -4, background: '#DD6B20', color: 'white', borderRadius: '50%', width: 16, height: 16, fontSize: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900 }}>
+                                <span style={{ position: 'absolute', top: -4, right: -4, background: '#E53E3E', color: 'white', borderRadius: '50%', width: 16, height: 16, fontSize: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900 }}>
                                     {suspendedBills.length}
                                 </span>
                             )}
@@ -1338,13 +1830,71 @@ function QuickBillingContent() {
                                                 placeholder="0.00"
                                             />
                                         </div>
-                                        {amountGiven && parseFloat(amountGiven) > 0 && (
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, fontSize: 14, fontWeight: 900 }}>
-                                                <span style={{ color: '#4A5568' }}>Balance Return:</span>
-                                                <span style={{ color: parseFloat(amountGiven) >= grandTotal ? '#38A169' : '#E53E3E' }}>
-                                                    {parseFloat(amountGiven) >= grandTotal ? '+' : ''}
-                                                    ₹{(parseFloat(amountGiven) - grandTotal).toFixed(2)}
-                                                </span>
+                                        {amountGiven && parseFloat(amountGiven) > 0 && (() => {
+                                            const amountGivenVal = parseFloat(amountGiven) || 0;
+                                            const excess = Math.max(0, amountGivenVal - grandTotal);
+                                            const excessApplied = selectedCustomer && selectedCustomer.balance > 0 && tallyWithBalance ? Math.min(excess, selectedCustomer.balance) : 0;
+                                            const changeToReturn = excess - excessApplied;
+
+                                            return (
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, fontSize: 14, fontWeight: 900 }}>
+                                                    <span style={{ color: '#4A5568' }}>Balance Return (Change):</span>
+                                                    <span style={{ color: amountGivenVal >= grandTotal ? '#38A169' : '#E53E3E' }}>
+                                                        {amountGivenVal >= grandTotal ? '+' : ''}
+                                                        ₹{changeToReturn.toFixed(2)}
+                                                    </span>
+                                                </div>
+                                            );
+                                        })()}
+
+                                        {selectedCustomer && selectedCustomer.balance > 0 && (
+                                            <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6, borderTop: '1.5px dashed #E2E8F0', paddingTop: 10 }}>
+                                                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 700, color: '#2B6CB0', cursor: 'pointer' }}>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={tallyWithBalance}
+                                                        onChange={e => setTallyWithBalance(e.target.checked)}
+                                                        style={{ width: 16, height: 16, cursor: 'pointer' }}
+                                                    />
+                                                    Adjust excess payment to clear outstanding balance (Current: ₹{selectedCustomer.balance.toFixed(2)})
+                                                </label>
+                                                
+                                                {amountGiven && parseFloat(amountGiven) > grandTotal && tallyWithBalance && (() => {
+                                                    const amountGivenVal = parseFloat(amountGiven) || 0;
+                                                    const excess = amountGivenVal - grandTotal;
+                                                    const excessApplied = Math.min(excess, selectedCustomer.balance);
+                                                    const newOldBalance = selectedCustomer.balance - excessApplied;
+                                                    return (
+                                                        <div style={{ background: '#EBF8FF', padding: '8px 12px', borderRadius: 8, fontSize: 12, color: '#2B6CB0', display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4 }}>
+                                                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                <span>Deducted from Old Balance:</span>
+                                                                <span style={{ fontWeight: 800 }}>-₹{excessApplied.toFixed(2)}</span>
+                                                            </div>
+                                                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                <span>Remaining Old Balance:</span>
+                                                                <span style={{ fontWeight: 800 }}>₹{newOldBalance.toFixed(2)}</span>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })()}
+
+                                                {amountGiven && parseFloat(amountGiven) < grandTotal && (() => {
+                                                    const amountGivenVal = parseFloat(amountGiven) || 0;
+                                                    const dueToday = grandTotal - amountGivenVal;
+                                                    const newBalance = selectedCustomer.balance + dueToday;
+                                                    return (
+                                                        <div style={{ background: '#FFF5F5', padding: '8px 12px', borderRadius: 8, fontSize: 12, color: '#C53030', display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4 }}>
+                                                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                <span>Today's Unpaid (Added to Balance):</span>
+                                                                <span style={{ fontWeight: 800 }}>+₹{dueToday.toFixed(2)}</span>
+                                                            </div>
+                                                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                <span>New Outstanding Balance:</span>
+                                                                <span style={{ fontWeight: 800 }}>₹{newBalance.toFixed(2)}</span>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })()}
                                             </div>
                                         )}
                                     </div>
@@ -1452,26 +2002,100 @@ function QuickBillingContent() {
                 {/* Action Modal */}
                 {actionModal.isOpen && (
                     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }} onClick={() => setActionModal({ isOpen: false, isRefund: false })}>
-                        <div onClick={e => e.stopPropagation()} style={{ background: 'white', padding: 32, borderRadius: 16, width: 360, animation: 'fadeUp 0.2s ease' }}>
-                            <h3 style={{ fontWeight: 900, fontSize: 18, marginBottom: 8, color: '#1A202C' }}>
+                        <div onClick={e => e.stopPropagation()} style={{ background: 'white', padding: 28, borderRadius: 16, width: 460, maxHeight: '80vh', display: 'flex', flexDirection: 'column', animation: 'fadeUp 0.2s ease', boxSizing: 'border-box' }}>
+                            <h3 style={{ fontWeight: 900, fontSize: 18, marginBottom: 4, color: '#1A202C' }}>
                                 {actionModal.isRefund ? 'Refund Invoice' : 'Fetch Invoice'}
                             </h3>
-                            <p style={{ fontSize: 13, color: '#718096', marginBottom: 20 }}>
-                                Enter the Invoice Number to proceed with {actionModal.isRefund ? 'refund' : 'fetching'}.
+                            <p style={{ fontSize: 13, color: '#718096', marginBottom: 16 }}>
+                                Select a previous bill below or search by invoice number / customer.
                             </p>
-                            <input
-                                autoFocus
-                                value={actionQuery}
-                                onChange={e => setActionQuery(e.target.value)}
-                                onKeyDown={e => e.key === 'Enter' && executeAction()}
-                                placeholder="e.g. MN1001"
-                                className="mi-input"
-                                style={{ marginBottom: 20, fontSize: 15, padding: '12px', fontWeight: 700 }}
-                            />
+                            
+                            {/* Search Input */}
+                            <div style={{ position: 'relative', marginBottom: 16 }}>
+                                <input
+                                    autoFocus
+                                    value={actionQuery}
+                                    onChange={e => setActionQuery(e.target.value)}
+                                    onKeyDown={e => e.key === 'Enter' && executeAction()}
+                                    placeholder="Search invoice number, name, or phone..."
+                                    className="mi-input"
+                                    style={{ paddingLeft: '36px', paddingRight: '12px', fontSize: 14, height: '40px', boxSizing: 'border-box', fontWeight: 600 }}
+                                />
+                                <Search size={16} color="#A0AEC0" style={{ position: 'absolute', left: 12, top: 12 }} />
+                            </div>
+
+                            {/* Scrollable Bills List */}
+                            <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20, paddingRight: 4 }} className="custom-scrollbar">
+                                {filteredPreviousInvoices.length === 0 ? (
+                                    <div style={{ textAlign: 'center', color: '#A0AEC0', padding: '24px 0', fontSize: 13 }}>
+                                        No invoices found matching query.
+                                    </div>
+                                ) : (
+                                    filteredPreviousInvoices.map((inv: any) => (
+                                        <div 
+                                            key={inv.id} 
+                                            onClick={() => selectInvoice(inv)}
+                                            style={{ 
+                                                padding: '12px 14px', 
+                                                border: '1px solid #E2E8F0', 
+                                                borderRadius: '10px', 
+                                                display: 'flex', 
+                                                justifyContent: 'space-between', 
+                                                alignItems: 'center', 
+                                                cursor: 'pointer',
+                                                transition: 'all 0.15s ease',
+                                            }}
+                                            className="fetch-row-hover"
+                                        >
+                                            <div>
+                                                <div style={{ fontWeight: 800, fontSize: 14, color: '#1A202C', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                    <FileText size={14} color="#718096" />
+                                                    {inv.invoiceNumber}
+                                                </div>
+                                                <div style={{ fontSize: 12, color: '#4A5568', fontWeight: 600, marginTop: 2 }}>
+                                                    {inv.partyName || 'Cash / Walk-in Customer'}
+                                                </div>
+                                            </div>
+                                            <div style={{ textAlign: 'right' }}>
+                                                <div style={{ fontWeight: 800, fontSize: 14, color: '#2D3748', fontFamily: 'monospace' }}>
+                                                    ₹{inv.grandTotal.toFixed(2)}
+                                                </div>
+                                                <div style={{ fontSize: 11, color: '#718096', marginTop: 2 }}>
+                                                    {inv.date} {inv.time || ''}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+
                             <div style={{ display: 'flex', gap: 12 }}>
                                 <button onClick={() => setActionModal({ isOpen: false, isRefund: false })} style={{ flex: 1, padding: '10px', borderRadius: 8, background: 'white', border: '1px solid #E2E8F0', fontWeight: 700, color: '#4A5568', cursor: 'pointer' }}>Cancel</button>
                                 <button onClick={executeAction} style={{ flex: 1, padding: '10px', borderRadius: 8, background: '#4285F4', border: 'none', fontWeight: 700, color: 'white', cursor: 'pointer' }}>Confirm</button>
                             </div>
+
+                            <style>{`
+                                .fetch-row-hover:hover {
+                                    background: #F7FAFC;
+                                    border-color: #CBD5E0 !important;
+                                    transform: translateY(-1px);
+                                    box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+                                }
+                                .custom-scrollbar::-webkit-scrollbar {
+                                    width: 5px;
+                                }
+                                .custom-scrollbar::-webkit-scrollbar-track {
+                                    background: #F7FAFC;
+                                    border-radius: 4px;
+                                }
+                                .custom-scrollbar::-webkit-scrollbar-thumb {
+                                    background: #CBD5E0;
+                                    border-radius: 4px;
+                                }
+                                .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+                                    background: #A0AEC0;
+                                }
+                            `}</style>
                         </div>
                     </div>
                 )}
@@ -1588,7 +2212,7 @@ function QuickBillingContent() {
                                             <span style={{ fontWeight: 700, fontSize: 14 }}>{partyName || 'Walk-in Customer'}</span>
                                             <span style={{ fontSize: 12, color: '#718096', marginLeft: 8 }}>({validItems.length} items - ₹{grandTotal})</span>
                                         </div>
-                                        <button onClick={handleSuspend} className="mi-btn" style={{ background: '#DD6B20', color: 'white', border: 'none' }}>
+                                        <button onClick={handleSuspend} className="mi-btn" style={{ background: '#E53E3E', color: 'white', border: 'none' }}>
                                             <PauseCircle size={14} /> Suspend Bill
                                         </button>
                                     </div>
@@ -1639,10 +2263,6 @@ function QuickBillingContent() {
                 {/* Balance Modal */}
                 {showBalanceModal && (() => {
                     // Compute accurate balances from actual unpaid invoices (not party.balance which can be corrupted)
-                    const normPhone = (ph: string) => {
-                        const d = (ph || '').replace(/\D/g, '');
-                        return d.startsWith('91') && d.length > 10 ? d.slice(2) : d;
-                    };
                     const DRAFT = ['estimate', 'proforma', 'delivery_challan'];
                     type TrackerEntry = { party: any; computedBalance: number; };
                     const trackerMap = new Map<string, TrackerEntry>();
@@ -1660,14 +2280,23 @@ function QuickBillingContent() {
                             if (trackerMap.has(key)) {
                                 trackerMap.get(key)!.computedBalance += i.balanceDue;
                             } else {
-                                // Invoice references a party not in parties list — find by id
+                                // Invoice references a party not in parties list — find by id or phone
                                 const p = parties.find((p: any) => p.id === i.partyId) ||
                                           parties.find((p: any) => normPhone(p.phone) === key);
-                                if (p) trackerMap.set(key, { party: p, computedBalance: i.balanceDue });
-                                else trackerMap.set(key, { party: { id: i.partyId, name: i.partyName, phone: i.partyPhone }, computedBalance: i.balanceDue });
+                                if (p) {
+                                    const pKey = normPhone(p.phone) || p.id;
+                                    if (trackerMap.has(pKey)) {
+                                        trackerMap.get(pKey)!.computedBalance += i.balanceDue;
+                                    } else {
+                                        trackerMap.set(pKey, { party: p, computedBalance: i.balanceDue });
+                                    }
+                                } else {
+                                    trackerMap.set(key, { party: { id: i.partyId, name: i.partyName, phone: i.partyPhone }, computedBalance: i.balanceDue });
+                                }
                             }
                         });
-                    const trackerEntries = Array.from(trackerMap.values())
+                    const trackerEntries = Array.from(trackerMap.entries())
+                        .map(([mapKey, value]) => ({ mapKey, ...value }))
                         .filter(e => e.computedBalance > 0)
                         .filter(e => {
                             if (!balanceSearchQuery) return true;
@@ -1720,8 +2349,8 @@ function QuickBillingContent() {
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, overflowY: 'auto', flex: 1 }}>
                             {trackerEntries.length === 0 ? (
                                 <div style={{ textAlign: 'center', color: '#A0AEC0', padding: '40px 0', fontSize: 13 }}>No customers with outstanding balance.</div>
-                            ) : trackerEntries.map(({ party, computedBalance }) => (
-                                <div key={party.id} style={{ padding: 14, border: '1px solid #E2E8F0', borderRadius: 10, display: 'flex', flexDirection: 'column', gap: 10, background: '#F8FAFC' }}>
+                            ) : trackerEntries.map(({ mapKey, party, computedBalance }) => (
+                                <div key={mapKey} style={{ padding: 14, border: '1px solid #E2E8F0', borderRadius: 10, display: 'flex', flexDirection: 'column', gap: 10, background: '#F8FAFC' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                         <div>
                                             <div style={{ fontWeight: 800, fontSize: 14, color: '#2D3748' }}>{party.name}</div>
@@ -1765,7 +2394,7 @@ function QuickBillingContent() {
                                                         type: 'received',
                                                         amount: amt,
                                                         method: 'cash',
-                                                        date: new Date().toLocaleDateString('en-CA'),
+                                                        date: new Date().toLocaleDateString('sv-SE'),
                                                         note: 'Recorded via Balance Tracker'
                                                     });
 
@@ -1807,7 +2436,7 @@ function QuickBillingContent() {
                                                             type: 'received',
                                                             amount: fullAmt,
                                                             method: 'cash',
-                                                            date: new Date().toLocaleDateString('en-CA'),
+                                                            date: new Date().toLocaleDateString('sv-SE'),
                                                             note: 'Marked fully paid via Balance Tracker'
                                                         });
                                                         invoices.forEach((inv: any) => {
@@ -1838,8 +2467,9 @@ function QuickBillingContent() {
                         </div>
                     );
                 })()}
-            <ConfirmDialog />
             </div>
+            )}
+            <ConfirmDialog />
         </div>
     );
 }

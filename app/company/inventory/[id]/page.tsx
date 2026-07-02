@@ -1,17 +1,18 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { useStore, useCompanyData } from '@/lib/store';
+import { useStore, useCompanyData, useActiveCompany } from '@/lib/store';
 import type { Product, Batch } from '@/lib/types';
-import { ArrowLeft, ArrowDown, ArrowUp, Package, Plus, Trash2, X, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, ArrowDown, ArrowUp, Package, Plus, Trash2, X, AlertTriangle, QrCode } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 import toast from 'react-hot-toast';
+import QrLabelModal from '@/components/QrLabelModal';
 
 const TYPE_STYLES = {
-    in:      { color: '#34A853', bg: '#DCFCE7', label: '▲ IN',     icon: <ArrowDown size={12} /> },
-    out:     { color: '#EA4335', bg: '#FEE2E2', label: '▼ OUT',    icon: <ArrowUp size={12} /> },
-    adjust:  { color: '#FBBC04', bg: '#FEF3C7', label: '⇅ ADJUST', icon: null },
-    opening: { color: '#4285F4', bg: '#DBEAFE', label: '◎ OPEN',   icon: null },
+    in:      { color: '#16A34A', bg: '#DCFCE7', label: 'STOCK IN',  icon: <ArrowUp size={11} style={{ marginRight: 4 }} />, rowBg: 'rgba(22, 163, 74, 0.02)' },
+    out:     { color: '#DC2626', bg: '#FEE2E2', label: 'STOCK OUT', icon: <ArrowDown size={11} style={{ marginRight: 4 }} />, rowBg: 'rgba(220, 38, 38, 0.02)' },
+    adjust:  { color: '#D97706', bg: '#FEF3C7', label: 'ADJUSTED',  icon: null, rowBg: 'rgba(217, 119, 6, 0.02)' },
+    opening: { color: '#2563EB', bg: '#DBEAFE', label: 'OPENING',   icon: null, rowBg: 'rgba(37, 99, 235, 0.02)' },
 };
 
 export default function ProductDetailPage() {
@@ -21,11 +22,35 @@ export default function ProductDetailPage() {
 
     const products = useCompanyData('products') as Product[];
     const product = products.find(p => p.id === productId);
+    const company = useActiveCompany();
 
     const { updateProduct } = useStore();
 
+    useEffect(() => {
+        if (!product || !product.batches || product.batches.length === 0) return;
+        const batchSum = product.batches.reduce((sum, b) => sum + b.qty, 0);
+        if (product.stockQty !== batchSum) {
+            const log = {
+                id: 'log_' + Date.now().toString(36),
+                date: new Date().toISOString().slice(0, 10),
+                time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false }),
+                type: 'adjust' as const,
+                qty: batchSum - product.stockQty,
+                reason: 'Auto-reconciled stock with batch sum',
+                balanceAfter: batchSum,
+            };
+            updateProduct(product.id, {
+                stockQty: batchSum,
+                batches: product.batches,
+                stockLogs: [log, ...(product.stockLogs || [])]
+            });
+            toast.success('Product stock auto-reconciled with batch quantities!');
+        }
+    }, [product?.id, product?.batches, product?.stockQty]);
+
     const [tab, setTab] = useState<'history' | 'batches'>('history');
     const [showBatchModal, setShowBatchModal] = useState(false);
+    const [showQrModal, setShowQrModal] = useState(false);
     const [batchForm, setBatchForm] = useState({ batchNo: '', mfgDate: '', expiryDate: '', qty: '', purchasePrice: '' });
 
     if (!product) {
@@ -38,8 +63,32 @@ export default function ProductDetailPage() {
         );
     }
 
-    const logs = (product.stockLogs || []).slice().sort((a, b) => b.date.localeCompare(a.date));
-    const batches = product.batches || [];
+    const siblingProducts = products.filter(p => p.name.trim().toLowerCase() === product.name.trim().toLowerCase());
+    const combinedStockQty = siblingProducts.reduce((sum, p) => sum + p.stockQty, 0);
+
+    const stockByGodown = siblingProducts.map(p => {
+        const gId = p.godownId || company?.godowns?.[0]?.id;
+        const gName = company?.godowns?.find(g => g.id === gId)?.name || '—';
+        return { godownName: gName, qty: p.stockQty, unit: p.unit };
+    });
+
+    const logs = siblingProducts.flatMap(p => {
+        const gId = p.godownId || company?.godowns?.[0]?.id;
+        const gName = company?.godowns?.find(g => g.id === gId)?.name || '—';
+        return (p.stockLogs || []).map(log => ({
+            ...log,
+            godownName: gName
+        }));
+    }).sort((a, b) => b.date.localeCompare(a.date) || (b.time || '').localeCompare(a.time || ''));
+
+    const batches = siblingProducts.flatMap(p => {
+        const gId = p.godownId || company?.godowns?.[0]?.id;
+        const gName = company?.godowns?.find(g => g.id === gId)?.name || '—';
+        return (p.batches || []).map(b => ({
+            ...b,
+            godownName: gName
+        }));
+    });
 
     const today = new Date().toISOString().slice(0, 10);
     const expiredBatches = batches.filter(b => b.expiryDate && b.expiryDate < today);
@@ -47,23 +96,59 @@ export default function ProductDetailPage() {
 
     const saveBatch = () => {
         if (!batchForm.batchNo) { toast.error('Batch number required'); return; }
+        const batchQty = parseFloat(batchForm.qty) || 0;
         const batch: Batch = {
             id: Math.random().toString(36).slice(2) + Date.now().toString(36),
             batchNo: batchForm.batchNo,
             mfgDate: batchForm.mfgDate || undefined,
             expiryDate: batchForm.expiryDate || undefined,
-            qty: parseFloat(batchForm.qty) || 0,
+            qty: batchQty,
             purchasePrice: parseFloat(batchForm.purchasePrice) || product.purchasePrice,
             addedAt: new Date().toISOString(),
         };
-        updateProduct(product.id, { batches: [batch, ...batches] });
+        const newBatches = [batch, ...(product.batches || [])];
+        const newStockQty = newBatches.reduce((a, b) => a + b.qty, 0);
+
+        const log = {
+            id: 'log_' + Date.now().toString(36),
+            date: new Date().toISOString().slice(0, 10),
+            time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false }),
+            type: 'adjust' as const,
+            qty: batchQty,
+            reason: `Batch ${batch.batchNo} added`,
+            balanceAfter: newStockQty,
+        };
+
+        updateProduct(product.id, { 
+            batches: newBatches,
+            stockLogs: [log, ...(product.stockLogs || [])]
+        });
         setBatchForm({ batchNo: '', mfgDate: '', expiryDate: '', qty: '', purchasePrice: '' });
         setShowBatchModal(false);
         toast.success('Batch added!');
     };
 
     const deleteBatch = (id: string) => {
-        updateProduct(product.id, { batches: batches.filter(b => b.id !== id) });
+        const targetBatch = (product.batches || []).find(b => b.id === id);
+        if (!targetBatch) return;
+
+        const newBatches = (product.batches || []).filter(b => b.id !== id);
+        const newStockQty = newBatches.reduce((a, b) => a + b.qty, 0);
+
+        const log = {
+            id: 'log_' + Date.now().toString(36),
+            date: new Date().toISOString().slice(0, 10),
+            time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false }),
+            type: 'adjust' as const,
+            qty: -targetBatch.qty,
+            reason: `Batch ${targetBatch.batchNo} deleted`,
+            balanceAfter: newStockQty,
+        };
+
+        updateProduct(product.id, { 
+            batches: newBatches,
+            stockLogs: [log, ...(product.stockLogs || [])]
+        });
         toast.success('Batch removed');
     };
 
@@ -83,9 +168,33 @@ export default function ProductDetailPage() {
                     <h1 style={{ fontSize: 20, fontWeight: 900, color: '#1A1A2E', margin: 0 }}>{product.name}</h1>
                     <p style={{ fontSize: 12, color: '#718096', margin: '2px 0 0' }}>{product.category || '—'} · HSN {product.hsnCode || '—'}</p>
                 </div>
-                <div style={{ textAlign: 'right' }}>
-                    <p style={{ fontSize: 22, fontWeight: 900, color: product.stockQty <= product.lowStockAlertQty ? '#EA4335' : '#34A853', margin: 0 }}>{product.stockQty} {product.unit}</p>
-                    <p style={{ fontSize: 11, color: '#718096', margin: 0 }}>in stock</p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                    <button 
+                        onClick={() => setShowQrModal(true)} 
+                        className="btn" 
+                        style={{ 
+                            gap: 8, 
+                            background: 'linear-gradient(135deg, #7C3AED, #4285F4)', 
+                            border: 'none', 
+                            color: 'white',
+                            padding: '10px 16px', 
+                            borderRadius: 12, 
+                            fontWeight: 800, 
+                            fontSize: 13, 
+                            display: 'flex', 
+                            alignItems: 'center',
+                            boxShadow: '0 4px 12px rgba(124, 58, 237, 0.15)',
+                            cursor: 'pointer'
+                        }}
+                    >
+                        <QrCode size={16} />
+                        Print QR Sticker
+                    </button>
+                    <div style={{ textAlign: 'right' }}>
+                        <p style={{ fontSize: 22, fontWeight: 900, color: combinedStockQty <= product.lowStockAlertQty ? '#EA4335' : '#34A853', margin: 0 }}>{combinedStockQty} {product.unit}</p>
+                        <p style={{ fontSize: 11, color: '#718096', margin: 0 }}>total stock</p>
+                        <p style={{ fontSize: 10, color: '#94A3B8', margin: '4px 0 0', fontFamily: 'monospace' }}>ID: {product.id}</p>
+                    </div>
                 </div>
             </div>
 
@@ -104,6 +213,22 @@ export default function ProductDetailPage() {
                         <p style={{ fontSize: 16, fontWeight: 900, color: card.warn ? '#EA4335' : '#1A1A2E' }}>{card.v}</p>
                     </div>
                 ))}
+            </div>
+
+            {/* Stock Breakdown by Godown */}
+            <div style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: 16, padding: '18px 20px', marginBottom: 20 }}>
+                <h3 style={{ fontSize: 11, fontWeight: 800, color: '#64748B', textTransform: 'uppercase', marginBottom: 12, letterSpacing: '0.05em' }}>📍 Stock Breakdown by Godown</h3>
+                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                    {stockByGodown.map((sg, idx) => (
+                        <div key={idx} style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', padding: '10px 14px', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <div style={{ width: 6, height: 6, borderRadius: '50%', background: sg.qty > 0 ? '#34A853' : '#EA4335' }} />
+                            <div>
+                                <span style={{ fontWeight: 800, color: '#4A5568', fontSize: 12 }}>{sg.godownName}: </span>
+                                <span style={{ fontWeight: 900, color: '#1A1E3B', fontSize: 13 }}>{sg.qty} {sg.unit}</span>
+                            </div>
+                        </div>
+                    ))}
+                </div>
             </div>
 
             {/* Expiry alerts */}
@@ -143,7 +268,7 @@ export default function ProductDetailPage() {
                             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                                 <thead>
                                     <tr style={{ background: '#F8FAFC' }}>
-                                        {['Date', 'Type', 'Qty', 'Reason', 'Party', 'Balance After'].map(h => (
+                                        {['Date', 'Type', 'Godown', 'Qty', 'Reason', 'Party', 'Balance After'].map(h => (
                                             <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 10, fontWeight: 800, color: '#64748B', textTransform: 'uppercase', borderBottom: '1px solid #E2E8F0' }}>{h}</th>
                                         ))}
                                     </tr>
@@ -152,12 +277,27 @@ export default function ProductDetailPage() {
                                     {logs.map(log => {
                                         const s = TYPE_STYLES[log.type] || TYPE_STYLES.adjust;
                                         return (
-                                            <tr key={log.id} style={{ borderBottom: '1px solid #F1F5F9' }}>
+                                            <tr key={log.id} style={{ borderBottom: '1px solid #F1F5F9', background: s.rowBg }}>
                                                 <td style={{ padding: '10px 16px', color: '#718096' }}>{formatDate(log.date)}{log.time && ` ${log.time}`}</td>
                                                 <td style={{ padding: '10px 16px' }}>
-                                                    <span style={{ padding: '3px 10px', borderRadius: 6, fontSize: 11, fontWeight: 800, background: s.bg, color: s.color }}>{s.label}</span>
+                                                    <span style={{
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        padding: '4px 10px',
+                                                        borderRadius: 6,
+                                                        fontSize: 11,
+                                                        fontWeight: 800,
+                                                        background: s.bg,
+                                                        color: s.color
+                                                    }}>
+                                                        {s.icon}
+                                                        {s.label}
+                                                    </span>
                                                 </td>
-                                                <td style={{ padding: '10px 16px', fontWeight: 900, color: log.type === 'out' ? '#EA4335' : '#34A853' }}>
+                                                <td style={{ padding: '10px 16px', fontWeight: 700, color: '#475569' }}>
+                                                    {log.godownName || '—'}
+                                                </td>
+                                                <td style={{ padding: '10px 16px', fontWeight: 900, color: log.type === 'out' ? '#DC2626' : '#16A34A' }}>
                                                     {log.type === 'out' ? '−' : '+'}{log.qty} {product.unit}
                                                 </td>
                                                 <td style={{ padding: '10px 16px', color: '#334155' }}>{log.reason}</td>
@@ -195,6 +335,7 @@ export default function ProductDetailPage() {
                                         <div style={{ flex: 1 }}>
                                             <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 4 }}>
                                                 <p style={{ fontWeight: 900, fontSize: 15, color: '#1A1A2E' }}>{b.batchNo}</p>
+                                                <span style={{ fontSize: 10, color: '#718096', background: '#F1F5F9', padding: '2px 6px', borderRadius: 4, fontWeight: 700 }}>📍 {b.godownName}</span>
                                                 {isExpired && <span style={{ padding: '2px 8px', borderRadius: 6, background: '#FEE2E2', color: '#DC2626', fontSize: 10, fontWeight: 800 }}>EXPIRED</span>}
                                                 {isSoon && <span style={{ padding: '2px 8px', borderRadius: 6, background: '#FEF3C7', color: '#D97706', fontSize: 10, fontWeight: 800 }}>EXPIRING SOON ({daysUntil(b.expiryDate!)}d)</span>}
                                             </div>
@@ -246,6 +387,13 @@ export default function ProductDetailPage() {
                         </div>
                     </div>
                 </div>
+            )}
+            {showQrModal && (
+                <QrLabelModal
+                    product={product}
+                    company={company}
+                    onClose={() => setShowQrModal(false)}
+                />
             )}
         </div>
     );

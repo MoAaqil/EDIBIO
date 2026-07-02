@@ -12,15 +12,21 @@ export default function AnalyticsReportsPage() {
     const invoices = useCompanyData('invoices') as any[];
     const expenses = useCompanyData('expenses') as any[];
     const products = useCompanyData('products') as any[];
-    
+    const formatDateLocal = (d: Date) => {
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
+
     const [isCustomHistory, setIsCustomHistory] = useState(false);
     const [showDailyHistory, setShowDailyHistory] = useState(false);
     const [startDate, setStartDate] = useState(() => {
         const d = new Date();
         d.setDate(d.getDate() - 30);
-        return d.toLocaleDateString('en-CA');
+        return formatDateLocal(d);
     });
-    const [endDate, setEndDate] = useState(() => new Date().toLocaleDateString('en-CA'));
+    const [endDate, setEndDate] = useState(() => formatDateLocal(new Date()));
 
     const saleInvoices = invoices.filter(i => i.invoiceType === 'sale');
     const purchaseInvoices = invoices.filter(i => i.invoiceType === 'purchase');
@@ -85,7 +91,7 @@ export default function AnalyticsReportsPage() {
         
         for (let i = 0; i < maxDays; i++) {
             const d = new Date(end.getFullYear(), end.getMonth(), end.getDate() - i);
-            const key = d.toLocaleDateString('en-CA'); // YYYY-MM-DD local
+            const key = formatDateLocal(d); // YYYY-MM-DD local
             
             let dailySales = 0;
             let dailyProfit = 0;

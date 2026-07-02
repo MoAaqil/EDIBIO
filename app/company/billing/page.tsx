@@ -2,10 +2,10 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useStore, useCompanyData, useActiveCompany } from '@/lib/store';
-import { formatDate, formatShort, buildWhatsAppReminderUrl } from '@/lib/utils';
+import { formatDate, formatShort, buildWhatsAppReminderUrl, buildWhatsAppInvoiceUrl } from '@/lib/utils';
 import Link from 'next/link';
 import {
-    Plus, Search, FileText, ChevronRight, Filter, Download, Eye, EyeOff,
+    Plus, Search, FileText, ChevronRight, Filter, Download, EyeOff,
     ShoppingCart, FileCheck, FileX, Truck, MessageCircle
 } from 'lucide-react';
 
@@ -18,14 +18,54 @@ export default function BillingListPage() {
     const router = useRouter();
     const companyId = activeCompanyId;
     const company = useActiveCompany();
-    const allInvoices = useCompanyData('invoices') as any[];
+    const allInvoicesRaw = useCompanyData('invoices') as any[];
+    const [sortBy, setSortBy] = useState<'date' | 'amount' | 'invoiceNumber' | 'partyName'>('date');
+    const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+
+    const allInvoices = useMemo(() => {
+        return allInvoicesRaw.slice().sort((a, b) => {
+            let comparison = 0;
+            if (sortBy === 'date') {
+                const dateA = a.date || '';
+                const dateB = b.date || '';
+                comparison = dateA.localeCompare(dateB);
+                if (comparison === 0) {
+                    const timeA = a.time || '00:00';
+                    const timeB = b.time || '00:00';
+                    comparison = timeA.localeCompare(timeB);
+                }
+            } else if (sortBy === 'amount') {
+                const amtA = a.grandTotal || 0;
+                const amtB = b.grandTotal || 0;
+                comparison = amtA - amtB;
+            } else if (sortBy === 'invoiceNumber') {
+                const noA = a.invoiceNumber || '';
+                const noB = b.invoiceNumber || '';
+                comparison = noA.localeCompare(noB);
+            } else if (sortBy === 'partyName') {
+                const nameA = a.partyName || '';
+                const nameB = b.partyName || '';
+                comparison = nameA.localeCompare(nameB);
+            }
+
+            if (comparison === 0) {
+                const dateA = a.date || '';
+                const dateB = b.date || '';
+                const dateComp = dateA.localeCompare(dateB);
+                if (dateComp !== 0) return sortOrder === 'desc' ? -dateComp : dateComp;
+
+                const createA = a.createdAt || '';
+                const createB = b.createdAt || '';
+                return sortOrder === 'desc' ? createB.localeCompare(createA) : createA.localeCompare(createB);
+            }
+
+            return sortOrder === 'desc' ? -comparison : comparison;
+        });
+    }, [allInvoicesRaw, sortBy, sortOrder]);
 
     const [tab, setTab] = useState('All GST Bills');
     const [search, setSearch] = useState('');
-    const [showHidden, setShowHidden] = useState(false);
-    const [passwordInput, setPasswordInput] = useState('');
-    const [passwordVerified, setPasswordVerified] = useState(false);
-    const [showPwModal, setShowPwModal] = useState(false);
+    const showHidden = company?.showHiddenInvoices || false;
 
     useEffect(() => {
         const handlePopState = () => {
@@ -51,9 +91,18 @@ export default function BillingListPage() {
     // Main visible list: non-private, not explicitly hidden, not auto-hidden
     const mainInvoices = allInvoices.filter(i => !i.isPrivate && !i.isHidden && !isAutoHidden(i));
 
+    const candidateInvoices = useMemo(() => {
+        return allInvoices.filter(i => {
+            if (i.isPrivate) return false;
+            const isHiddenVal = i.isHidden || isAutoHidden(i);
+            if (isHiddenVal && !showHidden) return false;
+            return true;
+        });
+    }, [allInvoices, showHidden]);
+
     const filtered = useMemo(() => {
-        let list = mainInvoices;
-        if (tab === 'All GST Bills') list = list.filter(i => i.isGstBill);
+        let list = candidateInvoices;
+        if (tab === 'All GST Bills') list = list.filter(i => i.isGstBill || showHidden);
         else if (tab === 'Sale') list = list.filter(i => i.invoiceType === 'sale');
         else if (tab === 'Purchase') list = list.filter(i => i.invoiceType === 'purchase');
         else if (tab === 'Estimate') list = list.filter(i => ['estimate', 'proforma'].includes(i.invoiceType));
@@ -65,12 +114,12 @@ export default function BillingListPage() {
             i.invoiceNumber.toLowerCase().includes(search.toLowerCase())
         );
         return list;
-    }, [mainInvoices, tab, search]);
+    }, [candidateInvoices, tab, search, showHidden]);
 
     // Estimate / Proforma / Delivery Challan are NOT confirmed — exclude from revenue totals
     // Also only count GST bills (non-GST are hidden, so they shouldn't count)
     const DRAFT_TYPES = ['estimate', 'proforma', 'delivery_challan'];
-    const canSeeHidden = showHidden && (!company?.invoicePassword || passwordVerified);
+    const canSeeHidden = showHidden;
     // When "View Hidden" is active, include hidden sale bills in totals too
     const hiddenSaleInvoices = canSeeHidden
         ? hiddenInvoices.filter(i => i.invoiceType === 'sale' && !DRAFT_TYPES.includes(i.invoiceType))
@@ -93,16 +142,6 @@ export default function BillingListPage() {
         if (type?.includes('return') || type?.includes('note')) return '#EA4335';
         if (type === 'estimate' || type === 'proforma') return '#9333EA';
         return '#34A853';
-    };
-
-    const verifyPassword = () => {
-        if (!company?.invoicePassword || passwordInput === company.invoicePassword) {
-            setPasswordVerified(true);
-            setShowHidden(true);
-            setShowPwModal(false);
-        } else {
-            toast.error('Incorrect password');
-        }
     };
 
     const QUICK_TYPES = [
@@ -152,22 +191,35 @@ export default function BillingListPage() {
                     ))}
                 </div>
 
-                {/* Search + Tabs + Hidden toggle */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    <div style={{ display: 'flex', gap: 10 }}>
-                        <div style={{ flex: 1, position: 'relative' }}>
+                    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                        <div style={{ flex: 1, minWidth: 240, position: 'relative' }}>
                             <Search size={15} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: '#A0AEC0' }} />
                             <input className="e-input" placeholder="Search party name or invoice number…"
                                 value={search} onChange={e => setSearch(e.target.value)} style={{ paddingLeft: 34 }} />
                         </div>
-                        {/* View hidden bills */}
-                        <button onClick={() => {
-                            if (passwordVerified || !company?.invoicePassword) { setShowHidden(v => !v); }
-                            else { setShowPwModal(true); }
-                        }} className="btn btn-outline" style={{ whiteSpace: 'nowrap', gap: 6, color: showHidden ? '#34A853' : '#718096', borderColor: showHidden ? '#34A853' : '#E1E4E8' }}>
-                            {showHidden ? <Eye size={15} /> : <EyeOff size={15} />}
-                            {showHidden ? `Hidden (${hiddenInvoices.length})` : 'View Hidden'}
-                        </button>
+                        <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                            <select 
+                                className="e-select" 
+                                style={{ width: 140, padding: '9px 12px', fontSize: 12, fontWeight: 700, borderRadius: 10, cursor: 'pointer' }}
+                                value={sortBy}
+                                onChange={e => setSortBy(e.target.value as any)}
+                            >
+                                <option value="date">📅 Date</option>
+                                <option value="amount">💰 Amount</option>
+                                <option value="invoiceNumber">🧾 Invoice No</option>
+                                <option value="partyName">👤 Party Name</option>
+                            </select>
+                            <select 
+                                className="e-select" 
+                                style={{ width: 130, padding: '9px 12px', fontSize: 12, fontWeight: 700, borderRadius: 10, cursor: 'pointer' }}
+                                value={sortOrder}
+                                onChange={e => setSortOrder(e.target.value as any)}
+                            >
+                                <option value="desc">Desc ⬇️</option>
+                                <option value="asc">Asc ⬆️</option>
+                            </select>
+                        </div>
                     </div>
 
                     <div style={{ display: 'flex', gap: 8, overflowX: 'auto' }} className="no-scrollbar">
@@ -226,7 +278,7 @@ export default function BillingListPage() {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                                                        {[...(showHidden && (!company?.invoicePassword || passwordVerified) ? hiddenInvoices : []), ...filtered].map((inv: any) => {
+                                                                        {filtered.map((inv: any) => {
                                             const Icon = typeIcon(inv.invoiceType);
                                             const c = typeColor(inv.invoiceType);
                                             return (
@@ -258,17 +310,15 @@ export default function BillingListPage() {
                                                             <Link href={`/company/billing/invoice?id=${inv.id}`} style={{ fontSize: 12, color: '#4285F4', fontWeight: 700, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 2 }}>
                                                                 View <ChevronRight size={12} />
                                                             </Link>
-                                                            {inv.paymentStatus !== 'paid' && inv.balanceDue > 0 && (
-                                                                <a
-                                                                    href={buildWhatsAppReminderUrl(inv)}
-                                                                    target="_blank"
-                                                                    rel="noopener noreferrer"
-                                                                    title={`Send WhatsApp reminder to ${inv.partyName || 'customer'}`}
-                                                                    style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 700, color: '#25D366', textDecoration: 'none', padding: '4px 8px', borderRadius: 6, background: '#F0FDF4', border: '1px solid #BBF7D0', whiteSpace: 'nowrap' }}
-                                                                >
-                                                                    <MessageCircle size={12} /> WA
-                                                                </a>
-                                                            )}
+                                                            <a
+                                                                href={buildWhatsAppInvoiceUrl(inv, company)}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                title={`Send WhatsApp invoice to ${inv.partyName || 'customer'}`}
+                                                                style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 700, color: '#25D366', textDecoration: 'none', padding: '4px 8px', borderRadius: 6, background: '#F0FDF4', border: '1px solid #BBF7D0', whiteSpace: 'nowrap' }}
+                                                            >
+                                                                <MessageCircle size={12} /> WA
+                                                            </a>
                                                         </div>
                                                     </td>
                                                 </tr>
@@ -280,7 +330,7 @@ export default function BillingListPage() {
 
                             {/* Mobile list */}
                             <div className="mobile-list">
-                                                                {[...(showHidden && (!company?.invoicePassword || passwordVerified) ? hiddenInvoices : []), ...filtered].map((inv: any) => {
+                                                                        {filtered.map((inv: any) => {
                                     const c = typeColor(inv.invoiceType);
                                     return (
                                         <div key={inv.id} onClick={() => router.push(`/company/billing/invoice?id=${inv.id}`)}
@@ -296,9 +346,8 @@ export default function BillingListPage() {
                                                 <p style={{ fontSize: 14, fontWeight: 900, color: '#1A1A2E' }}>₹{inv.grandTotal.toLocaleString('en-IN')}</p>
                                                 <div style={{ display: 'flex', gap: 6, alignItems: 'center', justifyContent: 'flex-end', marginTop: 2 }}>
                                                     <span className={`badge ${inv.paymentStatus === 'paid' ? 'badge-green' : inv.paymentStatus === 'partial' ? 'badge-yellow' : 'badge-red'}`}>{inv.paymentStatus}</span>
-                                                    {inv.paymentStatus !== 'paid' && inv.balanceDue > 0 && (
                                                         <a
-                                                            href={buildWhatsAppReminderUrl(inv)}
+                                                            href={buildWhatsAppInvoiceUrl(inv, company)}
                                                             target="_blank"
                                                             rel="noopener noreferrer"
                                                             onClick={e => e.stopPropagation()}
@@ -306,7 +355,6 @@ export default function BillingListPage() {
                                                         >
                                                             <MessageCircle size={11} /> WA
                                                         </a>
-                                                    )}
                                                 </div>
                                             </div>
                                         </div>
@@ -318,27 +366,6 @@ export default function BillingListPage() {
                 </div>
             </div>
 
-            {/* Password modal */}
-            {showPwModal && (
-                <div className="modal-overlay" onClick={() => setShowPwModal(false)}>
-                    <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 380 }}>
-                        <div style={{ padding: '24px', textAlign: 'center' }}>
-                            <div style={{ width: 56, height: 56, borderRadius: 16, background: '#F3E8FF', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
-                                <EyeOff size={24} color="#7C3AED" />
-                            </div>
-                            <h3 style={{ fontWeight: 900, fontSize: 18, color: '#1A1A2E', marginBottom: 6 }}>Enter Password</h3>
-                            <p style={{ color: '#718096', fontSize: 13, marginBottom: 20 }}>Password required to view hidden invoices</p>
-                            <input className="e-input" type="password" autoFocus placeholder="Invoice password"
-                                value={passwordInput} onChange={e => setPasswordInput(e.target.value)}
-                                onKeyDown={e => e.key === 'Enter' && verifyPassword()} />
-                            <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
-                                <button onClick={() => setShowPwModal(false)} className="btn btn-outline" style={{ flex: 1 }}>Cancel</button>
-                                <button onClick={verifyPassword} className="btn btn-blue" style={{ flex: 1 }}>Unlock</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
 
             <style>{`
         .desktop-table { display: none; }

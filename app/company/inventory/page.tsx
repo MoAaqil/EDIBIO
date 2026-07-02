@@ -1,5 +1,5 @@
 'use client';
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import { useStore, useCompanyData, useActiveCompany } from '@/lib/store';
 import { canAccess } from '@/components/FeatureGate';
@@ -8,15 +8,16 @@ import type { Product } from '@/lib/types';
 import Link from 'next/link';
 import {
     Plus, Search, Package, Trash2, Edit2, AlertTriangle,
-    Download, Upload, ScanLine, Warehouse, ArrowUp, ArrowDown, X, ArrowRightLeft, History, Calendar, ShoppingCart, Gift
+    Download, Upload, ScanLine, Warehouse, ArrowUp, ArrowDown, X, ArrowRightLeft, History, Calendar, ShoppingCart, Gift, QrCode
 } from 'lucide-react'; // Trigger HMR rebuild
 import PurchaseBillsTab from './PurchaseBillsTab';
 import StockLedgerTab from './StockLedgerTab';
+import QrLabelModal from '@/components/QrLabelModal';
 import AIAddItemModal from '@/components/AIAddItemModal';
 import toast from 'react-hot-toast';
 import { confirm } from '@/components/ConfirmDialog';
 
-function InventoryRow({ p, companyId, onDelete, onEdit, godowns, isSelected, onToggle, invoices, offers }: any) {
+function InventoryRow({ p, companyId, onDelete, onEdit, godowns, isSelected, onToggle, invoices, offers, onQrSelect, company, isSubBranch }: any) {
     const isLow = p.stockQty <= p.lowStockAlertQty;
     const daysLeft = predictStockDays(p.stockQty, invoices, p.id);
     const today = new Date().toISOString().slice(0, 10);
@@ -63,29 +64,71 @@ function InventoryRow({ p, companyId, onDelete, onEdit, godowns, isSelected, onT
                 <span className="badge badge-gray">{p.category || '—'}</span>
             </td>
             <td>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ fontWeight: 800, color: isLow ? '#EA4335' : '#1A1A2E', fontSize: 14 }}>{p.stockQty}</span>
-                        <span style={{ fontSize: 11, color: '#A0AEC0' }}>{p.unit}</span>
-                        {isLow && <AlertTriangle size={13} color="#FBBC04" />}
+                {company?.franchiseEnabled && !isSubBranch ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ fontWeight: 800, color: isLow ? '#EA4335' : '#1A1A2E', fontSize: 13 }}>Total: {p.stockQty}</span>
+                            <span style={{ fontSize: 11, color: '#A0AEC0' }}>{p.unit}</span>
+                            {isLow && <AlertTriangle size={13} color="#FBBC04" />}
+                        </div>
+                        
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, maxWidth: 220 }}>
+                            {(company.branches || []).map((b: any) => {
+                                const bQty = p.branchStock?.[b.id] ?? 0;
+                                return (
+                                    <span key={b.id} style={{ fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 4, background: '#F1F5F9', color: '#4A5568', border: '1px solid #E2E8F0', display: 'inline-block' }}>
+                                        {b.name}: {bQty}
+                                    </span>
+                                );
+                            })}
+                        </div>
+
+                        {daysLeft !== null && (
+                            <p style={{ fontSize: 10, color: daysLeft < 7 ? '#EA4335' : '#34A853', fontWeight: 700 }}>
+                                Est. {daysLeft} days left
+                            </p>
+                        )}
                     </div>
-                    {daysLeft !== null && (
-                        <p style={{ fontSize: 10, color: daysLeft < 7 ? '#EA4335' : '#34A853', fontWeight: 700 }}>
-                            Est. {daysLeft} days left
-                        </p>
-                    )}
-                </div>
+                ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ fontWeight: 800, color: isLow ? '#EA4335' : '#1A1A2E', fontSize: 14 }}>{p.stockQty}</span>
+                            <span style={{ fontSize: 11, color: '#A0AEC0' }}>{p.unit}</span>
+                            {isLow && <AlertTriangle size={13} color="#FBBC04" />}
+                        </div>
+                        {daysLeft !== null && (
+                            <p style={{ fontSize: 10, color: daysLeft < 7 ? '#EA4335' : '#34A853', fontWeight: 700 }}>
+                                Est. {daysLeft} days left
+                            </p>
+                        )}
+                    </div>
+                )}
             </td>
             <td style={{ fontSize: 11, color: '#718096' }}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <Warehouse size={10} /> {godowns?.find((g: any) => g.id === p.godownId)?.name || godowns?.[0]?.name || '—'}
+                    <Warehouse size={10} /> {p.godownDisplayList || godowns?.find((g: any) => g.id === p.godownId)?.name || godowns?.[0]?.name || '—'}
                 </span>
             </td>
             <td style={{ fontWeight: 700 }}>₹{p.purchasePrice.toLocaleString('en-IN')}</td>
-            <td style={{ fontWeight: 800, color: '#34A853' }}>₹{p.sellingPrice.toLocaleString('en-IN')}</td>
+            <td style={{ fontWeight: 800, color: '#34A853' }}>
+                <div>₹{p.sellingPrice.toLocaleString('en-IN')}</div>
+                {company?.franchiseEnabled && !isSubBranch && p.branchPrice && Object.keys(p.branchPrice).length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 4 }}>
+                        {Object.entries(p.branchPrice).map(([bId, price]) => {
+                            const branchName = company?.branches?.find((b: any) => b.id === bId)?.name || 'Branch';
+                            return (
+                                <span key={bId} style={{ fontSize: 8, color: '#4A5568', background: '#E6FFFA', padding: '1px 4px', borderRadius: 4, border: '1px solid #B2F5EA', display: 'inline-block', width: 'fit-content' }}>
+                                    {branchName}: ₹{price}
+                                </span>
+                            );
+                        })}
+                    </div>
+                )}
+            </td>
             <td><span className="badge badge-blue">{p.gstRate}%</span></td>
             <td>
                 <div style={{ display: 'flex', gap: 6 }}>
+                    <button onClick={() => onQrSelect(p)} className="btn btn-ghost btn-icon" style={{ padding: 6, color: '#9333EA' }} title="Generate QR Label"><QrCode size={13} /></button>
                     <button onClick={() => onEdit(p)} className="btn btn-ghost btn-icon" style={{ padding: 6, color: '#4285F4' }}><Edit2 size={13} /></button>
                     <button onClick={() => onDelete(p.id)} className="btn btn-ghost btn-icon" style={{ padding: 6, color: '#EA4335' }}><Trash2 size={13} /></button>
                 </div>
@@ -95,18 +138,28 @@ function InventoryRow({ p, companyId, onDelete, onEdit, godowns, isSelected, onT
 }
 
 export default function InventoryPage() {
-    const { activeCompanyId } = useStore();
+    const { 
+        activeCompanyId, activeBranchId, isSubBranchLogin, stockTransfers = [], 
+        addStockTransfer, approveStockTransfer, rejectStockTransfer,
+        addProduct, updateProduct, deleteProduct, addToHsnCache, appendStockLog 
+    } = useStore();
     const companyId = activeCompanyId;
     const company = useActiveCompany();
     const products = useCompanyData('products') as Product[];
     const invoices = useCompanyData('invoices') as any[];
-    const { addProduct, updateProduct, deleteProduct, addToHsnCache } = useStore();
 
     const [search, setSearch] = useState('');
     const [godownFilter, setGodownFilter] = useState('all');
     const [showAdd, setShowAdd] = useState(false);
     const [showAIAdd, setShowAIAdd] = useState(false);
-    const [activeTab, setActiveTab] = useState<'items' | 'purchases' | 'ledger' | 'offers'>('items');
+    
+    // Branch transfer modal states
+    const [showBranchTransferModal, setShowBranchTransferModal] = useState(false);
+    const [transferProductId, setTransferProductId] = useState('');
+    const [transferFromBranchId, setTransferFromBranchId] = useState('');
+    const [transferToBranchId, setTransferToBranchId] = useState('');
+    const [transferQty, setTransferQty] = useState('');
+    const [activeTab, setActiveTab] = useState<'items' | 'purchases' | 'ledger' | 'offers' | 'transfers'>('items');
 
     // Derive canScan once from reactive hook — avoids SSR/hydration mismatch from useStore.getState() in render
     const { user: storeUser, isDemo: storeIsDemo } = useStore();
@@ -122,9 +175,10 @@ export default function InventoryPage() {
     const [transferTo, setTransferTo] = useState(company?.godowns?.[1]?.id || '');
 
     const [editProduct, setEditProduct] = useState<Product | null>(null);
+    const [selectedQrProduct, setSelectedQrProduct] = useState<Product | null>(null);
     const [hsnLoading, setHsnLoading] = useState(false);
 
-    const emptyForm = { name: '', barcode: '', category: '', hsnCode: '', unit: 'pcs', purchasePrice: '', sellingPrice: '', mrp: '', stockQty: '', lowStockAlertQty: '5', gstRate: '0', taxIncluded: false, godownId: company?.godowns?.[0]?.id || '', brand: '', description: '', imageUrl: '' };
+    const emptyForm = { name: '', barcode: '', category: '', hsnCode: '', unit: 'pcs', purchasePrice: '', sellingPrice: '', mrp: '', stockQty: '', lowStockAlertQty: '5', gstRate: '0', taxIncluded: false, godownId: company?.godowns?.[0]?.id || '', brand: '', description: '', imageUrl: '', branchStock: {}, branchPrice: {} };
     const [form, setForm] = useState<any>(emptyForm);
     const up = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }));
 
@@ -134,19 +188,63 @@ export default function InventoryPage() {
         return true;
     });
 
+    // Group products by name to prevent double entries in the list
+    const groupedFiltered = useMemo(() => {
+        const groups: Record<string, {
+            primaryProduct: Product;
+            allProducts: Product[];
+            combinedQty: number;
+            godownNames: string[];
+        }> = {};
+
+        filtered.forEach(p => {
+            const key = p.name.trim().toLowerCase();
+            if (!groups[key]) {
+                const gNames: string[] = [];
+                const gId = p.godownId || company?.godowns?.[0]?.id;
+                const gName = company?.godowns?.find(g => g.id === gId)?.name || '—';
+                groups[key] = {
+                    primaryProduct: p,
+                    allProducts: [p],
+                    combinedQty: p.stockQty,
+                    godownNames: [gName]
+                };
+            } else {
+                groups[key].allProducts.push(p);
+                groups[key].combinedQty += p.stockQty;
+                const gId = p.godownId || company?.godowns?.[0]?.id;
+                const gName = company?.godowns?.find(g => g.id === gId)?.name || '—';
+                if (!groups[key].godownNames.includes(gName)) {
+                    groups[key].godownNames.push(gName);
+                }
+            }
+        });
+
+        return Object.values(groups).map(g => {
+            return {
+                ...g.primaryProduct,
+                stockQty: g.combinedQty,
+                godownDisplayList: g.godownNames.join(', '),
+                originalProductIds: g.allProducts.map(p => p.id)
+            };
+        });
+    }, [filtered, company]);
+
     const [selectedItems, setSelectedItems] = useState<string[]>([]);
 
     const handleBulkDelete = async () => {
         if (selectedItems.length === 0) return;
         const yes = await confirm({
             title: `Delete ${selectedItems.length} items?`,
-            message: `This will permanently remove ${selectedItems.length} items from your inventory and can't be undone. Are you sure?`,
+            message: `This will permanently remove ${selectedItems.length} items and their associated stock entries from all godowns. Are you sure?`,
             danger: true
         });
         if (yes) {
-            selectedItems.forEach(id => deleteProduct(id));
+            const selectedNames = products.filter(p => selectedItems.includes(p.id)).map(p => p.name.toLowerCase());
+            const allMatchingProducts = products.filter(p => selectedNames.includes(p.name.toLowerCase()));
+            allMatchingProducts.forEach(p => deleteProduct(p.id));
             setSelectedItems([]);
-            toast.success(`${selectedItems.length} items deleted`);
+            toast.success(`Deleted ${selectedNames.length} items from all godowns`);
         }
     };
 
@@ -155,10 +253,10 @@ export default function InventoryPage() {
     };
 
     const toggleAllSelection = () => {
-        if (filtered.length > 0 && selectedItems.length === filtered.length) {
+        if (groupedFiltered.length > 0 && selectedItems.length === groupedFiltered.length) {
             setSelectedItems([]);
         } else {
-            setSelectedItems(filtered.map(p => p.id));
+            setSelectedItems(groupedFiltered.map((g: any) => g.id));
         }
     };
 
@@ -194,16 +292,38 @@ export default function InventoryPage() {
             cessRate: 0, taxIncluded: form.taxIncluded,
             godownId: form.godownId || company?.godowns?.[0]?.id,
             brand: form.brand, description: form.description,
+            branchStock: form.branchStock || {},
+            branchPrice: form.branchPrice || {}
         };
-        if (editProduct) { updateProduct(editProduct.id, data); setEditProduct(null); toast.success('Item updated'); }
-        else { addProduct(data); toast.success('Item added to inventory'); }
+        if (editProduct) {
+            const sameNameProducts = products.filter(p => p.name.toLowerCase() === editProduct.name.toLowerCase());
+            sameNameProducts.forEach(p => {
+                if (p.id === editProduct.id) {
+                    updateProduct(p.id, data);
+                } else {
+                    const { stockQty, godownId, ...sharedDetails } = data;
+                    updateProduct(p.id, sharedDetails);
+                }
+            });
+            setEditProduct(null);
+            toast.success('Item details updated across all godowns');
+        } else {
+            addProduct(data);
+            toast.success('Item added to inventory');
+        }
         setShowAdd(false); setForm(emptyForm);
     };
 
-    const openEdit = (p: Product) => { setEditProduct(p); setForm({ ...p, purchasePrice: String(p.purchasePrice), sellingPrice: String(p.sellingPrice), mrp: String(p.mrp || ''), stockQty: String(p.stockQty), lowStockAlertQty: String(p.lowStockAlertQty), gstRate: String(p.gstRate), imageUrl: p.imageUrl || '' }); setShowAdd(true); };
+    const openEdit = (p: Product) => { setEditProduct(p); setForm({ ...p, purchasePrice: String(p.purchasePrice), sellingPrice: String(p.sellingPrice), mrp: String(p.mrp || ''), stockQty: String(p.stockQty), lowStockAlertQty: String(p.lowStockAlertQty), gstRate: String(p.gstRate), imageUrl: p.imageUrl || '', branchStock: p.branchStock || {}, branchPrice: p.branchPrice || {} }); setShowAdd(true); };
     const handleDelete = async (id: string) => {
-        const yes = await confirm({ message: 'This item and its stock data will be permanently removed.', danger: true });
-        if (yes) { deleteProduct(id); toast.success('Item deleted'); }
+        const itemToDelete = products.find(p => p.id === id);
+        if (!itemToDelete) return;
+        const yes = await confirm({ message: `All entries for "${itemToDelete.name}" across all godowns will be permanently removed.`, danger: true });
+        if (yes) {
+            const sameNameProducts = products.filter(p => p.name.toLowerCase() === itemToDelete.name.toLowerCase());
+            sameNameProducts.forEach(p => deleteProduct(p.id));
+            toast.success('Item deleted from all godowns');
+        }
     };
 
     const handleGeminiScanned = (items: any[]) => {
@@ -353,17 +473,45 @@ export default function InventoryPage() {
                 const sourceProduct = products.find(p => (p.godownId === transferFrom || (!p.godownId && transferFrom === company?.godowns?.[0]?.id)) && (p.name.toLowerCase() === query.toLowerCase() || p.barcode === query));
 
                 if (sourceProduct && sourceProduct.stockQty >= trfQty) {
+                    const fromName = company?.godowns?.find(g => g.id === transferFrom)?.name || 'source godown';
+                    const toName = company?.godowns?.find(g => g.id === transferTo)?.name || 'destination godown';
+
                     // deduct from source
                     updateProduct(sourceProduct.id, { stockQty: sourceProduct.stockQty - trfQty });
+                    appendStockLog(sourceProduct.id, {
+                        date: new Date().toISOString().slice(0, 10),
+                        time: new Date().toTimeString().slice(0, 5),
+                        type: 'out',
+                        qty: trfQty,
+                        reason: `Transfer to ${toName}`,
+                        balanceAfter: sourceProduct.stockQty - trfQty,
+                    });
 
                     // Find or create in destination
                     const destProduct = products.find(p => p.godownId === transferTo && (p.name.toLowerCase() === sourceProduct.name.toLowerCase() || p.barcode === sourceProduct.barcode));
                     if (destProduct) {
                         updateProduct(destProduct.id, { stockQty: destProduct.stockQty + trfQty });
+                        appendStockLog(destProduct.id, {
+                            date: new Date().toISOString().slice(0, 10),
+                            time: new Date().toTimeString().slice(0, 5),
+                            type: 'in',
+                            qty: trfQty,
+                            reason: `Transfer from ${fromName}`,
+                            balanceAfter: destProduct.stockQty + trfQty,
+                        });
                     } else {
-                        // Create clone
+                        // Create clone with opening transfer log
                         const { id: _, ...cloneInfo } = sourceProduct;
-                        addProduct({ ...cloneInfo, godownId: transferTo, stockQty: trfQty });
+                        const initialLogs = [{
+                            id: Math.random().toString(36).substring(2),
+                            date: new Date().toISOString().slice(0, 10),
+                            time: new Date().toTimeString().slice(0, 5),
+                            type: 'in' as const,
+                            qty: trfQty,
+                            reason: `Transfer from ${fromName}`,
+                            balanceAfter: trfQty,
+                        }];
+                        addProduct({ ...cloneInfo, godownId: transferTo, stockQty: trfQty, stockLogs: initialLogs });
                     }
                     successTransfers++;
                 } else {
@@ -387,7 +535,7 @@ export default function InventoryPage() {
     return (
         <>
             <div style={{ maxWidth: 1200, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 20 }}>
-                {/* Tabs — Mobile: fixed 3-pill grid, Desktop: underline tabs */}
+                {/* Tabs — Mobile: fixed 2-row grid, Desktop: underline tabs */}
                 <div className="inv-tab-bar">
                     <button onClick={() => setActiveTab('items')} className={`inv-tab-btn${activeTab === 'items' ? ' inv-tab-active' : ''}`}>
                         <Package size={13} />
@@ -403,8 +551,15 @@ export default function InventoryPage() {
                     </button>
                     <button onClick={() => setActiveTab('offers')} className={`inv-tab-btn${activeTab === 'offers' ? ' inv-tab-active' : ''}`}>
                         <Gift size={13} />
-                        Schemes & Offers
+                        <span className="desktop-only-inline">Schemes & Offers</span>
+                        <span className="mobile-only-inline">Offers</span>
                     </button>
+                    {company?.franchiseEnabled && (
+                        <button onClick={() => setActiveTab('transfers')} className={`inv-tab-btn${activeTab === 'transfers' ? ' inv-tab-active' : ''}`}>
+                            <ArrowRightLeft size={13} />
+                            Transfers
+                        </button>
+                    )}
                 </div>
 
                 {activeTab === 'purchases' ? (
@@ -413,36 +568,39 @@ export default function InventoryPage() {
                     <StockLedgerTab />
                 ) : activeTab === 'offers' ? (
                     <OffersTab />
+                ) : activeTab === 'transfers' ? (
+                    <BranchTransfersTab />
                 ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
                         {/* Header stats */}
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 14 }}>
+                        <div className="inv-stats-grid">
                             {[
                                 { l: 'Total Items', v: String(products.length), icon: Package, color: '#FBBC04' },
                                 { l: 'Stock Value', v: `₹${stockValue.toLocaleString('en-IN')}`, icon: ArrowUp, color: '#34A853' },
                                 { l: 'Low Stock', v: String(lowStock.length), icon: AlertTriangle, color: '#EA4335' },
                             ].map(({ l, v, icon: Icon, color }) => (
-                                <div key={l} className="card" style={{ padding: '18px 20px', display: 'flex', alignItems: 'center', gap: 14 }}>
-                                    <div style={{ width: 44, height: 44, borderRadius: 12, background: color + '15', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                        <Icon size={20} color={color} />
+                                <div key={l} className="card inv-stats-card">
+                                    <div className="inv-stats-icon-wrapper" style={{ background: color + '15' }}>
+                                        <Icon size={14} color={color} />
                                     </div>
-                                    <div style={{ minWidth: 0, flex: 1 }}>
-                                        <p style={{ fontSize: 10, fontWeight: 700, color: '#A0AEC0', textTransform: 'uppercase', marginBottom: 4, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{l}</p>
-                                        <p style={{ fontSize: 20, fontWeight: 900, color: '#1A1A2E', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{v}</p>
+                                    <div style={{ minWidth: 0, flex: 1, width: '100%' }}>
+                                        <p className="inv-stats-label">{l}</p>
+                                        <p className="inv-stats-value">{v}</p>
                                     </div>
                                 </div>
                             ))}
                         </div>
 
                         {/* Controls */}
-                        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                            <div style={{ flex: 1, minWidth: 200, position: 'relative' }}>
+                        <div className="controls-container">
+                            <div className="search-bar-wrapper">
                                 <Search size={15} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: '#A0AEC0' }} />
-                                <input className="e-input" placeholder="Search items, barcode…" value={search} onChange={e => setSearch(e.target.value)} style={{ paddingLeft: 34 }} />
+                                <input className="e-input" placeholder="Search items, barcode…" value={search} onChange={e => setSearch(e.target.value)} style={{ paddingLeft: 34, width: '100%' }} />
                             </div>
+                            
                             {/* Godown filter */}
                             {godowns.length > 1 && (
-                                <div style={{ display: 'flex', gap: 6 }}>
+                                <div className="godown-filters-container">
                                     <button onClick={() => setGodownFilter('all')} className={`godown-chip ${godownFilter === 'all' ? 'active' : ''}`}>
                                         All
                                     </button>
@@ -453,34 +611,41 @@ export default function InventoryPage() {
                                     ))}
                                 </div>
                             )}
-                            <button onClick={() => { exportCSV(); }} className="btn btn-outline btn-sm" style={{ gap: 5 }}><Download size={13} /> Export</button>
-                            <button onClick={() => setShowImport(true)} className="btn btn-outline btn-sm" style={{ gap: 5 }}><Upload size={13} /> Import CSV</button>
-                            <Link href="/company/inventory/expiry" className="btn btn-outline btn-sm" style={{ gap: 5, color: '#D97706', borderColor: '#FDE68A', background: '#FFFBEB', textDecoration: 'none' }}>
+
+                            <button onClick={() => { exportCSV(); }} className="btn btn-outline btn-sm btn-sec" style={{ gap: 5 }}><Download size={13} /> Export</button>
+                            <button onClick={() => setShowImport(true)} className="btn btn-outline btn-sm btn-sec" style={{ gap: 5 }}><Upload size={13} /> Import CSV</button>
+                            
+                            <Link href="/company/inventory/expiry" className="btn btn-outline btn-sm btn-sec" style={{ gap: 5, color: '#D97706', borderColor: '#FDE68A', background: '#FFFBEB', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
                                 <Calendar size={13} /> Expiry
                             </Link>
-                            <Link href="/company/inventory/purchase-orders" className="btn btn-outline btn-sm" style={{ gap: 5, color: '#7C3AED', borderColor: '#E9D5FF', background: '#FAF5FF', textDecoration: 'none' }}>
+                            
+                            <Link href="/company/inventory/purchase-orders" className="btn btn-outline btn-sm btn-sec" style={{ gap: 5, color: '#7C3AED', borderColor: '#E9D5FF', background: '#FAF5FF', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
                                 <ShoppingCart size={13} /> Purchase Orders
                             </Link>
+                            
                             {godowns.length > 1 && (
-                                <button onClick={() => setShowTransfer(true)} className="btn btn-outline btn-sm" style={{ gap: 5, color: '#9333EA', borderColor: '#E9D8FD', background: '#FAF5FF' }}>
-                                    <ArrowRightLeft size={13} /> Stock Transfer
+                                <button onClick={() => setShowTransfer(true)} className="btn btn-outline btn-sm btn-sec" style={{ gap: 5, color: '#9333EA', borderColor: '#E9D8FD', background: '#FAF5FF' }}>
+                                    <ArrowRightLeft size={13} /> Transfer
                                 </button>
                             )}
+
                             {selectedItems.length > 0 && (
-                                <button onClick={handleBulkDelete} className="btn btn-sm" style={{ gap: 5, background: '#FEE2E2', color: '#DC2626', border: '1px solid #FCA5A5' }}>
+                                <button onClick={handleBulkDelete} className="btn btn-sm btn-danger-action" style={{ gap: 5, background: '#FEE2E2', color: '#DC2626', border: '1px solid #FCA5A5' }}>
                                     <Trash2 size={13} /> Delete ({selectedItems.length})
                                 </button>
                             )}
+
                             <button onClick={() => {
                                 if (!canScan) {
                                     toast('AI Scanning requires the Premium Plan. Upgrade in Subscription settings.', { icon: '🔒' });
                                     return;
                                 }
                                 setShowAIAdd(true);
-                            }} className="btn btn-sm" style={{ background: canScan ? 'linear-gradient(135deg, #1A1A2E, #4285F4)' : '#E2E8F0', color: canScan ? 'white' : '#A0AEC0', borderColor: canScan ? '#1A1A2E' : '#E2E8F0', gap: 5, cursor: canScan ? 'pointer' : 'not-allowed' }}>
+                            }} className="btn btn-sm btn-primary-action" style={{ background: canScan ? 'linear-gradient(135deg, #1A1A2E, #4285F4)' : '#E2E8F0', color: canScan ? 'white' : '#A0AEC0', borderColor: canScan ? '#1A1A2E' : '#E2E8F0', gap: 5, cursor: canScan ? 'pointer' : 'not-allowed' }}>
                                 <ScanLine size={13} /> AI Scan Item {!canScan && '🔒'}
                             </button>
-                            <button onClick={() => { setEditProduct(null); setForm(emptyForm); setShowAdd(true); }} className="btn btn-blue btn-sm" style={{ gap: 5 }}>
+
+                            <button onClick={() => { setEditProduct(null); setForm(emptyForm); setShowAdd(true); }} className="btn btn-blue btn-sm btn-primary-action" style={{ gap: 5 }}>
                                 <Plus size={13} /> Add Item
                             </button>
                         </div>
@@ -501,34 +666,34 @@ export default function InventoryPage() {
                                         <table className="e-table" style={{ minWidth: 800 }}>
                                             <thead><tr>
                                                 <th style={{ width: 40, textAlign: 'center' }}>
-                                                    <input type="checkbox" checked={filtered.length > 0 && selectedItems.length === filtered.length} onChange={toggleAllSelection} style={{ cursor: 'pointer', transform: 'scale(1.2)' }} />
+                                                    <input type="checkbox" checked={groupedFiltered.length > 0 && selectedItems.length === groupedFiltered.length} onChange={toggleAllSelection} style={{ cursor: 'pointer', transform: 'scale(1.2)' }} />
                                                 </th>
                                                 <th>Item</th><th>HSN</th><th>Category</th><th>Stock</th><th>Godown</th><th>Purchase</th><th>Selling</th><th>GST</th><th>Actions</th>
                                             </tr></thead>
                                             <tbody>
-                                                {filtered.map(p => <InventoryRow key={p.id} p={p} companyId={companyId} onDelete={handleDelete} onEdit={openEdit} godowns={godowns} isSelected={selectedItems.includes(p.id)} onToggle={toggleItemSelection} invoices={invoices} offers={company?.offers || []} />)}
+                                                {groupedFiltered.map((p: any) => <InventoryRow key={p.id} p={p} companyId={companyId} onDelete={handleDelete} onEdit={openEdit} godowns={godowns} isSelected={selectedItems.includes(p.id)} onToggle={toggleItemSelection} invoices={invoices} offers={company?.offers || []} onQrSelect={setSelectedQrProduct} company={company} isSubBranch={isSubBranchLogin} />)}
                                             </tbody>
                                         </table>
                                     </div>
                                     <div className="mobile-list">
-                                        {filtered.length > 0 && (
+                                        {groupedFiltered.length > 0 && (
                                             <div style={{ padding: '12px 16px', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', gap: 10 }}>
-                                                <input type="checkbox" checked={selectedItems.length === filtered.length} onChange={toggleAllSelection} style={{ cursor: 'pointer', transform: 'scale(1.2)' }} />
+                                                <input type="checkbox" checked={selectedItems.length === groupedFiltered.length} onChange={toggleAllSelection} style={{ cursor: 'pointer', transform: 'scale(1.2)' }} />
                                                 <span style={{ fontSize: 13, fontWeight: 700, color: '#4A5568' }}>Select All Items</span>
                                             </div>
                                         )}
-                                        {filtered.map(p => {
+                                        {groupedFiltered.map((p: any) => {
                                             const isSelected = selectedItems.includes(p.id);
                                             const daysLeft = predictStockDays(p.stockQty, invoices, p.id);
                                             return (
-                                                <div key={p.id} onClick={() => toggleItemSelection(p.id)} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px', borderBottom: '1px solid #F1F3F5', background: isSelected ? '#F8FBFF' : 'white', cursor: 'pointer', transition: 'background 0.2s' }}>
-                                                    <input type="checkbox" checked={isSelected} onChange={() => { }} style={{ cursor: 'pointer', transform: 'scale(1.2)', flexShrink: 0 }} />
-                                                    <div style={{ width: 44, height: 44, borderRadius: 12, background: 'linear-gradient(135deg, #FEF7E0, #FFFBEB)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, color: '#B45309', flexShrink: 0, fontSize: 16 }}>{p.name[0]}</div>
+                                                <div key={p.id} onClick={() => toggleItemSelection(p.id)} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderBottom: '1px solid #F1F3F5', background: isSelected ? '#F8FBFF' : 'white', cursor: 'pointer', transition: 'background 0.2s' }}>
+                                                    <input type="checkbox" checked={isSelected} onChange={() => { }} style={{ cursor: 'pointer', transform: 'scale(1.1)', flexShrink: 0 }} onClick={e => e.stopPropagation()} />
+                                                    <div style={{ width: 38, height: 38, borderRadius: 10, background: 'linear-gradient(135deg, #FEF7E0, #FFFBEB)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, color: '#B45309', flexShrink: 0, fontSize: 14 }}>{p.name[0]}</div>
                                                     <div style={{ flex: 1, minWidth: 0 }}>
                                                         <p style={{ fontWeight: 800, fontSize: 13, color: '#1A1A2E', marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</p>
-                                                        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                                                            <span className="badge badge-gray" style={{ fontSize: 9 }}>{p.unit}</span>
-                                                            <span className="badge badge-blue" style={{ fontSize: 9 }}>GST {p.gstRate}%</span>
+                                                        <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
+                                                            <span className="badge badge-gray" style={{ fontSize: 9, padding: '1px 4px' }}>{p.unit}</span>
+                                                            <span className="badge badge-blue" style={{ fontSize: 9, padding: '1px 4px' }}>GST {p.gstRate}%</span>
                                                             {(company?.offers || []).filter((o: any) => 
                                                                 (o.type === 'bogo' && (o.buyProductId === p.id || o.getProductId === p.id)) ||
                                                                 (o.type === 'discount' && o.buyProductId === p.id) ||
@@ -539,12 +704,28 @@ export default function InventoryPage() {
                                                                 </span>
                                                             ))}
                                                         </div>
+                                                        {company?.franchiseEnabled && !isSubBranchLogin && (
+                                                            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 6 }}>
+                                                                <span style={{ fontSize: 8, fontWeight: 800, padding: '2px 5px', borderRadius: 4, background: '#F1F5F9', color: '#475569' }}>
+                                                                    Total: {p.stockQty}
+                                                                </span>
+                                                                {(company.branches || []).map((b: any) => (
+                                                                    <span key={b.id} style={{ fontSize: 8, fontWeight: 700, padding: '2px 5px', borderRadius: 4, background: '#EFF6FF', color: '#1E40AF', border: '1px solid #DBEAFE' }}>
+                                                                        📍 {b.name}: {p.branchStock?.[b.id] ?? 0}
+                                                                    </span>
+                                                                ))}
+                                                            </div>
+                                                        )}
                                                     </div>
-                                                    <div style={{ textAlign: 'right', flexShrink: 0, maxWidth: 100 }}>
-                                                        <p style={{ fontWeight: 900, fontSize: 15, color: '#34A853', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>₹{p.sellingPrice}</p>
-                                                        <p style={{ fontSize: 11, fontWeight: 700, color: p.stockQty <= p.lowStockAlertQty ? '#EA4335' : '#718096', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.stockQty} in stock</p>
-                                                        {daysLeft !== null && <p style={{ fontSize: 9, color: daysLeft < 7 ? '#EA4335' : '#34A853', fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Est. {daysLeft}d</p>}
-                                                        <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 4 }}>
+                                                    <div style={{ textAlign: 'right', flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'space-between', minHeight: 48 }}>
+                                                        <div>
+                                                            <p style={{ fontWeight: 900, fontSize: 14, color: '#34A853', margin: 0 }}>₹{p.sellingPrice}</p>
+                                                            {(!company?.franchiseEnabled || isSubBranchLogin) && (
+                                                                <p style={{ fontSize: 10, fontWeight: 700, color: p.stockQty <= p.lowStockAlertQty ? '#EA4335' : '#718096', margin: '2px 0 0' }}>{p.stockQty} in stock</p>
+                                                            )}
+                                                            {daysLeft !== null && <p style={{ fontSize: 9, color: daysLeft < 7 ? '#EA4335' : '#34A853', fontWeight: 800, margin: '2px 0 0' }}>Est. {daysLeft}d</p>}
+                                                        </div>
+                                                        <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
                                                             <button onClick={(e) => { e.stopPropagation(); openEdit(p); }} className="btn btn-ghost btn-icon" style={{ padding: 4, color: '#4285F4' }}><Edit2 size={14} /></button>
                                                             <button onClick={(e) => { e.stopPropagation(); handleDelete(p.id); }} className="btn btn-ghost btn-icon" style={{ padding: 4, color: '#EA4335' }}><Trash2 size={14} /></button>
                                                         </div>
@@ -655,6 +836,56 @@ export default function InventoryPage() {
                                         </button>
                                         <span style={{ fontSize: 12, fontWeight: 600, color: '#4A5568' }}>GST included in selling price</span>
                                     </div>
+                                    {company?.franchiseEnabled && (
+                                        <div style={{ gridColumn: '1/-1', borderTop: '1px solid #E2E8F0', paddingTop: 14, marginTop: 4 }}>
+                                            <h4 style={{ fontSize: 11, fontWeight: 800, color: '#1A1A2E', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Branch Inventory & Price Overrides</h4>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                                {(company.branches || []).map((b: any) => {
+                                                    const bStock = form.branchStock?.[b.id] ?? '';
+                                                    const bPrice = form.branchPrice?.[b.id] ?? '';
+                                                    return (
+                                                        <div key={b.id} style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: 10, alignItems: 'center', background: '#F8FAFC', padding: 10, borderRadius: 10, border: '1px solid #E2E8F0' }}>
+                                                            <span style={{ fontSize: 12, fontWeight: 700, color: '#2D3748' }}>📍 {b.name}</span>
+                                                            <div>
+                                                                <label style={{ fontSize: 9, fontWeight: 700, color: '#718096', display: 'block', marginBottom: 2 }}>BRANCH STOCK</label>
+                                                                <input
+                                                                    type="number"
+                                                                    className="e-input"
+                                                                    style={{ padding: '6px 10px', fontSize: 12 }}
+                                                                    placeholder="0"
+                                                                    value={bStock}
+                                                                    onChange={e => {
+                                                                        const nextStock = { ...(form.branchStock || {}) };
+                                                                        nextStock[b.id] = e.target.value === '' ? 0 : parseFloat(e.target.value) || 0;
+                                                                        up('branchStock', nextStock);
+                                                                    }}
+                                                                />
+                                                            </div>
+                                                            <div>
+                                                                <label style={{ fontSize: 9, fontWeight: 700, color: '#718096', display: 'block', marginBottom: 2 }}>SELLING PRICE</label>
+                                                                <input
+                                                                    type="number"
+                                                                    className="e-input"
+                                                                    style={{ padding: '6px 10px', fontSize: 12 }}
+                                                                    placeholder={`Default ₹${form.sellingPrice || 0}`}
+                                                                    value={bPrice}
+                                                                    onChange={e => {
+                                                                        const nextPrice = { ...(form.branchPrice || {}) };
+                                                                        if (e.target.value === '') {
+                                                                            delete nextPrice[b.id];
+                                                                        } else {
+                                                                            nextPrice[b.id] = parseFloat(e.target.value) || 0;
+                                                                        }
+                                                                        up('branchPrice', nextPrice);
+                                                                    }}
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                             <div style={{ padding: '14px 24px', borderTop: '1px solid #E1E4E8', display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
@@ -742,12 +973,19 @@ export default function InventoryPage() {
                   .mobile-list { display: none; }
                 }
 
+                /* ── Dynamic responsive label visibility ── */
+                .mobile-only-inline { display: inline; }
+                .desktop-only-inline { display: none; }
+                @media (min-width: 640px) {
+                    .mobile-only-inline { display: none; }
+                    .desktop-only-inline { display: inline; }
+                }
+
                 /* ── Inventory tab bar ─────────────────────────────── */
-                /* Mobile default: pill button row, each tab fixed width */
                 .inv-tab-bar {
                     display: grid;
-                    grid-template-columns: repeat(3, 1fr);
-                    gap: 8px;
+                    grid-template-columns: repeat(2, 1fr);
+                    gap: 6px;
                     background: #F1F5F9;
                     border-radius: 14px;
                     padding: 5px;
@@ -758,7 +996,7 @@ export default function InventoryPage() {
                     align-items: center;
                     justify-content: center;
                     gap: 5px;
-                    padding: 9px 6px;
+                    padding: 8px 6px;
                     border: none;
                     border-radius: 10px;
                     background: transparent;
@@ -777,7 +1015,12 @@ export default function InventoryPage() {
                     box-shadow: 0 2px 8px rgba(0,0,0,0.1);
                 }
 
-                /* Desktop: switch to underline style */
+                @media (min-width: 480px) and (max-width: 639px) {
+                    .inv-tab-bar {
+                        grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+                    }
+                }
+
                 @media (min-width: 640px) {
                     .inv-tab-bar {
                         display: flex;
@@ -798,7 +1041,6 @@ export default function InventoryPage() {
                         color: #A0AEC0;
                         border-bottom: 3px solid transparent;
                         box-shadow: none;
-                        white-space: nowrap;
                         overflow: visible;
                     }
                     .inv-tab-active {
@@ -807,6 +1049,145 @@ export default function InventoryPage() {
                         font-weight: 900;
                         border-bottom: 3px solid #4285F4;
                         box-shadow: none;
+                    }
+                }
+
+                /* ── Compact Header Stats (Mobile friendly columns) ── */
+                .inv-stats-grid {
+                    display: grid;
+                    grid-template-columns: repeat(3, 1fr);
+                    gap: 8px;
+                    width: 100%;
+                }
+                .inv-stats-card {
+                    padding: 8px 6px !important;
+                    display: flex !important;
+                    flex-direction: column !important;
+                    align-items: center !important;
+                    text-align: center;
+                    gap: 4px !important;
+                    border-radius: 12px !important;
+                    min-width: 0;
+                }
+                .inv-stats-icon-wrapper {
+                    width: 28px !important;
+                    height: 28px !important;
+                    border-radius: 8px !important;
+                    display: flex !important;
+                    align-items: center !important;
+                    justify-content: center !important;
+                    margin-bottom: 2px;
+                }
+                .inv-stats-label {
+                    font-size: 8px !important;
+                    font-weight: 700;
+                    color: #A0AEC0;
+                    text-transform: uppercase;
+                    margin: 0 !important;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    width: 100%;
+                }
+                .inv-stats-value {
+                    font-size: 13px !important;
+                    font-weight: 900;
+                    color: #1A1A2E;
+                    margin: 0 !important;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    width: 100%;
+                }
+
+                @media (min-width: 640px) {
+                    .inv-stats-grid {
+                        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+                        gap: 14px;
+                    }
+                    .inv-stats-card {
+                        padding: 18px 20px !important;
+                        flex-direction: row !important;
+                        align-items: center !important;
+                        text-align: left;
+                        gap: 14px !important;
+                        border-radius: 16px !important;
+                    }
+                    .inv-stats-icon-wrapper {
+                        width: 44px !important;
+                        height: 44px !important;
+                        border-radius: 12px !important;
+                        margin-bottom: 0;
+                    }
+                    .inv-stats-label {
+                        font-size: 10px !important;
+                        margin-bottom: 4px !important;
+                    }
+                    .inv-stats-value {
+                        font-size: 20px !important;
+                    }
+                }
+
+                /* ── Controls & Flat Actions layout ── */
+                .controls-container {
+                    display: flex;
+                    flex-direction: row;
+                    flex-wrap: wrap;
+                    align-items: center;
+                    gap: 10px;
+                }
+                .search-bar-wrapper {
+                    flex: 1;
+                    min-width: 200px;
+                    position: relative;
+                }
+                .godown-filters-container {
+                    display: flex;
+                    gap: 6px;
+                }
+
+                @media (max-width: 767px) {
+                    .controls-container {
+                        display: grid;
+                        grid-template-columns: repeat(2, 1fr);
+                        gap: 8px;
+                        width: 100%;
+                    }
+                    .search-bar-wrapper {
+                        grid-column: span 2;
+                        width: 100%;
+                        min-width: 0;
+                    }
+                    .godown-filters-container {
+                        grid-column: span 2;
+                        gap: 8px;
+                        overflow-x: auto;
+                        padding-bottom: 4px;
+                        scrollbar-width: none;
+                    }
+                    .godown-filters-container::-webkit-scrollbar {
+                        display: none;
+                    }
+                    .btn-primary-action {
+                        grid-column: span 1;
+                        width: 100%;
+                        height: 38px;
+                        font-size: 12px !important;
+                        justify-content: center;
+                    }
+                    .btn-danger-action {
+                        grid-column: span 2;
+                        width: 100%;
+                        height: 38px;
+                        font-size: 12px !important;
+                        justify-content: center;
+                    }
+                    .btn-sec {
+                        grid-column: span 1;
+                        width: 100%;
+                        height: 34px;
+                        font-size: 11px !important;
+                        justify-content: center;
                     }
                 }
 
@@ -830,6 +1211,13 @@ export default function InventoryPage() {
                     border-color: #4285F4;
                 }
             `}</style>
+            {selectedQrProduct && (
+                <QrLabelModal
+                    product={selectedQrProduct}
+                    company={company}
+                    onClose={() => setSelectedQrProduct(null)}
+                />
+            )}
         </>
     );
 }
@@ -1090,6 +1478,235 @@ function OffersTab() {
                             <button onClick={() => setShowAddOffer(false)} className="btn btn-outline">Cancel</button>
                             <button onClick={handleCreateOffer} className="btn btn-blue">Save Offer</button>
                         </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+function BranchTransfersTab() {
+    const { 
+        activeCompanyId, activeBranchId, isSubBranchLogin, stockTransfers = [], 
+        addStockTransfer, approveStockTransfer, rejectStockTransfer, products 
+    } = useStore();
+    const company = useActiveCompany();
+    const companyId = activeCompanyId;
+
+    const [showModal, setShowModal] = useState(false);
+    const [productId, setProductId] = useState('');
+    const [fromBranchId, setFromBranchId] = useState('');
+    const [toBranchId, setToBranchId] = useState('');
+    const [qty, setQty] = useState('');
+
+    const filteredTransfers = useMemo(() => {
+        const companyTransfers = (stockTransfers || []).filter(t => t.companyId === companyId);
+        if (isSubBranchLogin) {
+            return companyTransfers.filter(t => t.fromBranchId === activeBranchId || t.toBranchId === activeBranchId);
+        }
+        return companyTransfers;
+    }, [stockTransfers, companyId, isSubBranchLogin, activeBranchId]);
+
+    const handleCreateTransfer = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!productId || !fromBranchId || !toBranchId || !qty) {
+            toast.error('All fields are required');
+            return;
+        }
+        if (fromBranchId === toBranchId) {
+            toast.error('Source and destination branches cannot be the same');
+            return;
+        }
+        const transferQtyNum = parseFloat(qty);
+        if (isNaN(transferQtyNum) || transferQtyNum <= 0) {
+            toast.error('Invalid quantity');
+            return;
+        }
+
+        const selectedProduct = products.find(p => p.id === productId);
+        if (!selectedProduct) {
+            toast.error('Product not found');
+            return;
+        }
+
+        const sourceStock = isSubBranchLogin 
+            ? (selectedProduct.branchStock?.[fromBranchId] ?? 0)
+            : (fromBranchId === 'head_office' ? selectedProduct.stockQty : (selectedProduct.branchStock?.[fromBranchId] ?? 0));
+        
+        if (sourceStock < transferQtyNum) {
+            toast.error(`Insufficient stock in source branch/office. Available: ${sourceStock}`);
+            return;
+        }
+
+        addStockTransfer({
+            companyId: companyId!,
+            fromBranchId,
+            toBranchId,
+            productId,
+            productName: selectedProduct.name,
+            qty: transferQtyNum
+        });
+
+        toast.success('Stock transfer request submitted!');
+        setShowModal(false);
+        setProductId('');
+        setQty('');
+        setToBranchId('');
+    };
+
+    const getBranchName = (id: string) => {
+        if (id === 'head_office' || !id) return 'Head Office';
+        return company?.branches?.find((b: any) => b.id === id)?.name || 'Unknown Branch';
+    };
+
+    return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h3 style={{ fontSize: 16, fontWeight: 800, color: '#1A1A2E' }}>Branch Stock Movements</h3>
+                <button onClick={() => {
+                    setShowModal(true);
+                    if (isSubBranchLogin) {
+                        setFromBranchId(activeBranchId || '');
+                    }
+                }} className="btn btn-blue btn-sm" style={{ gap: 5 }}>
+                    <Plus size={13} /> Request Transfer
+                </button>
+            </div>
+
+            <div className="card" style={{ overflow: 'hidden' }}>
+                {filteredTransfers.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '40px 20px', color: '#A0AEC0' }}>
+                        <ArrowRightLeft size={36} style={{ margin: '0 auto 12px', opacity: 0.5 }} />
+                        <p style={{ fontWeight: 600 }}>No stock transfers found</p>
+                    </div>
+                ) : (
+                    <div style={{ overflowX: 'auto' }}>
+                        <table className="e-table" style={{ minWidth: 600 }}>
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Product</th>
+                                    <th>From</th>
+                                    <th>To</th>
+                                    <th>Qty</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {filteredTransfers.map((t) => {
+                                    const statusColors: Record<'pending' | 'approved' | 'rejected', { bg: string; text: string }> = {
+                                        pending: { bg: '#FEF3C7', text: '#D97706' },
+                                        approved: { bg: '#D1FAE5', text: '#059669' },
+                                        rejected: { bg: '#FEE2E2', text: '#DC2626' }
+                                    };
+                                    const colors = statusColors[t.status] || { bg: '#F3F4F6', text: '#374151' };
+
+                                    return (
+                                        <tr key={t.id}>
+                                            <td style={{ fontSize: 12, color: '#718096' }}>
+                                                {new Date(t.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                            </td>
+                                            <td style={{ fontWeight: 700 }}>{t.productName}</td>
+                                            <td>{getBranchName(t.fromBranchId)}</td>
+                                            <td>{getBranchName(t.toBranchId)}</td>
+                                            <td style={{ fontWeight: 800 }}>{t.qty}</td>
+                                            <td>
+                                                <span style={{ fontSize: 10, fontWeight: 800, padding: '3px 8px', borderRadius: 999, background: colors.bg, color: colors.text, textTransform: 'uppercase' }}>
+                                                    {t.status}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                {t.status === 'pending' && (
+                                                    <div style={{ display: 'flex', gap: 6 }}>
+                                                        {!isSubBranchLogin ? (
+                                                            <>
+                                                                <button onClick={() => {
+                                                                    approveStockTransfer(t.id);
+                                                                    toast.success('Transfer request approved!');
+                                                                }} className="btn btn-sm btn-blue" style={{ padding: '4px 8px', fontSize: 11, background: '#10B981', border: 'none' }}>
+                                                                    Approve
+                                                                </button>
+                                                                <button onClick={() => {
+                                                                    rejectStockTransfer(t.id);
+                                                                    toast.success('Transfer request rejected');
+                                                                }} className="btn btn-sm btn-outline" style={{ padding: '4px 8px', fontSize: 11, color: '#EF4444', borderColor: '#FCA5A5' }}>
+                                                                    Reject
+                                                                </button>
+                                                            </>
+                                                        ) : (
+                                                            <span style={{ fontSize: 11, color: '#A0AEC0', fontStyle: 'italic' }}>Pending HO Approval</span>
+                                                        )}
+                                                    </div>
+                                                )}
+                                                {t.status !== 'pending' && <span style={{ fontSize: 11, color: '#A0AEC0' }}>Processed</span>}
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+            </div>
+
+            {showModal && (
+                <div className="modal-overlay" onClick={() => setShowModal(false)}>
+                    <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 450 }}>
+                        <div style={{ padding: '18px 24px 14px', borderBottom: '1px solid #E1E4E8', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <h3 style={{ fontWeight: 900, fontSize: 17 }}>New Transfer Request</h3>
+                            <button onClick={() => setShowModal(false)} className="btn btn-ghost btn-icon"><X size={18} /></button>
+                        </div>
+                        <form onSubmit={handleCreateTransfer} style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+                            <div>
+                                <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', display: 'block', marginBottom: 5 }}>Select Product</label>
+                                <select className="e-select" value={productId} onChange={e => setProductId(e.target.value)} required>
+                                    <option value="">-- Choose Product --</option>
+                                    {products.map(p => (
+                                        <option key={p.id} value={p.id}>
+                                            {p.name} (Available: {isSubBranchLogin ? (p.branchStock?.[activeBranchId || ''] ?? 0) : p.stockQty})
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                                <div>
+                                    <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', display: 'block', marginBottom: 5 }}>From Branch</label>
+                                    {isSubBranchLogin ? (
+                                        <input className="e-input" value={getBranchName(activeBranchId || '')} disabled style={{ background: '#F3F4F6' }} />
+                                    ) : (
+                                        <select className="e-select" value={fromBranchId} onChange={e => setFromBranchId(e.target.value)} required>
+                                            <option value="">-- Source --</option>
+                                            <option value="head_office">Head Office</option>
+                                            {(company?.branches || []).map((b: any) => (
+                                                <option key={b.id} value={b.id}>{b.name}</option>
+                                            ))}
+                                        </select>
+                                    )}
+                                </div>
+                                <div>
+                                    <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', display: 'block', marginBottom: 5 }}>To Branch</label>
+                                    <select className="e-select" value={toBranchId} onChange={e => setToBranchId(e.target.value)} required>
+                                        <option value="">-- Destination --</option>
+                                        <option value="head_office">Head Office</option>
+                                        {(company?.branches || []).map((b: any) => (
+                                            <option key={b.id} value={b.id}>{b.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', display: 'block', marginBottom: 5 }}>Transfer Quantity</label>
+                                <input type="number" className="e-input" placeholder="Enter transfer qty" value={qty} onChange={e => setQty(e.target.value)} required />
+                            </div>
+
+                            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 10 }}>
+                                <button type="button" onClick={() => setShowModal(false)} className="btn btn-outline">Cancel</button>
+                                <button type="submit" className="btn btn-blue">Submit Request</button>
+                            </div>
+                        </form>
                     </div>
                 </div>
             )}

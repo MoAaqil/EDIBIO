@@ -13,7 +13,7 @@ import { confirm } from '@/components/ConfirmDialog';
 export default function LoginPage() {
     const router = useRouter();
     const { user, setUser, isAuthenticated, resetAll, companies, setActiveCompany, startDemo } = useStore();
-    const [authMode, setAuthMode] = useState<'options' | 'phone' | 'email_login' | 'email_register' | 'role_login' | 'admin_login' | 'forgot'>('options');
+    const [authMode, setAuthMode] = useState<'options' | 'phone' | 'email_login' | 'email_register' | 'role_login' | 'admin_login' | 'forgot' | 'branch_login'>('options');
     const [phone, setPhone] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -25,6 +25,14 @@ export default function LoginPage() {
     const [error, setError] = useState('');
     const [googleLoading, setGoogleLoading] = useState(false);
     const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+    
+    // Branch Login states
+    const [branchLicenseKey, setBranchLicenseKey] = useState('');
+    const [branchLoginStep, setBranchLoginStep] = useState<'key' | 'credentials'>('key');
+    const [matchingBranch, setMatchingBranch] = useState<any>(null);
+    const [matchingCompany, setMatchingCompany] = useState<any>(null);
+    const [selectedMemberId, setSelectedMemberId] = useState('');
+    const [branchPassword, setBranchPassword] = useState('');
 
     // Auto-redirect if already logged in (persistent state)
     useEffect(() => {
@@ -390,7 +398,98 @@ export default function LoginPage() {
         }
     };
 
+    const handleVerifyBranchLicenseKey = (e: React.FormEvent) => {
+        e.preventDefault();
+        setError('');
+        if (!branchLicenseKey.trim()) {
+            setError('Please enter a branch license key');
+            return;
+        }
 
+        const foundCompany = companies.find(c => c.branches?.some(b => b.licenseKey === branchLicenseKey.trim()));
+        const foundBranch = foundCompany?.branches?.find(b => b.licenseKey === branchLicenseKey.trim());
+
+        if (!foundCompany || !foundBranch) {
+            setError('Invalid Branch License Key. Make sure the branch has been created in the Head Office Settings.');
+            return;
+        }
+
+        setMatchingCompany(foundCompany);
+        setMatchingBranch(foundBranch);
+        setBranchLoginStep('credentials');
+
+        // Pre-select first team member for this branch, if any
+        const branchTeam = (foundCompany.team || []).filter(t => t.branchId === foundBranch.id);
+        if (branchTeam.length > 0) {
+            setSelectedMemberId(branchTeam[0].id);
+        } else {
+            setSelectedMemberId('');
+        }
+    };
+
+    const handleBranchLogin = (e: React.FormEvent) => {
+        e.preventDefault();
+        setError('');
+        setLoading(true);
+
+        try {
+            if (!matchingCompany || !matchingBranch) {
+                setError('Invalid branch login context');
+                setLoading(false);
+                return;
+            }
+
+            // Find matching team member
+            const branchTeam = (matchingCompany.team || []).filter((t: any) => t.branchId === matchingBranch.id);
+            let teamMember = null;
+
+            if (branchTeam.length > 0) {
+                teamMember = branchTeam.find((t: any) => t.id === selectedMemberId && t.password === branchPassword);
+            } else {
+                // Fallback: If no team members are explicitly assigned to this branch, let any team member (except maybe super owners, but any is fine for convenience) login
+                teamMember = (matchingCompany.team || []).find((t: any) => 
+                    (t.id === selectedMemberId || t.name === selectedMemberId || t.contact === selectedMemberId) && 
+                    t.password === branchPassword
+                );
+            }
+
+            if (!teamMember) {
+                setError('Invalid Password or Username');
+                setLoading(false);
+                return;
+            }
+
+            // Successfully authenticated!
+            setActiveCompany(matchingCompany.id);
+            useStore.getState().setActiveBranchId(matchingBranch.id);
+            useStore.getState().setIsSubBranchLogin(true);
+
+            setUser({
+                uid: matchingCompany.userId || 'owner_123',
+                email: teamMember.contact,
+                name: teamMember.name,
+                role: teamMember.role,
+                createdAt: new Date().toISOString()
+            } as any);
+
+            toast.success(`Logged in to ${matchingBranch.name} branch as ${teamMember.name}`);
+            setLoading(false);
+
+            if (teamMember.role === 'cashier') {
+                router.replace('/company/billing/quick');
+            } else if (teamMember.role === 'warehouse') {
+                router.replace('/company/inventory');
+            } else if (teamMember.role === 'accountant') {
+                router.replace('/company/reports');
+            } else {
+                router.replace('/company/dashboard');
+            }
+        } catch (err: any) {
+            console.error('Branch login error:', err);
+            setError('Branch login failed');
+            setLoading(false);
+        }
+    };
 
     const features = [
         { icon: BarChart3, color: '#4285F4', text: 'Complete GST billing & reports' },
@@ -552,6 +651,21 @@ export default function LoginPage() {
                             >
                                 <Key size={18} color="#34A853" />
                                 Login with Role (Staff / Manager)
+                            </button>
+
+                            <button onClick={() => { setAuthMode('branch_login'); setBranchLoginStep('key'); setError(''); }} style={{
+                                width: '100%', padding: '13px 16px', borderRadius: 14,
+                                background: '#FFFFFF', color: '#1A1A2E',
+                                border: '1.5px solid #E2E8F0',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+                                cursor: 'pointer', fontWeight: 700, fontSize: 14, marginBottom: 14,
+                                transition: 'all 0.2s',
+                            }}
+                                onMouseEnter={(e) => { e.currentTarget.style.background = '#F8FAFC'; e.currentTarget.style.borderColor = '#CBD5E0'; }}
+                                onMouseLeave={(e) => { e.currentTarget.style.background = '#FFFFFF'; e.currentTarget.style.borderColor = '#E2E8F0'; }}
+                            >
+                                <Shield size={18} color="#FBBC04" />
+                                Login as Franchise / Branch
                             </button>
 
                             {/* Demo CTA */}
@@ -758,6 +872,115 @@ export default function LoginPage() {
                             <button type="submit" disabled={loading} className="btn btn-blue btn-lg" style={{ width: '100%', justifyContent: 'center' }}>
                                 {loading ? 'Validating…' : 'Sign in as Role'}
                             </button>
+                            <button type="button" onClick={() => setAuthMode('options')} style={{ width: '100%', marginTop: 12, background: 'none', border: 'none', color: '#718096', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>Back to options</button>
+                        </form>
+                    )}
+
+                    {authMode === 'branch_login' && (
+                        <form onSubmit={branchLoginStep === 'key' ? handleVerifyBranchLicenseKey : handleBranchLogin}>
+                            <h4 style={{ textAlign: 'center', marginBottom: 16, fontWeight: 'bold', color: '#FBBC04' }}>Franchise / Branch Login</h4>
+                            
+                            {branchLoginStep === 'key' ? (
+                                <>
+                                    <div style={{ marginBottom: 14 }}>
+                                        <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#4A5568', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Branch License Key</label>
+                                        <input
+                                            type="text"
+                                            className="e-input"
+                                            placeholder="Enter unique branch key"
+                                            value={branchLicenseKey}
+                                            onChange={e => setBranchLicenseKey(e.target.value)}
+                                            required
+                                        />
+                                    </div>
+                                    {error && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', padding: '10px 14px', borderRadius: 8, marginBottom: 16, fontSize: 13, color: '#C5221F' }}>{error}</div>}
+                                    <button type="submit" className="btn btn-blue btn-lg" style={{ width: '100%', justifyContent: 'center' }}>
+                                        Verify License Key
+                                    </button>
+                                </>
+                            ) : (
+                                <>
+                                    <div style={{ marginBottom: 16, padding: 12, background: '#F8FAFC', borderRadius: 12, border: '1px solid #E2E8F0' }}>
+                                        <div style={{ fontSize: 11, color: '#718096', fontWeight: 600 }}>OUTLET</div>
+                                        <div style={{ fontSize: 16, fontWeight: 800, color: '#1A1A2E' }}>{matchingBranch?.name}</div>
+                                        <div style={{ fontSize: 12, color: '#4A5568' }}>{matchingCompany?.name}</div>
+                                    </div>
+
+                                    <div style={{ marginBottom: 14 }}>
+                                        <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#4A5568', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Select Your Name / Role</label>
+                                        {(() => {
+                                            const branchTeam = (matchingCompany?.team || []).filter((t: any) => t.branchId === matchingBranch?.id);
+                                            if (branchTeam.length > 0) {
+                                                return (
+                                                    <select
+                                                        className="e-input"
+                                                        value={selectedMemberId}
+                                                        onChange={e => setSelectedMemberId(e.target.value)}
+                                                        required
+                                                    >
+                                                        {branchTeam.map((t: any) => (
+                                                            <option key={t.id} value={t.id}>
+                                                                {t.name} ({t.role.toUpperCase()})
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                );
+                                            } else {
+                                                const genericTeam = (matchingCompany?.team || []).filter((t: any) => t.role !== 'owner');
+                                                if (genericTeam.length > 0) {
+                                                    return (
+                                                        <select
+                                                            className="e-input"
+                                                            value={selectedMemberId}
+                                                            onChange={e => setSelectedMemberId(e.target.value)}
+                                                            required
+                                                        >
+                                                            <option value="">-- Select Member --</option>
+                                                            {genericTeam.map((t: any) => (
+                                                                <option key={t.id} value={t.id}>
+                                                                    {t.name} ({t.role.toUpperCase()})
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                    );
+                                                } else {
+                                                    return (
+                                                        <input
+                                                            type="text"
+                                                            className="e-input"
+                                                            placeholder="Username or role"
+                                                            value={selectedMemberId}
+                                                            onChange={e => setSelectedMemberId(e.target.value)}
+                                                            required
+                                                        />
+                                                    );
+                                                }
+                                            }
+                                        })()}
+                                    </div>
+
+                                    <div style={{ marginBottom: 20 }}>
+                                        <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#4A5568', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Password / PIN</label>
+                                        <input
+                                            type="password"
+                                            className="e-input"
+                                            value={branchPassword}
+                                            onChange={e => setBranchPassword(e.target.value)}
+                                            required
+                                        />
+                                    </div>
+                                    {error && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', padding: '10px 14px', borderRadius: 8, marginBottom: 16, fontSize: 13, color: '#C5221F' }}>{error}</div>}
+                                    <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
+                                        <button type="button" onClick={() => setBranchLoginStep('key')} className="btn btn-outline btn-lg" style={{ flex: 1, justifyContent: 'center' }}>
+                                            Back
+                                        </button>
+                                        <button type="submit" disabled={loading} className="btn btn-blue btn-lg" style={{ flex: 1, justifyContent: 'center' }}>
+                                            {loading ? 'Logging in...' : 'Sign In'}
+                                        </button>
+                                    </div>
+                                </>
+                            )}
+
                             <button type="button" onClick={() => setAuthMode('options')} style={{ width: '100%', marginTop: 12, background: 'none', border: 'none', color: '#718096', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>Back to options</button>
                         </form>
                     )}

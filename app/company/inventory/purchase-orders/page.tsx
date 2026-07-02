@@ -21,7 +21,7 @@ export default function PurchaseOrdersPage() {
     const router = useRouter();
     const company = useActiveCompany();
     const { activeCompanyId } = useStore();
-    const { addPurchaseOrder, updatePurchaseOrder, deletePurchaseOrder, addInvoice, nextInvoiceNumber } = useStore();
+    const { addPurchaseOrder, updatePurchaseOrder, deletePurchaseOrder, addInvoice, nextInvoiceNumber, adjustStock } = useStore();
     const purchaseOrders = useCompanyData('purchaseOrders') as PurchaseOrder[];
     const parties = useCompanyData('parties') as any[];
 
@@ -112,6 +112,12 @@ export default function PurchaseOrdersPage() {
             notes: `Converted from PO ${po.poNumber}`,
             createdAt: now, updatedAt: now,
         };
+        // Adjust stock of products (skip log as addInvoice will generate the clear Purchase - invoice log)
+        inv.items.forEach(item => {
+            if (item.productId) {
+                adjustStock(item.productId, item.qty, 'skip');
+            }
+        });
         addInvoice(inv);
         updatePurchaseOrder(po.id, { status: 'received', convertedInvoiceId: inv.id });
         toast.success(`✅ Converted to Purchase Invoice ${invNo}`);

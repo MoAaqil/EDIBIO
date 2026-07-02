@@ -3,7 +3,7 @@ import { useState, Suspense, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useStore, useActiveCompany } from '@/lib/store';
 import { formatDate, amountInWords } from '@/lib/utils';
-import { ArrowLeft, Share2, Printer, Trash2, MessageSquare, EyeOff, Check, Phone, ChevronRight, Copy, Settings2, X, Download } from 'lucide-react';
+import { ArrowLeft, Share2, Printer, Trash2, MessageSquare, EyeOff, Check, Phone, ChevronRight, Copy, Settings2, X, Download, Paperclip } from 'lucide-react';
 import Link from 'next/link';
 import { InvoicePrintTemplate } from '@/components/InvoicePrintTemplate';
 import toast from 'react-hot-toast';
@@ -80,6 +80,20 @@ function InvoiceDetailInner() {
         window.open(url, '_blank');
     };
 
+    const getPdfConfig = (pageSize: string) => {
+        switch (pageSize) {
+            case 'A5':
+                return { width: 559, format: 'a5' };
+            case 'A6':
+                return { width: 397, format: 'a6' };
+            case '3inch':
+                return { width: 302, format: [80, 250] };
+            case 'A4':
+            default:
+                return { width: 794, format: 'a4' };
+        }
+    };
+
     const handleShareOrDownloadPDF = async (mode: 'download' | 'share', waWindow?: Window | null) => {
         const loadToast = toast.loading(mode === 'share' ? 'Preparing PDF to share...' : 'Generating PDF...');
         try {
@@ -87,9 +101,12 @@ function InvoiceDetailInner() {
             const element = document.getElementById('invoice-print');
             if (!element) throw new Error('Invoice container not found');
             
+            const pageSize = company?.templatePageSize || 'A4';
+            const pdfConfig = getPdfConfig(pageSize);
+
             const originalStyle = element.getAttribute('style') || '';
-            // Force exactly 794px width (A4 equivalent) with no extra margins, paddings, or shadow offsets
-            element.setAttribute('style', originalStyle + '; background: white; width: 794px; padding: 0; margin: 0; box-shadow: none; overflow: visible;');
+            // Force dynamic width with no extra margins, paddings, or shadow offsets
+            element.setAttribute('style', originalStyle + `; background: white; width: ${pdfConfig.width}px; padding: 0; margin: 0; box-shadow: none; overflow: visible;`);
 
             // Temporarily replace min-height with auto to avoid vertical page splits/blank pages
             const vhElements = element.querySelectorAll('[style*="min-height"], [style*="minHeight"]');
@@ -115,7 +132,7 @@ function InvoiceDetailInner() {
                     scrollX: 0,
                     scrollY: 0
                 },
-                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+                jsPDF: { unit: 'mm', format: pdfConfig.format, orientation: 'portrait' },
                 pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
             };
 
@@ -188,6 +205,9 @@ function InvoiceDetailInner() {
 
         const waUrl = getWhatsAppLink(rawPhone);
 
+        const pageSize = company?.templatePageSize || 'A4';
+        const pdfConfig = getPdfConfig(pageSize);
+
         // On mobile — use native share if supported
         if (typeof navigator !== 'undefined' && navigator.share && navigator.canShare) {
             const loadToast = toast.loading('Preparing PDF...');
@@ -196,11 +216,11 @@ function InvoiceDetailInner() {
                 const element = document.getElementById('invoice-print');
                 if (!element) throw new Error('Invoice not found');
                 const originalStyle = element.getAttribute('style') || '';
-                element.setAttribute('style', originalStyle + '; background:white;width:794px;padding:0;margin:0;box-shadow:none;overflow:visible;');
+                element.setAttribute('style', originalStyle + `; background:white;width:${pdfConfig.width}px;padding:0;margin:0;box-shadow:none;overflow:visible;`);
                 const vhEls = element.querySelectorAll('[style*="min-height"],[style*="minHeight"]');
                 const saved: {el:Element;s:string|null}[] = [];
                 vhEls.forEach(el => { saved.push({el,s:el.getAttribute('style')}); el.setAttribute('style',(el.getAttribute('style')||'').replace(/min-height\s*:\s*[^;]+/gi,'min-height:auto')); });
-                const opt: any = { margin:0, filename:`${inv.invoiceNumber||'Invoice'}.pdf`, image:{type:'jpeg',quality:0.98}, html2canvas:{scale:2,useCORS:true,logging:false,scrollX:0,scrollY:0}, jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}, pagebreak:{mode:['avoid-all','css','legacy']} };
+                const opt: any = { margin:0, filename:`${inv.invoiceNumber||'Invoice'}.pdf`, image:{type:'jpeg',quality:0.98}, html2canvas:{scale:2,useCORS:true,logging:false,scrollX:0,scrollY:0}, jsPDF:{unit:'mm',format:pdfConfig.format,orientation:'portrait'}, pagebreak:{mode:['avoid-all','css','legacy']} };
                 const pdfBlob = await html2pdf().set(opt).from(element).output('blob');
                 element.setAttribute('style', originalStyle);
                 saved.forEach(({el,s}) => s!==null ? el.setAttribute('style',s) : el.removeAttribute('style'));
@@ -229,11 +249,11 @@ function InvoiceDetailInner() {
             const element = document.getElementById('invoice-print');
             if (!element) throw new Error('Invoice not found');
             const originalStyle = element.getAttribute('style') || '';
-            element.setAttribute('style', originalStyle + '; background:white;width:794px;padding:0;margin:0;box-shadow:none;overflow:visible;');
+            element.setAttribute('style', originalStyle + `; background:white;width:${pdfConfig.width}px;padding:0;margin:0;box-shadow:none;overflow:visible;`);
             const vhEls = element.querySelectorAll('[style*="min-height"],[style*="minHeight"]');
             const saved: {el:Element;s:string|null}[] = [];
             vhEls.forEach(el => { saved.push({el,s:el.getAttribute('style')}); el.setAttribute('style',(el.getAttribute('style')||'').replace(/min-height\s*:\s*[^;]+/gi,'min-height:auto')); });
-            const opt: any = { margin:0, filename:`${inv.invoiceNumber||'Invoice'}.pdf`, image:{type:'jpeg',quality:0.98}, html2canvas:{scale:2,useCORS:true,logging:false,scrollX:0,scrollY:0}, jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}, pagebreak:{mode:['avoid-all','css','legacy']} };
+            const opt: any = { margin:0, filename:`${inv.invoiceNumber||'Invoice'}.pdf`, image:{type:'jpeg',quality:0.98}, html2canvas:{scale:2,useCORS:true,logging:false,scrollX:0,scrollY:0}, jsPDF:{unit:'mm',format:pdfConfig.format,orientation:'portrait'}, pagebreak:{mode:['avoid-all','css','legacy']} };
             await html2pdf().set(opt).from(element).save();
             element.setAttribute('style', originalStyle);
             saved.forEach(({el,s}) => s!==null ? el.setAttribute('style',s) : el.removeAttribute('style'));
@@ -331,12 +351,8 @@ function InvoiceDetailInner() {
                                     <option value="modern">Modern Edge (Blue Header)</option>
                                     <option value="waves">Smooth Waves (Gradient)</option>
                                     <option value="minimalist">Minimal Clean (Spaced)</option>
-                                    <option value="bold_orange">Bold Retail (Orange)</option>
-                                    <option value="luxe_gold">Luxe Gold (Dark Premium)</option>
                                     <option value="vibrant">Vibrant Blue (Playful)</option>
-                                    <option value="retro">Retro (Typewriter)</option>
                                     <option value="quick_bill">Quick Thermal Style</option>
-                                    <option value="beige_dark">Beige & Dark (Design Studio)</option>
                                     <option value="sea_green">Sea Green (Rounded)</option>
                                     <option value="formal_quote">Formal Quote (Grey Boxed)</option>
                                 </select>
@@ -366,6 +382,23 @@ function InvoiceDetailInner() {
                                 </div>
                             </div>
                         </div>
+                    </div>
+                )}
+
+                {inv.invoiceType === 'purchase' && inv.receiptUrl && (
+                    <div className="no-print card" style={{ padding: '16px 20px', marginBottom: 20, background: '#F8FAFC', border: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderRadius: 12 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                            <div style={{ width: 40, height: 40, borderRadius: 8, background: '#EBF8FF', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                <Paperclip size={20} color="#3182CE" />
+                            </div>
+                            <div>
+                                <p style={{ fontSize: 13, fontWeight: 700, color: '#1A202C', margin: 0 }}>Supplier Bill Attachment</p>
+                                <p style={{ fontSize: 11, color: '#718096', margin: '2px 0 0' }}>Photo or PDF document attached to this purchase bill</p>
+                            </div>
+                        </div>
+                        <a href={inv.receiptUrl} download={`attached_bill_${inv.invoiceNumber}`} target="_blank" rel="noreferrer" className="btn btn-blue btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, textDecoration: 'none', fontWeight: 700 }}>
+                            <Download size={13} /> View / Download Attachment
+                        </a>
                     </div>
                 )}
 

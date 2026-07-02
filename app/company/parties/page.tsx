@@ -25,7 +25,7 @@ export default function PartiesPage() {
     const [editParty, setEditParty] = useState<Party | null>(null);
 
     const [paymentParty, setPaymentParty] = useState<Party | null>(null);
-    const [payForm, setPayForm] = useState({ amount: '', type: 'received' as 'received' | 'paid', method: 'cash', date: new Date().toLocaleDateString('en-CA'), note: '' });
+    const [payForm, setPayForm] = useState({ amount: '', type: 'received' as 'received' | 'paid', method: 'cash', date: new Date().toLocaleDateString('sv-SE'), note: '' });
     const [historyParty, setHistoryParty] = useState<Party | null>(null);
     const [historyTab, setHistoryTab] = useState<'payments' | 'loyalty'>('payments');
     
@@ -41,7 +41,7 @@ export default function PartiesPage() {
             amount: '',
             type: defaultType,
             method: 'cash',
-            date: new Date().toLocaleDateString('en-CA'),
+            date: new Date().toLocaleDateString('sv-SE'),
             note: ''
         });
         setPaymentParty(p);
@@ -183,7 +183,7 @@ export default function PartiesPage() {
         });
         toast.success(`Payment of ₹${amt.toLocaleString('en-IN')} recorded`);
         setPaymentParty(null);
-        setPayForm({ amount: '', type: 'received', method: 'cash', date: new Date().toLocaleDateString('en-CA'), note: '' });
+        setPayForm({ amount: '', type: 'received', method: 'cash', date: new Date().toLocaleDateString('sv-SE'), note: '' });
     };
 
     const handleAddLoyaltyAdjustment = () => {

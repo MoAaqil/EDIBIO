@@ -44,9 +44,11 @@ export default function CloudSync() {
                 products: s.products || [],
                 invoices: s.invoices || [],
                 expenses: s.expenses || [],
+                purchaseOrders: s.purchaseOrders || [],
                 agencyClients: s.agencyClients || [],
                 agencyProjects: s.agencyProjects || [],
                 templates: s.templates || [],
+                stockTransfers: s.stockTransfers || [],
                 hsnCache: (s.hsnCache || []).slice(0, 50),
             };
 
@@ -117,7 +119,7 @@ export default function CloudSync() {
                     const cloudState = JSON.parse(LZString.decompressFromUTF16(data.compressedState) || '{}');
                     const local = useStore.getState();
 
-                    const keys = ['companies', 'parties', 'products', 'invoices', 'expenses', 'agencyClients', 'agencyProjects', 'templates'];
+                    const keys = ['companies', 'parties', 'products', 'invoices', 'expenses', 'purchaseOrders', 'agencyClients', 'agencyProjects', 'templates', 'stockTransfers'];
                     const merged: any = {};
                     keys.forEach(k => {
                         merged[k] = cloudState[k] || [];
@@ -175,7 +177,7 @@ export default function CloudSync() {
                     const data = snap.data();
                     const cloudState = JSON.parse(LZString.decompressFromUTF16(data.compressedState) || '{}');
                     const local = useStore.getState();
-                    const keys = ['companies', 'parties', 'products', 'invoices', 'expenses', 'agencyClients', 'agencyProjects', 'templates'];
+                    const keys = ['companies', 'parties', 'products', 'invoices', 'expenses', 'purchaseOrders', 'agencyClients', 'agencyProjects', 'templates'];
                     const merged: any = {};
                     keys.forEach(k => {
                         merged[k] = cloudState[k] || [];

@@ -6,7 +6,7 @@ import toast from 'react-hot-toast';
 
 export default function MongoSync() {
     const { 
-        isAuthenticated, user, isDemo, setIsHydrating, 
+        isHydrating, isAuthenticated, user, isDemo, setIsHydrating, 
         setLastSyncedAt, setSyncStatus, setSyncError 
     } = useStore();
     
@@ -45,9 +45,9 @@ export default function MongoSync() {
             //  - This is a new/fresh device (localTime === 0)
             //  - Cloud data is newer than local data
             //  - We have no local companies but cloud has them
-            const shouldPull = localTime === 0 || cloudTime !== localTime || (s.companies.length === 0 && (cloudState.companies?.length ?? 0) > 0);
+            const shouldPull = localTime === 0 || cloudTime > localTime || (s.companies.length === 0 && (cloudState.companies?.length ?? 0) > 0);
             if (shouldPull && cloudState) {
-                const keys = ['companies', 'parties', 'products', 'invoices', 'expenses', 'agencyClients', 'agencyProjects', 'templates'];
+                const keys = ['companies', 'parties', 'products', 'invoices', 'expenses', 'agencyClients', 'agencyProjects', 'templates', 'purchaseOrders', 'stockTransfers'];
                 const merged: any = {};
                 
                 keys.forEach(k => merged[k] = cloudState[k] || []);
@@ -89,6 +89,8 @@ export default function MongoSync() {
                 agencyClients: state.agencyClients,
                 agencyProjects: state.agencyProjects,
                 templates: state.templates,
+                purchaseOrders: state.purchaseOrders,
+                stockTransfers: state.stockTransfers,
                 aiApiKey: state.aiApiKey,
                 aiUsageCount: state.aiUsageCount,
                 primarySwapCount: state.primarySwapCount
@@ -134,35 +136,24 @@ export default function MongoSync() {
         }
     }, [isAuthenticated, user?.uid, isDemo, setLastSyncedAt, setSyncStatus, setSyncError]);
 
-    // Initial hydration
+    // Initial cloud pull (only runs AFTER local hydration completes)
     useEffect(() => {
+        if (isHydrating) return; // Wait until local IndexedDB is fully loaded!
+
         if (!isAuthenticated || !user?.uid || isDemo) {
             hasHydrated.current = false;
-            if (isAuthenticated) setIsHydrating(false);
             return;
         }
-
-        const hydrationTimeout = setTimeout(() => {
-            if (useStore.getState().isHydrating) {
-                console.warn('[MongoSync] Hydration timed out, forcing false');
-                setIsHydrating(false);
-            }
-        }, 15000);
 
         if (hasHydrated.current) return;
         hasHydrated.current = true;
 
         (async () => {
-             if (!navigator.onLine) {
-                 setIsHydrating(false);
-                 return;
+             if (navigator.onLine) {
+                 await pull();
              }
-             await pull();
-             setIsHydrating(false);
-             clearTimeout(hydrationTimeout);
         })();
-        return () => clearTimeout(hydrationTimeout);
-    }, [isAuthenticated, user?.uid, isDemo, pull, setIsHydrating]);
+    }, [isHydrating, isAuthenticated, user?.uid, isDemo, pull]);
 
     // Live Update Polling (Check Cloud every 20s)
     useEffect(() => {
@@ -222,7 +213,7 @@ export default function MongoSync() {
                 }
 
                 const merged: any = {};
-                const keys = ['companies', 'parties', 'products', 'invoices', 'expenses', 'agencyClients', 'agencyProjects', 'templates'];
+                const keys = ['companies', 'parties', 'products', 'invoices', 'expenses', 'agencyClients', 'agencyProjects', 'templates', 'purchaseOrders', 'stockTransfers'];
                 keys.forEach(k => merged[k] = cloudState[k] || []);
                 
                 if (cloudState.user) merged.user = cloudState.user;
@@ -244,6 +235,14 @@ export default function MongoSync() {
         };
         return () => { (window as any).forceEdibioCloudSync = null; };
     }, [isAuthenticated, user?.uid, setLastSyncedAt]);
+
+    useEffect(() => {
+        (window as any).triggerEdibioCloudSync = () => {
+            if (!isAuthenticated || !user?.uid || isDemo) return;
+            sync(false);
+        };
+        return () => { (window as any).triggerEdibioCloudSync = null; };
+    }, [isAuthenticated, user?.uid, isDemo, sync]);
 
     return null;
 }

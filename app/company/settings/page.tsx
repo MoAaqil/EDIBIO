@@ -2,10 +2,11 @@
 import { useState, useRef, useMemo, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useStore, useActiveCompany, useCompanyData } from '@/lib/store';
-import type { InvoiceTemplate, PaperSize } from '@/lib/types';
-import { amountInWords } from '@/lib/utils';
+import GstSuitePanel from '@/components/GstSuitePanel';
+import FranchisePanel from '@/components/FranchisePanel';
+
 import {
-    Store, FileText, Printer, Shield, Bell, ChevronRight, Share2,
+    Store, FileText, Printer, Shield, Bell, ChevronRight, Share2, Percent,
     Check, Plus, Edit2, Trash2, Eye, X, Palette, Warehouse, Settings, Users, Landmark,
     MessageSquare, Database, Download, Upload, RefreshCw, Cloud, CheckCircle, Smartphone, ShieldCheck, HardDrive, Gift
 } from 'lucide-react';
@@ -18,19 +19,6 @@ import {
 } from '@/components/AutoBackup';
 
 
-function ColorPicker({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
-    return (
-        <div>
-            <label style={{ fontSize: 10, fontWeight: 700, color: '#A0AEC0', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 5 }}>{label}</label>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <input type="color" value={value} onChange={e => onChange(e.target.value)}
-                    style={{ width: 36, height: 36, borderRadius: 8, border: '1.5px solid #E1E4E8', cursor: 'pointer', padding: 2 }} />
-                <input type="text" value={value} onChange={e => onChange(e.target.value)}
-                    style={{ flex: 1, padding: '7px 10px', border: '1.5px solid #E1E4E8', borderRadius: 8, fontSize: 12, fontFamily: 'monospace', outline: 'none' }} />
-            </div>
-        </div>
-    );
-}
 
 function AutoBackupStatusCard() {
     const meta = getAutoBackupMeta();
@@ -166,141 +154,12 @@ function RestaurantChargesPanel({ company, updateCompany, companyId }: { company
     );
 }
 
-const PAPER_SIZES: { value: PaperSize; label: string; desc: string }[] = [
-    { value: 'A4', label: 'A4', desc: '210 × 297 mm' },
-    { value: 'A5', label: 'A5', desc: '148 × 210 mm' },
-    { value: 'A6', label: 'A6', desc: '105 × 148 mm' },
-    { value: 'thermal_80', label: 'Thermal 80mm', desc: 'POS / Receipt' },
-    { value: 'thermal_58', label: 'Thermal 58mm', desc: 'Mini POS' },
-    { value: 'letter', label: 'Letter', desc: '8.5 × 11 in' },
-];
-
-const SECTION_ITEMS = [
-    { key: 'showLogo', label: 'Show Logo' },
-    { key: 'showGstNumber', label: 'GST Number' },
-    { key: 'showHsn', label: 'HSN Code' },
-    { key: 'showTaxBreakdown', label: 'Tax Breakdown (CGST/SGST)' },
-    { key: 'showAmountInWords', label: 'Amount in Words' },
-    { key: 'showSignature', label: 'Signature Field' },
-    { key: 'showTerms', label: 'Terms & Conditions' },
-    { key: 'showQrCode', label: 'QR Code (UPI)' },
-    { key: 'showBalanceDue', label: 'Balance Due' },
-    { key: 'showPaymentHistory', label: 'Payment History' },
-];
-
-// Live invoice preview
-function TemplatePreview({ t, company }: { t: InvoiceTemplate; company: any }) {
-    const isNarrow = t.paperSize.startsWith('thermal');
-
-    return (
-        <div style={{
-            background: t.bodyBg || '#ffffff',
-            fontFamily: t.fontFamily === 'monospace' ? 'monospace' : 'Inter, sans-serif',
-            fontSize: t.fontSize,
-            border: '1px solid #ddd',
-            borderRadius: 8,
-            overflow: 'hidden',
-            maxWidth: isNarrow ? 220 : '100%',
-            margin: isNarrow ? '0 auto' : 0,
-            boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
-        }}>
-            {/* Header */}
-            <div style={{ background: t.headerBg, color: t.headerText, padding: isNarrow ? '12px' : '20px 24px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: t.logoAlign === 'center' ? 'center' : t.logoAlign === 'right' ? 'space-between' : 'flex-start', gap: 12, marginBottom: 10 }}>
-                    {t.showLogo && (
-                        company?.logoUrl ? (
-                            <img src={company.logoUrl} style={{ width: isNarrow ? 36 : 48, height: isNarrow ? 36 : 48, objectFit: 'contain' }} alt="Logo" />
-                        ) : (
-                            <div style={{ width: isNarrow ? 28 : 40, height: isNarrow ? 28 : 40, borderRadius: 8, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: isNarrow ? 12 : 16, fontWeight: 900 }}>
-                                {(company?.name || 'E')[0]}
-                            </div>
-                        )
-                    )}
-                    <div style={{ textAlign: t.logoAlign as any }}>
-                        <p style={{ fontWeight: 900, fontSize: isNarrow ? 11 : 15 }}>{company?.name || 'Company Name'}</p>
-                        {t.showGstNumber && <p style={{ opacity: 0.7, fontSize: isNarrow ? 8 : 10, fontFamily: 'monospace' }}>GST: {company?.gstNumber || '22AAAAA0000A1Z5'}</p>}
-                    </div>
-                </div>
-                <div style={{ height: 1, background: 'rgba(255,255,255,0.2)', marginBottom: 10 }} />
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: isNarrow ? 8 : 10 }}>
-                    <div>
-                        <p style={{ opacity: 0.6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Tax Invoice</p>
-                        <p style={{ fontWeight: 900, fontSize: isNarrow ? 13 : 18, fontFamily: 'monospace' }}>INV-0001</p>
-                    </div>
-                    <div style={{ textAlign: 'right', opacity: 0.8 }}>
-                        <p>Date: 27 Feb 2026</p>
-                        <p>Due: 06 Mar 2026</p>
-                    </div>
-                </div>
-            </div>
-
-            {/* Body */}
-            <div style={{ padding: isNarrow ? '10px' : '16px 20px', color: t.bodyText }}>
-                <div style={{ fontSize: isNarrow ? 8 : 10, fontWeight: 700, opacity: 0.5, textTransform: 'uppercase', marginBottom: 4 }}>Bill To</div>
-                <p style={{ fontWeight: 700, fontSize: isNarrow ? 9 : 13, marginBottom: 10 }}>Sample Customer Name</p>
-
-                {/* Items */}
-                <div style={{ background: t.tableHeaderBg, color: t.tableHeaderText, display: 'grid', gridTemplateColumns: isNarrow ? '2fr 1fr 1fr' : '3fr 1fr 1fr 1fr', gap: 6, padding: '6px 8px', fontSize: isNarrow ? 7 : 9, fontWeight: 700, textTransform: 'uppercase' }}>
-                    <span>Item</span>
-                    <span style={{ textAlign: 'center' }}>Qty</span>
-                    {!isNarrow && <span style={{ textAlign: 'right' }}>Rate</span>}
-                    <span style={{ textAlign: 'right' }}>Amt</span>
-                </div>
-                {[
-                    { name: 'Basmati Rice (5kg)', qty: 2, rate: 320, amt: 640, gst: 5 },
-                    { name: 'Cooking Oil 1L', qty: 3, rate: 120, amt: 360, gst: 12 },
-                ].map((item, i) => (
-                    <div key={i} style={{ display: 'grid', gridTemplateColumns: isNarrow ? '2fr 1fr 1fr' : '3fr 1fr 1fr 1fr', gap: 6, padding: '5px 8px', fontSize: isNarrow ? 7 : 10, borderBottom: '1px solid #F1F3F5' }}>
-                        <span>{item.name}{t.showHsn && !isNarrow && <span style={{ opacity: 0.4 }}> [1006]</span>}</span>
-                        <span style={{ textAlign: 'center' }}>{item.qty}</span>
-                        {!isNarrow && <span style={{ textAlign: 'right' }}>₹{item.rate}</span>}
-                        <span style={{ textAlign: 'right', fontWeight: 700 }}>₹{item.amt}</span>
-                    </div>
-                ))}
-
-                {/* Totals */}
-                <div style={{ marginTop: 10, fontSize: isNarrow ? 7 : 11 }}>
-                    {t.showTaxBreakdown && !isNarrow && (
-                        <>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 8px', opacity: 0.6 }}>
-                                <span>CGST (2.5%)</span><span>₹25.00</span>
-                            </div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 8px', opacity: 0.6 }}>
-                                <span>SGST (2.5%)</span><span>₹25.00</span>
-                            </div>
-                        </>
-                    )}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 8px', background: t.accentColor + '15', borderRadius: 4, fontWeight: 900, marginTop: 4 }}>
-                        <span>TOTAL</span>
-                        <span style={{ color: t.accentColor }}>₹1,050.00</span>
-                    </div>
-                    {t.showAmountInWords && !isNarrow && (
-                        <p style={{ fontSize: 7, opacity: 0.5, fontStyle: 'italic', padding: '4px 8px' }}>One Thousand Fifty Rupees Only</p>
-                    )}
-                    {t.showBalanceDue && (
-                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 8px', fontSize: isNarrow ? 7 : 10 }}>
-                            <span style={{ opacity: 0.6 }}>Balance Due</span>
-                            <span style={{ color: '#EA4335', fontWeight: 700 }}>₹1,050.00</span>
-                        </div>
-                    )}
-                </div>
-
-                {t.showTerms && !isNarrow && t.terms && (
-                    <p style={{ fontSize: 7, opacity: 0.4, borderTop: '1px solid #F1F3F5', paddingTop: 8, marginTop: 8 }}>{t.terms}</p>
-                )}
-                {t.footerText && (
-                    <p style={{ fontSize: 8, textAlign: 'center', opacity: 0.5, marginTop: 8 }}>{t.footerText}</p>
-                )}
-            </div>
-        </div>
-    );
-}
 
 export default function SettingsPage() {
     const { activeCompanyId } = useStore();
     const companyId = activeCompanyId;
     const company = useActiveCompany();
-    const { templates, updateTemplate, addTemplate, deleteTemplate, updateCompany, addGodown, removeGodown, deleteCompany, exportBackup, importBackup, aiApiKey, setAiApiKey, user, updateUser } = useStore();
+    const { updateCompany, addGodown, removeGodown, deleteCompany, exportBackup, importBackup, aiApiKey, setAiApiKey, user, updateUser, addBranch, updateBranch, deleteBranch } = useStore();
 
     const invoices = useCompanyData('invoices') as any[] || [];
     const [newTeamCounter, setNewTeamCounter] = useState('');
@@ -322,11 +181,8 @@ export default function SettingsPage() {
         return counts;
     }, [invoices]);
 
-    const [tab, setTab] = useState<'business' | 'templates' | 'godowns' | 'banking' | 'team' | 'security' | 'communication' | 'data' | 'loyalty'>('business');
+    const [tab, setTab] = useState<'business' | 'godowns' | 'banking' | 'team' | 'security' | 'communication' | 'data' | 'loyalty' | 'gst' | 'franchise'>('business');
     const importFileRef = useRef<HTMLInputElement>(null);
-    const [selectedTemplate, setSelectedTemplate] = useState<InvoiceTemplate | undefined>(templates[0]);
-    const [editingTemplate, setEditingTemplate] = useState(false);
-    const [preview, setPreview] = useState(false);
 
     const router = useRouter();
     const [deleteStep, setDeleteStep] = useState(0);
@@ -409,20 +265,6 @@ export default function SettingsPage() {
         toast.success('Loyalty settings saved!');
     };
 
-    // Template editor
-    const [tmpl, setTmpl] = useState<InvoiceTemplate | undefined>(selectedTemplate);
-    const ut = (k: string, v: any) => setTmpl(f => f ? { ...f, [k]: v } : f);
-
-    const handleSelectTemplate = (t: InvoiceTemplate) => {
-        setSelectedTemplate(t); setTmpl(t);
-        updateCompany(companyId!, { templateId: t.id });
-    };
-    const handleSaveTemplate = () => {
-        if(tmpl) updateTemplate(tmpl.id, tmpl);
-        setSelectedTemplate(tmpl);
-        setEditingTemplate(false);
-        toast.success('Template saved!');
-    };
 
     // Godown management
     const [newGodown, setNewGodown] = useState('');
@@ -444,13 +286,15 @@ export default function SettingsPage() {
 
     const TABS = [
         { id: 'business', label: 'Business Profile', icon: Store },
-        { id: 'templates', label: 'Invoice Templates', icon: FileText },
+        { id: 'templates', label: 'Invoice Templates', icon: FileText, href: '/settings/templates' },
         { id: 'godowns', label: 'Godowns', icon: Warehouse },
         { id: 'banking', label: 'Bank & UPI', icon: Landmark },
         { id: 'loyalty', label: 'Loyalty Program', icon: Gift },
         { id: 'communication', label: 'Communication', icon: MessageSquare },
         { id: 'data', label: 'Data & Backup', icon: Database },
         { id: 'team', label: 'Team & Roles', icon: Users },
+        { id: 'gst', label: 'GST Suite', icon: Percent },
+        { id: 'franchise', label: 'Franchise/Branches', icon: Share2 },
         { id: 'security', label: 'Security', icon: Shield },
     ];
 
@@ -461,32 +305,50 @@ export default function SettingsPage() {
                 <aside style={{ width: 220, flexShrink: 0 }}>
                     {/* Desktop sidebar list */}
                     <div className="card" style={{ overflow: 'hidden' }}>
-                        {TABS.map(({ id, label, icon: Icon }) => (
-                            <button key={id} onClick={() => setTab(id as any)}
-                                className={tab === id ? 'active-tab' : ''}
-                                style={{
-                                    width: '100%', display: 'flex', alignItems: 'center', gap: 10,
-                                    padding: '13px 16px',
-                                    cursor: 'pointer', textAlign: 'left',
-                                }}>
-                                <Icon size={16} color={tab === id ? '#4285F4' : '#718096'} />
-                                <span style={{ fontSize: 13, fontWeight: tab === id ? 700 : 500, color: tab === id ? '#1967D2' : '#4A5568' }}>{label}</span>
-                            </button>
-                        ))}
+                        {TABS.map((item) => {
+                            const Icon = item.icon;
+                            return (
+                                <button key={item.id} onClick={() => {
+                                    if (item.href) {
+                                        router.push(companyId ? `/company${item.href}` : item.href);
+                                    } else {
+                                        setTab(item.id as any);
+                                    }
+                                }}
+                                    className={tab === item.id ? 'active-tab' : ''}
+                                    style={{
+                                        width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                                        padding: '13px 16px',
+                                        cursor: 'pointer', textAlign: 'left',
+                                    }}>
+                                    <Icon size={16} color={tab === item.id ? '#4285F4' : '#718096'} />
+                                    <span style={{ fontSize: 13, fontWeight: tab === item.id ? 700 : 500, color: tab === item.id ? '#1967D2' : '#4A5568' }}>{item.label}</span>
+                                </button>
+                            );
+                        })}
                     </div>
 
                     {/* Mobile icon-grid tab bar (hidden on desktop via CSS) */}
                     <div className="mobile-tab-bar">
-                        {TABS.map(({ id, label, icon: Icon }) => (
-                            <button
-                                key={id}
-                                onClick={() => setTab(id as any)}
-                                className={`mobile-tab-btn${tab === id ? ' active' : ''}`}
-                            >
-                                <Icon size={20} color={tab === id ? '#1967D2' : '#A0AEC0'} />
-                                <span>{label.replace(' Profile', '').replace(' & ', ' &\n').replace('Invoice ', '').replace('Data & ', '')}</span>
-                            </button>
-                        ))}
+                        {TABS.map((item) => {
+                            const Icon = item.icon;
+                            return (
+                                <button
+                                    key={item.id}
+                                    onClick={() => {
+                                        if (item.href) {
+                                            router.push(companyId ? `/company${item.href}` : item.href);
+                                        } else {
+                                            setTab(item.id as any);
+                                        }
+                                    }}
+                                    className={`mobile-tab-btn${tab === item.id ? ' active' : ''}`}
+                                >
+                                    <Icon size={20} color={tab === item.id ? '#1967D2' : '#A0AEC0'} />
+                                    <span>{item.label.replace(' Profile', '').replace(' & ', ' &\n').replace('Invoice ', '').replace('Data & ', '')}</span>
+                                </button>
+                            );
+                        })}
                     </div>
                 </aside>
 
@@ -554,215 +416,6 @@ export default function SettingsPage() {
                         </div>
                     )}
 
-                    {/* ── Invoice Templates ── */}
-                    {tab === 'templates' && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                            {/* Template picker */}
-                            <div className="card" style={{ padding: '20px 24px' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-                                    <h2 style={{ fontWeight: 900, fontSize: 18, color: '#1A1A2E' }}>Invoice Templates</h2>
-                                    <button onClick={preview ? () => setPreview(false) : () => setPreview(true)} className="btn btn-outline btn-sm" style={{ gap: 5 }}>
-                                        <Eye size={13} /> {preview ? 'Hide' : 'Preview'}
-                                    </button>
-                                </div>
-
-                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 16 }} className="template-grid">
-                                    {templates.map(t => (
-                                        <div key={t.id} onClick={() => handleSelectTemplate(t)}
-                                            style={{
-                                                padding: '14px 16px', borderRadius: 12, border: '2px solid',
-                                                borderColor: company?.templateId === t.id ? '#4285F4' : '#E1E4E8',
-                                                cursor: 'pointer', transition: 'all 0.15s',
-                                                background: company?.templateId === t.id ? '#E8F0FE' : 'white',
-                                                display: 'flex', alignItems: 'center', gap: 10,
-                                            }}>
-                                            <div style={{ width: 36, height: 44, borderRadius: 6, overflow: 'hidden', flexShrink: 0, border: '1px solid #E1E4E8' }}>
-                                                <div style={{ height: 10, background: t.headerBg }} />
-                                                <div style={{ padding: 3, display: 'flex', flexDirection: 'column', gap: 3 }}>
-                                                    {[1, 2, 3].map(i => <div key={i} style={{ height: 3, background: '#F1F3F5', borderRadius: 2 }} />)}
-                                                    <div style={{ height: 4, background: t.accentColor + '40', borderRadius: 2 }} />
-                                                </div>
-                                            </div>
-                                            <div style={{ flex: 1, minWidth: 0 }}>
-                                                <p style={{ fontWeight: 700, fontSize: 13, color: '#1A1A2E', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</p>
-                                                <p style={{ fontSize: 10, color: '#A0AEC0', marginTop: 2 }}>{t.paperSize}</p>
-                                            </div>
-                                            {company?.templateId === t.id && <Check size={16} color="#4285F4" />}
-                                        </div>
-                                    ))}
-                                </div>
-
-                                <button onClick={() => { if(selectedTemplate) { setTmpl(selectedTemplate); setEditingTemplate(true); } else { toast.error('No template selected.'); } }} className="btn btn-blue btn-sm" style={{ gap: 5 }}>
-                                    <Edit2 size={13} /> Customize Selected Template
-                                </button>
-                            </div>
-
-                            {/* Paper size */}
-                            <div className="card" style={{ padding: '20px 24px' }}>
-                                <h3 style={{ fontWeight: 800, fontSize: 15, color: '#1A1A2E', marginBottom: 14 }}>Print / Paper Size</h3>
-                                <div className="paper-size-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
-                                    {PAPER_SIZES.map(({ value, label, desc }) => (
-                                        <button key={value} onClick={() => { ut('paperSize', value); if(tmpl) updateTemplate(tmpl.id, { paperSize: value }); }}
-                                            style={{
-                                                padding: '12px 10px', borderRadius: 12, border: '2px solid', cursor: 'pointer',
-                                                borderColor: tmpl?.paperSize === value ? '#4285F4' : '#E1E4E8',
-                                                background: tmpl?.paperSize === value ? '#E8F0FE' : 'white',
-                                                textAlign: 'center', transition: 'all 0.15s',
-                                            }}>
-                                            <div style={{ width: 24, height: tmpl?.paperSize === value ? 32 : 28, background: tmpl?.paperSize === value ? '#4285F4' : '#CBD5E0', margin: '0 auto 8px', borderRadius: 3, transition: 'all 0.15s' }} />
-                                            <p style={{ fontWeight: 700, fontSize: 12, color: tmpl?.paperSize === value ? '#1967D2' : '#4A5568' }}>{label}</p>
-                                            <p style={{ fontSize: 10, color: '#A0AEC0', marginTop: 2 }}>{desc}</p>
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-
-                            {/* Template Design Theme Assignment */}
-                            <div className="card" style={{ padding: '20px 24px' }}>
-                                <h3 style={{ fontWeight: 800, fontSize: 16, color: '#1A1A2E', marginBottom: 20 }}>Assign Template Layouts</h3>
-                                {[
-                                    { title: 'Standard / Manual Invoice Layout', field: 'templateTheme', fallback: 'classic' },
-                                    { title: 'Quick Billing Layout', field: 'quickBillingTheme', fallback: 'quick_bill' },
-                                    { title: 'POS Billing Layout', field: 'posTheme', fallback: 'quick_bill' }
-                                ].map(({ title, field, fallback }) => (
-                                    <div key={field} style={{ marginBottom: 24, paddingBottom: 24, borderBottom: '1px solid #edf2f7' }}>
-                                        <p style={{ fontWeight: 700, fontSize: 13, color: '#4A5568', marginBottom: 12 }}>{title}</p>
-                                        <div className="template-assign-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
-                                            {[
-                                                { id: 'classic', label: 'Classic Professional' },
-                                                { id: 'modern', label: 'Modern Edge' },
-                                                { id: 'creative', label: 'Creative Dark Left' },
-                                                { id: 'waves', label: 'Playful Waves' },
-                                                { id: 'minimalist', label: 'Minimal Clean' },
-                                                { id: 'bold_orange', label: 'Bold Retail' },
-                                                { id: 'luxe_gold', label: 'Luxe Gold' },
-                                                { id: 'vibrant', label: 'Vibrant Blue' },
-                                                { id: 'retro', label: 'Retro Typewriter' },
-                                                { id: 'quick_bill', label: 'Quick Bill (Compact A4)' },
-                                                { id: 'beige_dark', label: 'Beige & Dark (Design Studio)' },
-                                                { id: 'sea_green', label: 'Sea Green (Rounded)' },
-                                                { id: 'formal_quote', label: 'Formal Quote (Grey Boxed)' }
-                                            ].map(({ id, label }) => {
-                                                const currentVal = ((company as any)?.[field]) || fallback;
-                                                const isSelected = currentVal === id;
-                                                return (
-                                                    <button key={id} onClick={() => updateCompany(companyId!, { [field]: id })}
-                                                        style={{
-                                                            padding: '14px 12px', borderRadius: 10, border: '2px solid', cursor: 'pointer',
-                                                            borderColor: isSelected ? '#4285F4' : '#E1E4E8',
-                                                            background: isSelected ? '#E8F0FE' : 'white',
-                                                            textAlign: 'left', transition: 'all 0.15s',
-                                                            display: 'flex', alignItems: 'center', justifyContent: 'space-between'
-                                                        }}>
-                                                        <span style={{ fontWeight: 700, fontSize: 13, color: isSelected ? '#1967D2' : '#4A5568' }}>{label}</span>
-                                                        {isSelected && <Check size={16} color="#4285F4" />}
-                                                    </button>
-                                                )
-                                            })}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-
-                            {/* Live preview */}
-                            {preview && tmpl && (
-                                <div className="card" style={{ padding: '20px 24px' }}>
-                                    <h3 style={{ fontWeight: 800, fontSize: 15, color: '#1A1A2E', marginBottom: 14 }}>Live Preview</h3>
-                                    <div style={{ maxHeight: 520, overflow: 'auto', background: '#F1F3F5', borderRadius: 8, padding: 10, display: 'flex', justifyContent: 'center' }}>
-                                        <div style={{ transform: 'scale(0.85)', transformOrigin: 'top center', width: 'fit-content' }} className="template-preview-wrapper">
-                                            <TemplatePreview t={tmpl} company={company} />
-                                        </div>
-                                    </div>
-
-                                </div>
-                            )}
-                        </div>
-                    )}
-
-                    {/* ── Template Editor Modal ── */}
-                    {editingTemplate && tmpl && (
-                        <div className="modal-overlay" onClick={() => setEditingTemplate(false)}>
-                            <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 680, maxHeight: '90dvh' }}>
-                                <div style={{ padding: '18px 24px 14px', borderBottom: '1px solid #E1E4E8', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
-                                    <h3 style={{ fontWeight: 900, fontSize: 17, color: '#1A1A2E' }}>Customize Template: {tmpl.name}</h3>
-                                    <button onClick={() => setEditingTemplate(false)} className="btn btn-ghost btn-icon"><X size={18} /></button>
-                                </div>
-
-                                <div style={{ overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 22 }}>
-                                    {/* Name */}
-                                    <div>
-                                        <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', display: 'block', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Template Name</label>
-                                        <input className="e-input" value={tmpl.name} onChange={e => ut('name', e.target.value)} />
-                                    </div>
-
-                                    {/* Colors */}
-                                    <div>
-                                        <p style={{ fontSize: 12, fontWeight: 800, color: '#1A1A2E', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}><Palette size={14} /> Colors</p>
-                                        <div className="color-picker-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                                            <ColorPicker label="Header Background" value={tmpl.headerBg} onChange={v => ut('headerBg', v)} />
-                                            <ColorPicker label="Header Text" value={tmpl.headerText} onChange={v => ut('headerText', v)} />
-                                            <ColorPicker label="Accent Color" value={tmpl.accentColor} onChange={v => ut('accentColor', v)} />
-                                            <ColorPicker label="Table Header Bg" value={tmpl.tableHeaderBg} onChange={v => ut('tableHeaderBg', v)} />
-                                        </div>
-                                        {/* Quick presets */}
-                                        <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-                                            {[
-                                                { name: 'Classic Dark', headerBg: '#1A1A2E', accentColor: '#4285F4' },
-                                                { name: 'Google Blue', headerBg: '#4285F4', accentColor: '#34A853' },
-                                                { name: 'Edibio', headerBg: '#1A1A2E', accentColor: '#EA4335' },
-                                                { name: 'Green', headerBg: '#34A853', accentColor: '#4285F4' },
-                                                { name: 'Minimal', headerBg: '#FFFFFF', accentColor: '#1A1A2E' },
-                                                { name: 'Red', headerBg: '#EA4335', accentColor: '#FBBC04' },
-                                            ].map(preset => (
-                                                <button key={preset.name} onClick={() => { ut('headerBg', preset.headerBg); ut('accentColor', preset.accentColor); ut('headerText', preset.headerBg === '#FFFFFF' ? '#1A1A2E' : '#FFFFFF'); }}
-                                                    style={{ padding: '5px 10px', borderRadius: 8, border: `1.5px solid ${preset.accentColor}`, background: preset.headerBg, color: preset.headerBg === '#FFFFFF' ? '#1A1A2E' : '#FFFFFF', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
-                                                    {preset.name}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-
-                                    {/* Fields visibility */}
-                                    <div>
-                                        <p style={{ fontSize: 12, fontWeight: 800, color: '#1A1A2E', marginBottom: 10 }}>Show / Hide Fields</p>
-                                        <div className="sections-toggle-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                                            {SECTION_ITEMS.map(({ key, label }) => (
-                                                <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-                                                    <div onClick={() => ut(key, !(tmpl as any)[key])}
-                                                        style={{ width: 36, height: 20, borderRadius: 999, background: (tmpl as any)[key] ? '#4285F4' : '#CBD5E0', position: 'relative', cursor: 'pointer', transition: 'background 0.2s', flexShrink: 0 }}>
-                                                        <span style={{ position: 'absolute', top: 2, left: (tmpl as any)[key] ? 18 : 2, width: 16, height: 16, background: 'white', borderRadius: 999, transition: 'left 0.2s' }} />
-                                                    </div>
-                                                    <span style={{ fontSize: 12, fontWeight: 500, color: '#4A5568' }}>{label}</span>
-                                                </label>
-                                            ))}
-                                        </div>
-                                    </div>
-
-                                    {/* Footer text */}
-                                    <div>
-                                        <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', display: 'block', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Footer / Thank You Message</label>
-                                        <input className="e-input" placeholder="Thank you! Visit Again." value={tmpl.footerText || ''} onChange={e => ut('footerText', e.target.value)} />
-                                    </div>
-                                    <div>
-                                        <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', display: 'block', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Terms & Conditions</label>
-                                        <textarea className="e-input" rows={2} placeholder="Goods once sold will not be taken back…" value={tmpl.terms || ''} onChange={e => ut('terms', e.target.value)} style={{ resize: 'none' }} />
-                                    </div>
-                                </div>
-
-                                {/* Preview */}
-                                <div style={{ padding: '20px', borderTop: '1px solid #F1F3F5', borderBottom: '1px solid #E1E4E8', background: '#F8F9FA', maxHeight: 300, overflow: 'auto', display: 'flex', justifyContent: 'center' }}>
-                                    <div style={{ transform: 'scale(0.75)', transformOrigin: 'top center', width: 'fit-content' }} className="template-preview-wrapper">
-                                        <TemplatePreview t={tmpl} company={company} />
-                                    </div>
-                                </div>
-
-                                <div style={{ padding: '14px 24px', display: 'flex', gap: 10, justifyContent: 'flex-end', flexShrink: 0 }}>
-                                    <button onClick={() => setEditingTemplate(false)} className="btn btn-outline">Cancel</button>
-                                    <button onClick={handleSaveTemplate} className="btn btn-blue">Save Template</button>
-                                </div>
-                            </div>
-                        </div>
-                    )}
 
                     {/* ── Godowns ── */}
                     {tab === 'godowns' && (
@@ -1186,6 +839,43 @@ export default function SettingsPage() {
                                 </div>
                             </div>
 
+                            <div style={{ marginTop: 10, padding: '16px', background: '#F8FAFC', borderRadius: 12, border: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <div>
+                                    <p style={{ fontWeight: 800, fontSize: 14, color: '#1A1A2E', margin: '0 0 4px' }}>Show Hidden / Non-GST Invoices</p>
+                                    <p style={{ fontSize: 11, color: '#718096', margin: 0 }}>Reveal non-GST and password-protected invoices in the billing list.</p>
+                                </div>
+                                <button
+                                    onClick={() => {
+                                        const newVal = !company?.showHiddenInvoices;
+                                        updateCompany(companyId!, { showHiddenInvoices: newVal });
+                                        toast.success(newVal ? 'Hidden invoices revealed!' : 'Hidden invoices hidden.');
+                                    }}
+                                    style={{
+                                        width: 48,
+                                        height: 26,
+                                        borderRadius: 999,
+                                        background: company?.showHiddenInvoices ? '#4285F4' : '#CBD5E0',
+                                        position: 'relative',
+                                        cursor: 'pointer',
+                                        transition: 'background 0.2s',
+                                        border: 'none',
+                                        flexShrink: 0
+                                    }}
+                                >
+                                    <span style={{
+                                        position: 'absolute',
+                                        top: 3,
+                                        left: company?.showHiddenInvoices ? 25 : 3,
+                                        width: 20,
+                                        height: 20,
+                                        background: 'white',
+                                        borderRadius: 999,
+                                        transition: 'left 0.2s',
+                                        boxShadow: '0 1px 3px rgba(0,0,0,0.15)'
+                                    }} />
+                                </button>
+                            </div>
+
                             <div style={{ borderTop: '1px solid #F1F3F5', paddingTop: 24 }}>
                                 <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', display: 'block', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Personal Gemini AI Key</label>
                                 <p style={{ fontSize: 12, color: '#718096', marginBottom: 10 }}>Use your own Google Gemini API key to bypass shared limits. Get one for free at <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" style={{ color: '#4285F4', fontWeight: 600 }}>Google AI Studio</a>.</p>
@@ -1346,6 +1036,51 @@ export default function SettingsPage() {
                             <div style={{ marginTop: 24, borderTop: '1px solid #F1F3F5', paddingTop: 20 }}>
                                 <button onClick={saveLoyalty} className="btn btn-blue">Save Loyalty Settings</button>
                             </div>
+                        </div>
+                    )}
+
+                    {tab === 'gst' && (
+                        <div className="card" style={{ padding: '24px' }}>
+                            <GstSuitePanel />
+                        </div>
+                    )}
+
+                    {tab === 'franchise' && (
+                        <div className="card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                                <div>
+                                    <h2 style={{ fontWeight: 900, fontSize: 18, color: '#1A1A2E' }}>Branch / Franchise Management</h2>
+                                    <p style={{ fontSize: 12, color: '#718096', marginTop: 4 }}>Manage multiple outlets, generate license keys, set targets, and track branch performance.</p>
+                                </div>
+                                <button
+                                    onClick={() => {
+                                        const newVal = !company?.franchiseEnabled;
+                                        updateCompany(companyId!, { franchiseEnabled: newVal });
+                                        toast.success(newVal ? 'Franchise Mode enabled!' : 'Franchise Mode disabled.');
+                                    }}
+                                    style={{
+                                        width: 52, height: 28, borderRadius: 99, border: 'none', cursor: 'pointer',
+                                        background: company?.franchiseEnabled ? '#7C3AED' : '#E2E8F0',
+                                        transition: 'background 0.2s', position: 'relative', flexShrink: 0
+                                    }}
+                                >
+                                    <div style={{
+                                        position: 'absolute', top: 3, left: company?.franchiseEnabled ? 26 : 3,
+                                        width: 22, height: 22, borderRadius: '50%', background: 'white',
+                                        boxShadow: '0 1px 4px rgba(0,0,0,0.2)', transition: 'left 0.2s'
+                                    }} />
+                                </button>
+                            </div>
+
+                            {company?.franchiseEnabled ? (
+                                <FranchisePanel company={company} companyId={companyId!} addBranch={addBranch} updateBranch={updateBranch} deleteBranch={deleteBranch} />
+                            ) : (
+                                <div style={{ textAlign: 'center', padding: '60px 20px', background: '#F8FAFC', borderRadius: 16, border: '1px dashed #CBD5E1' }}>
+                                    <Share2 size={40} color="#94A3B8" style={{ margin: '0 auto 12px' }} />
+                                    <p style={{ fontWeight: 700, color: '#4A5568', fontSize: 14 }}>Franchise Mode is Disabled</p>
+                                    <p style={{ fontSize: 12, color: '#718096', marginTop: 4, maxWidth: 360, margin: '4px auto 0' }}>Toggle the button above to enable Franchise/Branch operations, separate invoicing, and localized registers.</p>
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>

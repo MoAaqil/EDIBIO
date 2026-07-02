@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useStore, useCompanyData, useActiveCompany } from '@/lib/store';
-import { Plus, Search, Package, Trash2, Edit2, AlertTriangle, FileText, Upload, Calendar, Building2, ChevronDown, X, Repeat, ScanLine, Loader2, ImagePlus } from 'lucide-react';
+import { Plus, Search, Package, Trash2, Edit2, AlertTriangle, FileText, Upload, Calendar, Building2, ChevronDown, X, Repeat, ScanLine, Loader2, ImagePlus, Paperclip } from 'lucide-react';
 import { r2 } from '@/lib/utils';
 import toast from 'react-hot-toast';
 import { confirm } from '@/components/ConfirmDialog';
@@ -17,8 +17,24 @@ export default function PurchaseBillsTab() {
     const products = useCompanyData('products') as any[];
     const parties = useCompanyData('parties') as any[];
 
-    // Only show purchase invoices
-    const purchaseBills = allInvoices.filter(i => i.invoiceType === 'purchase');
+    // Only show purchase invoices, sorted by date descending (most recent first)
+    const purchaseBills = allInvoices
+        .filter(i => i.invoiceType === 'purchase')
+        .sort((a, b) => {
+            const dateA = a.date || '';
+            const dateB = b.date || '';
+            const dateCompare = dateB.localeCompare(dateA);
+            if (dateCompare !== 0) return dateCompare;
+
+            const timeA = a.time || '00:00';
+            const timeB = b.time || '00:00';
+            const timeCompare = timeB.localeCompare(timeA);
+            if (timeCompare !== 0) return timeCompare;
+
+            const createA = a.createdAt || '';
+            const createB = b.createdAt || '';
+            return createB.localeCompare(createA);
+        });
 
     const [search, setSearch] = useState('');
     const [showAdd, setShowAdd] = useState(false);
@@ -34,6 +50,8 @@ export default function PurchaseBillsTab() {
 
     const emptyRow = { productId: '', name: '', qty: 1, purchasePrice: 0, amount: 0 };
     const [items, setItems] = useState<any[]>([{ ...emptyRow }]);
+    const [amountPaidInput, setAmountPaidInput] = useState('');
+    const [receiptUrl, setReceiptUrl] = useState('');
 
     const filtered = purchaseBills.filter(b =>
         (b.partyName || '').toLowerCase().includes(search.toLowerCase()) ||
@@ -69,6 +87,15 @@ export default function PurchaseBillsTab() {
 
     const totalAmount = items.reduce((a, b) => a + (parseFloat(b.amount) || 0), 0);
 
+    const closeAddModal = () => {
+        setShowAdd(false);
+        setSupplierId('');
+        setSupplierInvoiceNo('');
+        setAmountPaidInput('');
+        setReceiptUrl('');
+        setItems([{ ...emptyRow }]);
+    };
+
     const handleSave = () => {
         const validItems = items.filter(i => i.name && i.qty > 0);
         if (validItems.length === 0) { toast.error('Add at least one complete row'); return; }
@@ -80,34 +107,9 @@ export default function PurchaseBillsTab() {
         }
 
         const invNo = supplierInvoiceNo || nextInvoiceNumber(companyId!, 'PUR');
-
-        const newBill = {
-            id: 'pur_' + Date.now().toString(36),
-            companyId: companyId!,
-            invoiceType: 'purchase',
-            invoiceNumber: invNo,
-            date,
-            partyId: supplierId,
-            partyName: sName,
-            items: validItems.map(vi => ({
-                ...vi,
-                rate: vi.purchasePrice,
-                taxableAmt: vi.amount,
-                amount: vi.amount
-            })),
-            subTotal: totalAmount,
-            taxableAmount: totalAmount,
-            totalGst: 0,
-            grandTotal: totalAmount,
-            paymentStatus: 'paid',
-            amountPaid: totalAmount,
-            balanceDue: 0,
-            paymentMethod: 'cash',
-            isGstBill: false,
-            isHidden: false,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-        };
+        const paid = amountPaidInput !== '' ? parseFloat(amountPaidInput) || 0 : totalAmount;
+        const due = Math.max(0, totalAmount - paid);
+        const payStatus = paid >= totalAmount && totalAmount > 0 ? 'paid' : paid > 0 ? 'partial' : 'unpaid';
 
         // Increase Stock & Update Purchase Price
         // For items WITH a productId → update existing product
@@ -158,13 +160,41 @@ export default function PurchaseBillsTab() {
                     resolvedProductId = newProd.id;
                 }
             }
-            return { ...vi, productId: resolvedProductId };
+            return {
+                ...vi,
+                productId: resolvedProductId,
+                rate: parseFloat(vi.purchasePrice) || 0,
+                taxableAmt: vi.amount,
+                amount: vi.amount
+            };
         });
 
+        const newBill = {
+            id: 'pur_' + Date.now().toString(36),
+            companyId: companyId!,
+            invoiceType: 'purchase',
+            invoiceNumber: invNo,
+            date,
+            partyId: supplierId,
+            partyName: sName,
+            items: updatedItems,
+            subTotal: totalAmount,
+            taxableAmount: totalAmount,
+            totalGst: 0,
+            grandTotal: totalAmount,
+            paymentStatus: payStatus,
+            amountPaid: paid,
+            balanceDue: due,
+            paymentMethod: 'cash',
+            isGstBill: false,
+            isHidden: false,
+            receiptUrl: receiptUrl || undefined,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+        };
+
         addInvoice(newBill as any);
-        setShowAdd(false);
-        setSupplierId('');
-        setSupplierInvoiceNo('');
+        closeAddModal();
     };
 
     const handleDuplicate = (bill: any) => {
@@ -370,22 +400,46 @@ export default function PurchaseBillsTab() {
                                     <th>Supplier</th>
                                     <th>Items</th>
                                     <th style={{ textAlign: 'right' }}>Total Amount</th>
-                                    <th style={{ width: 60 }}></th>
+                                    <th>Payment Status</th>
+                                    <th>Balance Due</th>
+                                    <th style={{ width: 100 }}></th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {filtered.map(b => (
                                     <tr key={b.id}>
                                         <td style={{ fontSize: 13, color: '#4A5568' }}>{b.date}</td>
-                                        <td style={{ fontWeight: 700 }}>{b.invoiceNumber}</td>
+                                        <td style={{ fontWeight: 700 }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                {b.invoiceNumber}
+                                                {b.receiptUrl && (
+                                                    <a href={b.receiptUrl} download={`attached_bill_${b.invoiceNumber}`} target="_blank" rel="noreferrer" title="View Supplier Bill Attachment">
+                                                        <Paperclip size={12} color="#4285F4" />
+                                                    </a>
+                                                )}
+                                            </div>
+                                        </td>
                                         <td style={{ fontWeight: 600, color: '#2D3748' }}>{b.partyName}</td>
                                         <td style={{ fontSize: 12, color: '#718096' }}>{b.items?.map((i: any) => i.name).join(', ')}</td>
                                         <td style={{ textAlign: 'right', fontWeight: 800, color: '#38A169' }}>₹{b.grandTotal.toLocaleString('en-IN')}</td>
+                                        <td>
+                                            <span className={`badge ${b.paymentStatus === 'paid' ? 'badge-green' : b.paymentStatus === 'partial' ? 'badge-yellow' : 'badge-red'}`}>
+                                                {b.paymentStatus || 'paid'}
+                                            </span>
+                                        </td>
+                                        <td style={{ fontWeight: 700, color: b.balanceDue > 0 ? '#EA4335' : '#718096' }}>
+                                            {b.balanceDue > 0 ? `₹${b.balanceDue.toLocaleString('en-IN')}` : '—'}
+                                        </td>
                                         <td style={{ textAlign: 'right' }}>
                                             <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
                                                 <Link href={`/company/billing/invoice?id=${b.id}`} className="btn btn-ghost btn-icon" style={{ padding: 6 }}>
                                                     <FileText size={14} color="#4285F4" />
                                                 </Link>
+                                                {b.receiptUrl && (
+                                                    <a href={b.receiptUrl} download={`attached_bill_${b.invoiceNumber}`} target="_blank" rel="noreferrer" title="View Attachment" className="btn btn-ghost btn-icon" style={{ padding: 6 }}>
+                                                        <Paperclip size={14} color="#4285F4" />
+                                                    </a>
+                                                )}
                                                 <button onClick={() => handleDuplicate(b)} title="Duplicate / Recurring" className="btn btn-ghost btn-icon" style={{ padding: 6 }}>
                                                     <Repeat size={14} color="#34A853" />
                                                 </button>
@@ -401,7 +455,7 @@ export default function PurchaseBillsTab() {
 
             {/* Add Purchase Bill Modal */}
             {showAdd && (
-                <div className="modal-overlay" onClick={() => setShowAdd(false)}>
+                <div className="modal-overlay" onClick={closeAddModal}>
                     <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 800, maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
                         <div style={{ padding: '18px 24px 14px', borderBottom: '1px solid #E1E4E8', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#F8FAFC' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -416,7 +470,7 @@ export default function PurchaseBillsTab() {
                                     <ScanLine size={14} /> AI Scan Invoice {!canAccess('ai_scanner', user, isDemo) && '🔒'}
                                 </button>
                             </div>
-                            <button onClick={() => setShowAdd(false)} className="btn btn-ghost btn-icon"><X size={18} /></button>
+                            <button onClick={closeAddModal} className="btn btn-ghost btn-icon"><X size={18} /></button>
                         </div>
 
                         {showAIScan && (
@@ -495,6 +549,10 @@ export default function PurchaseBillsTab() {
                                     <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', display: 'block', marginBottom: 5 }}>Date</label>
                                     <input type="date" className="e-input" value={date} onChange={e => setDate(e.target.value)} />
                                 </div>
+                                <div>
+                                    <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', display: 'block', marginBottom: 5 }}>Amount Paid (₹)</label>
+                                    <input type="number" min="0" className="e-input" value={amountPaidInput} onChange={e => setAmountPaidInput(e.target.value)} placeholder={`Full: ₹${totalAmount}`} />
+                                </div>
                             </div>
 
                             <div style={{ overflowX: 'auto', border: '1px solid #E2E8F0', borderRadius: 8 }}>
@@ -561,13 +619,36 @@ export default function PurchaseBillsTab() {
                                 </table>
                             </div>
 
-                            <div style={{ textAlign: 'right', fontSize: 18, fontWeight: 900 }}>
-                                Grand Total: <span style={{ color: '#38A169' }}>₹{totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 14, flexWrap: 'wrap', gap: 14 }}>
+                                <div style={{ minWidth: 280, maxWidth: 400, flex: 1 }}>
+                                    <label style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', display: 'block', marginBottom: 5 }}>Bill Attachment (Photo/PDF)</label>
+                                    {receiptUrl ? (
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: '#F8FAFC', borderRadius: 8, border: '1px dashed #CBD5E0' }}>
+                                            <Paperclip size={16} color="#4285F4" />
+                                            <span style={{ fontSize: 11, fontWeight: 700, color: '#2D3748', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                {receiptUrl.startsWith('data:application/pdf') ? 'Attached PDF Document' : 'Attached Photo Document'}
+                                            </span>
+                                            <button onClick={() => setReceiptUrl('')} style={{ background: 'none', border: 'none', color: '#E53E3E', cursor: 'pointer', padding: 4 }}><X size={14} /></button>
+                                        </div>
+                                    ) : (
+                                        <input type="file" accept="image/*,application/pdf" className="e-input" onChange={(e) => {
+                                            const file = e.target.files?.[0];
+                                            if (file) {
+                                                const reader = new FileReader();
+                                                reader.onload = ev => setReceiptUrl(ev.target?.result as string);
+                                                reader.readAsDataURL(file);
+                                            }
+                                        }} style={{ fontSize: 11, padding: '6px 8px' }} />
+                                    )}
+                                </div>
+                                <div style={{ textAlign: 'right', fontSize: 18, fontWeight: 900 }}>
+                                    Grand Total: <span style={{ color: '#38A169' }}>₹{totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                                </div>
                             </div>
                         </div>
 
                         <div style={{ padding: '14px 24px', borderTop: '1px solid #E1E4E8', display: 'flex', gap: 10, justifyContent: 'flex-end', background: 'white', borderRadius: '0 0 16px 16px' }}>
-                            <button onClick={() => setShowAdd(false)} className="btn btn-outline">Cancel</button>
+                            <button onClick={closeAddModal} className="btn btn-outline">Cancel</button>
                             <button onClick={handleSave} className="btn btn-blue" style={{ display: 'flex', gap: 6 }}><Upload size={16} /> Save & Update Stocks</button>
                         </div>
                     </div>

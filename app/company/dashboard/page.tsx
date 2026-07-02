@@ -14,7 +14,8 @@ import {
     PlusCircle, Info, Star, Heart, MapPin, Layers, RefreshCw, Compass, Edit2
 } from 'lucide-react';
 import {
-    AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
+    AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+    BarChart, Bar, Legend, Cell
 } from 'recharts';
 import { SkeletonDashboard } from '@/components/Skeleton';
 import toast from 'react-hot-toast';
@@ -130,6 +131,24 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
     // Internal navigation state
     const [activeView, setActiveView] = useState<'dashboard' | 'inventory' | 'billing' | 'expenses' | 'reports' | 'settings' | 'app-orders' | 'bulk-orders' | 'parties' | 'invoice-template' | 'kitchen' | 'deals'>('dashboard');
 
+    useEffect(() => {
+        if (company?.id) {
+            const saved = localStorage.getItem(`edibio_dashboard_active_view_${company.id}`);
+            if (saved) {
+                const validViews = ['dashboard', 'inventory', 'billing', 'expenses', 'reports', 'settings', 'app-orders', 'bulk-orders', 'parties', 'invoice-template', 'kitchen', 'deals'];
+                if (validViews.includes(saved)) {
+                    setActiveView(saved as any);
+                }
+            }
+        }
+    }, [company?.id]);
+
+    useEffect(() => {
+        if (company?.id) {
+            localStorage.setItem(`edibio_dashboard_active_view_${company.id}`, activeView);
+        }
+    }, [activeView, company?.id]);
+
     // Theme color mapping: Red, Blue, Green, Yellow for different page sections
     const viewThemeColor = 
         ['dashboard', 'app-orders', 'expenses'].includes(activeView) ? '#EF4444' :
@@ -192,7 +211,8 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
         licenseNo: company.licenseNo || '',
         panNumber: company.panNumber || '',
         gstNumber: company.gstNumber || '',
-        invoicePrefix: company.invoicePrefix || 'INV'
+        invoicePrefix: company.invoicePrefix || 'INV',
+        kitchenDisplayEnabled: company.kitchenDisplayEnabled !== false
     });
 
     const [bankForm, setBankForm] = useState({
@@ -204,7 +224,6 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
         qrCodeUrl: company.bankDetails?.qrCodeUrl || ''
     });
 
-    const [whatsappPhone, setWhatsappPhone] = useState('');
 
     const [userForm, setUserForm] = useState({
         name: user?.name || '',
@@ -224,33 +243,6 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
         }
     }, [user]);
 
-    useEffect(() => {
-        if (viewingReceipt) {
-            setWhatsappPhone(viewingReceipt.partyPhone || '');
-        }
-    }, [viewingReceipt]);
-
-    const handleShareWhatsApp = () => {
-        const phone = whatsappPhone || viewingReceipt?.partyPhone || '';
-        if (!phone) {
-            toast.error('Please enter a WhatsApp phone number');
-            return;
-        }
-        const cleanPhone = phone.replace(/\D/g, '');
-        const itemsList = viewingReceipt ? viewingReceipt.items.map(it => `- ${it.name} x${it.qty} = ₹${it.amount.toFixed(2)}`).join('\n') : '';
-        const msg = `*${company.name}* - Bill Receipt\n` +
-                    `-----------------------------\n` +
-                    `*Bill No:* ${viewingReceipt?.invoiceNumber}\n` +
-                    `*Date:* ${viewingReceipt?.date}\n` +
-                    `*Customer:* ${viewingReceipt?.partyName}\n\n` +
-                    `*Items:*\n${itemsList}\n\n` +
-                    `-----------------------------\n` +
-                    `*Grand Total: ₹${viewingReceipt?.grandTotal.toFixed(2)}*\n\n` +
-                    `Thank you for your visit!`;
-                    
-        const url = `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(msg)}`;
-        window.open(url, '_blank');
-    };
 
     const handleSaveUserProfile = (e: React.FormEvent) => {
         e.preventDefault();
@@ -270,6 +262,7 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
     const [activeArea, setActiveArea] = useState<string>('');
     const [selectedTable, setSelectedTable] = useState<string | null>(null);
     const [showTableConfigModal, setShowTableConfigModal] = useState(false);
+    const [actionTable, setActionTable] = useState<{ tableNum: string; area: string } | null>(null);
 
     // Sync activeArea to first available customArea if empty or invalid
     useEffect(() => {
@@ -308,7 +301,113 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
         return () => clearInterval(interval);
     }, []);
 
+    const getSafeElapsedMins = (orderedAt: any) => {
+        if (!orderedAt) return 0;
+        const t = new Date(orderedAt).getTime();
+        if (isNaN(t)) return 0;
+        const diff = timeTicker - t;
+        return Math.max(0, Math.floor(diff / 60000));
+    };
+
+    const getSafeTimeString = (orderedAt: any) => {
+        if (!orderedAt) return 'N/A';
+        const d = new Date(orderedAt);
+        if (isNaN(d.getTime())) return 'N/A';
+        return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+    };
+
+    // Swiggy/Zomato live webhook orders polling
+    useEffect(() => {
+        if (!company?.id || activeView !== 'app-orders') return;
+
+        const poll = async () => {
+            try {
+                const res = await fetch(`/api/webhooks/delivery?companyId=${company.id}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (Array.isArray(data.appOrders)) {
+                        // Check if we have new orders compared to our local state
+                        const localIds = new Set(appOrders.map((o: any) => o.id));
+                        let hasNew = false;
+                        let lastChannel = '';
+                        let lastCustomer = '';
+
+                        data.appOrders.forEach((o: any) => {
+                            if (!localIds.has(o.id) && o.status === 'pending') {
+                                hasNew = true;
+                                lastChannel = o.channel;
+                                lastCustomer = o.customer;
+                            }
+                        });
+
+                        if (hasNew) {
+                            toast.success(`New order received from ${lastChannel} for ${lastCustomer}!`);
+                            playBeep();
+                            addNotification(`🛵 New ${lastChannel} order from ${lastCustomer}`, 'order');
+                        }
+
+                        // Sync to database if different
+                        if (JSON.stringify(data.appOrders) !== JSON.stringify(appOrders)) {
+                            setAppOrders(data.appOrders);
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error('Failed to poll delivery webhook orders:', err);
+            }
+        };
+
+        poll();
+        const interval = setInterval(poll, 7000);
+        return () => clearInterval(interval);
+    }, [company?.id, activeView, appOrders]);
+
     const [checkedItems, setCheckedItems] = useState<Record<string, boolean>>({});
+
+    // Dynamic tax/service charge states
+    const [serviceCharge, setServiceCharge] = useState(10);
+    const [gstRate, setGstRate] = useState(5);
+
+    useEffect(() => {
+        try {
+            const s = localStorage.getItem('restaurant_settings');
+            if (s) {
+                const parsed = JSON.parse(s);
+                if (parsed.serviceCharge !== undefined) setServiceCharge(parsed.serviceCharge);
+                if (parsed.defaultGstRate !== undefined) setGstRate(parsed.defaultGstRate);
+            }
+        } catch {}
+    }, []);
+
+    // Interactive profile modal states
+    const [showProfileModal, setShowProfileModal] = useState(false);
+    const [profileForm, setProfileForm] = useState({
+        companyName: company.name,
+        companyAddress: company.address || '',
+        companyPhone: company.phone || '',
+        avatar: company.imageUrl || '👨‍🍳',
+        userName: user?.name || '',
+        serviceCharge: 10,
+        gstRate: 5
+    });
+
+    useEffect(() => {
+        if (showProfileModal) {
+            const settings = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('restaurant_settings') || '{}') : {};
+            setProfileForm({
+                companyName: company.name,
+                companyAddress: company.address || '',
+                companyPhone: company.phone || '',
+                avatar: company.imageUrl || '👨‍🍳',
+                userName: user?.name || '',
+                serviceCharge: settings.serviceCharge !== undefined ? settings.serviceCharge : 10,
+                gstRate: settings.defaultGstRate !== undefined ? settings.defaultGstRate : 5
+            });
+        }
+    }, [showProfileModal, company, user]);
+
+    // Menu Inventory Bulk Selection
+    const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
 
 
     // Meal Time Menu Filter (Breakfast/Lunch/Dinner)
@@ -331,7 +430,7 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
 
     const [showPlaceOrderModal, setShowPlaceOrderModal] = useState(false); // Server places order modal
     const [showAddDealModal, setShowAddDealModal] = useState(false);
-    const [dealForm, setDealForm] = useState({ name: '', description: '', dealPrice: '', emoji: '🎁', type: 'combo' as 'combo' | 'offer' | 'special', validFor: 'All' as 'All' | 'Breakfast' | 'Lunch' | 'Dinner' });
+    const [dealForm, setDealForm] = useState({ name: '', description: '', dealPrice: '', emoji: '🎁', type: 'combo' as 'combo' | 'offer' | 'special', validFor: 'All' as 'All' | 'Breakfast' | 'Lunch' | 'Dinner', startDate: '', endDate: '', isPromo: true });
     const [showDeliverySettings, setShowDeliverySettings] = useState(false);
 
     const [cashDrawerFloatInput, setCashDrawerFloatInput] = useState('100.00');
@@ -483,6 +582,41 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
         });
     }, [products, selectedCat, searchQuery, mealTimeFilter]);
 
+    // Get all valid promo deals
+    const promoDeals = useMemo(() => {
+        if (!deals || deals.length === 0) return [];
+        const today = new Date().toISOString().slice(0, 10);
+        return deals.filter((d: any) => {
+            if (d.isPromo === false) return false;
+            const start = d.startDate;
+            const end = d.endDate;
+            if (start && today < start) return false;
+            if (end && today > end) return false;
+            return true;
+        });
+    }, [deals]);
+
+    // Track active promo index
+    const [promoIndex, setPromoIndex] = useState(0);
+
+    // Rotate promo deals every 5 seconds
+    useEffect(() => {
+        if (promoDeals.length <= 1) return;
+        const interval = setInterval(() => {
+            setPromoIndex(prev => (prev + 1) % promoDeals.length);
+        }, 5000);
+        return () => clearInterval(interval);
+    }, [promoDeals.length]);
+
+    // Ensure promoIndex is within bounds
+    const activePromoIndex = promoDeals.length > 0 ? promoIndex % promoDeals.length : 0;
+    const activeDeal = promoDeals.length > 0 ? promoDeals[activePromoIndex] : null;
+
+    const activeBannerTitle = activeDeal ? activeDeal.name : bannerTitle;
+    const activeBannerSub = activeDeal ? activeDeal.description : bannerSub;
+    const activeBannerOffer = activeDeal ? `Special Price: ₹${activeDeal.dealPrice.toFixed(2)}!` : bannerOffer;
+    const activeBannerIcon = activeDeal ? activeDeal.emoji : bannerIcon;
+
     // Today's total sales
     const todaySales = useMemo(() => {
         const todayStr = new Date().toISOString().slice(0, 10);
@@ -513,8 +647,8 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
 
     // Total cost calculations
     const subTotal = cart.reduce((acc, c) => acc + (c.item.sellingPrice * c.qty), 0);
-    const tax = subTotal * 0.05; // 5% flat VAT/GST
-    const total = subTotal + tax;
+    const tax = subTotal * (gstRate / 100);
+    const total = subTotal > 0 ? subTotal + tax + serviceCharge : 0;
 
     // Send new items to kitchen (KOT)
     const handleSendToKitchen = () => {
@@ -691,12 +825,12 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
         // Clear active table cart and mark as dirty
         if (selectedTable) {
             const key = `${activeArea}-${selectedTable}`;
-            setTableCarts(prev => {
+            setTableCarts((prev: any) => {
                 const next = { ...prev };
                 delete next[key];
                 return next;
             });
-            setDirtyTables(prev => ({ ...prev, [key]: true }));
+            setDirtyTables((prev: any) => ({ ...prev, [key]: true }));
             setSelectedTable(null);
         }
 
@@ -710,7 +844,7 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
             orderedAt: new Date().toISOString(),
             servedBy: 'Cashier'
         };
-        setKitchenOrders(prev => [kdsOrder, ...prev].slice(0, 100));
+        setKitchenOrders((prev: any) => [kdsOrder, ...prev].slice(0, 100));
 
         setCart([]);
         setSelectedParty(null);
@@ -746,6 +880,51 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
         setShowAddItemModal(false);
         setNewProductForm({ name: '', category: '', price: '', imageUrl: '', barcode: '', hsnCode: '', expiryDate: '' });
         toast.success('Menu item added!');
+    };
+
+    // Save profile and shop settings
+    const handleSaveProfile = () => {
+        if (!profileForm.companyName) return toast.error('Shop name is required');
+        
+        // 1. Update company in store
+        updateCompany(company.id, {
+            name: profileForm.companyName,
+            address: profileForm.companyAddress,
+            phone: profileForm.companyPhone,
+            logoUrl: profileForm.avatar
+        });
+        
+        // 2. Save settings to localStorage
+        const settings = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('restaurant_settings') || '{}') : {};
+        const newSettings = {
+            ...settings,
+            serviceCharge: parseFloat(profileForm.serviceCharge as any) || 0,
+            defaultGstRate: parseFloat(profileForm.gstRate as any) || 0
+        };
+        localStorage.setItem('restaurant_settings', JSON.stringify(newSettings));
+        
+        // 3. Update local state
+        setServiceCharge(newSettings.serviceCharge);
+        setGstRate(newSettings.defaultGstRate);
+        
+        // 4. Update user profile name if changed
+        if (user && profileForm.userName && profileForm.userName !== user.name) {
+            updateUser({ name: profileForm.userName });
+        }
+        
+        setShowProfileModal(false);
+        toast.success('Profile & Shop Settings updated!');
+    };
+
+    // Bulk delete menu items
+    const handleBulkDelete = () => {
+        if (selectedProductIds.length === 0) return;
+        const yes = window.confirm(`Delete ${selectedProductIds.length} item(s)? This cannot be undone.`);
+        if (yes) {
+            selectedProductIds.forEach(id => deleteProduct(id));
+            setSelectedProductIds([]);
+            toast.success(`Successfully deleted ${selectedProductIds.length} dish(es)`);
+        }
     };
 
     // Save edited menu item
@@ -810,9 +989,11 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
     const handleOpenShift = () => {
         const floatVal = parseFloat(cashDrawerFloatInput) || 0;
         const timeStr = new Date().toISOString();
-        setRegisterOpen(true);
-        setOpeningFloat(floatVal);
-        setOpeningTime(timeStr);
+        updateCompany(company.id, {
+            registerOpen: true,
+            openingFloat: floatVal,
+            openingTime: timeStr
+        });
         toast.success('Cash register opened! Shift started.');
     };
 
@@ -865,9 +1046,11 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
         setRecentZReports(updatedZ);
 
         // Reset shift states
-        setRegisterOpen(false);
-        setOpeningFloat(100.00);
-        setOpeningTime('');
+        updateCompany(company.id, {
+            registerOpen: false,
+            openingFloat: 100.00,
+            openingTime: ''
+        });
         setCountedCashInput('');
         setShowCloseShiftModal(false);
         
@@ -995,7 +1178,8 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
             partyPhone: booking.customerPhone,
             notes: `Event Date: ${booking.eventDate} || Guests: ${booking.guestCount} || Advance: ₹${booking.advancePaid} || Venue: ${booking.notes} || Status: Booked`,
             isGstBill: false, isHidden: false, isPrivate: false,
-            createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
         });
 
         // Save local copy
@@ -1071,7 +1255,9 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
                         overflow: 'hidden',
                         display: 'flex',
                         flexDirection: 'column',
-                        height: '100%'
+                        height: '100%',
+                        backgroundColor: 'white',
+                        borderRight: '1px solid #E2E8F0'
                     }}
                 >
                     <Link 
@@ -1084,13 +1270,13 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
                             padding: sidebarCollapsed ? '20px 10px' : '24px 20px', 
                             justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
                             textDecoration: 'none',
-                            color: 'white',
+                            color: '#1A1A2E',
                             cursor: 'pointer'
                         }}
                     >
                         {/* Red Box Wrapping the Logo */}
                         <div className="brand-logo-img-wrapper" style={{ flexShrink: 0, width: '48px', height: '48px', border: 'none', background: 'white', padding: '4px' }}>
-                            <img src="/logo.png" alt="Edibio Logo" className="brand-logo-img" />
+                            <img src="/logo.png" alt="Edibio Logo" className="brand-logo-img" style={{ width: '100%', height: '100%', objectFit: sidebarCollapsed ? 'cover' : 'contain', objectPosition: sidebarCollapsed ? 'left center' : 'center' }} />
                         </div>
                         {!sidebarCollapsed && (
                             <div style={{ flex: 1, minWidth: 0 }}>
@@ -1180,7 +1366,7 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
                                 </button>
                             </>
                         )}
-                        {(!user?.role || ['owner', 'co_owner', 'manager', 'staff', 'chef_atelier'].includes(user.role)) && (
+                        {company.kitchenDisplayEnabled !== false && (!user?.role || ['owner', 'co_owner', 'manager', 'staff', 'chef_atelier'].includes(user.role)) && (
                             <button 
                                 onClick={() => { setActiveView('kitchen'); setSidebarOpen(false); }} 
                                 className={`sidebar-tab-btn ${activeView === 'kitchen' ? 'active' : ''}`}
@@ -1194,14 +1380,14 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
                             >
                                 <UtensilsCrossed size={16} style={{ flexShrink: 0 }} /> 
                                 {!sidebarCollapsed && <span>Kitchen Display</span>}
-                                {kitchenOrders.filter(o => o.status === 'new').length > 0 && (
+                                {kitchenOrders.filter((o: any) => o.status === 'new').length > 0 && (
                                     <span style={{ 
                                         background: '#EF4444', color: 'white', borderRadius: '50%',
                                         width: '16px', height: '16px', fontSize: '9px', fontWeight: 900,
                                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                                         marginLeft: 'auto', flexShrink: 0
                                     }}>
-                                        {kitchenOrders.filter(o => o.status === 'new').length}
+                                        {kitchenOrders.filter((o: any) => o.status === 'new').length}
                                     </span>
                                 )}
                             </button>
@@ -1277,7 +1463,7 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
                         display: 'flex', 
                         flexDirection: 'column', 
                         gap: '8px', 
-                        borderTop: '1px solid rgba(255,255,255,0.08)',
+                        borderTop: '1px solid #E2E8F0',
                         marginTop: 'auto'
                     }}>
                         {/* Subscription Link */}
@@ -1299,12 +1485,60 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
                             >
                                 <Crown size={15} color="#9333EA" style={{ flexShrink: 0 }} /> 
                                 {!sidebarCollapsed && (
-                                    <span style={{ fontSize: '12px', color: '#C084FC', fontWeight: 700 }}>
+                                    <span style={{ fontSize: '12px', color: '#9333EA', fontWeight: 700 }}>
                                         Subscription
                                     </span>
                                 )}
                             </Link>
                         )}
+
+                        {/* Close Shift Button */}
+                        {registerOpen && (
+                            <button
+                                onClick={() => setShowCloseShiftModal(true)}
+                                style={{
+                                    width: '100%', background: '#E53E3E', color: 'white', border: 'none',
+                                    padding: '10px 14px', borderRadius: '10px', fontSize: '12px', fontWeight: 800,
+                                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px',
+                                    justifyContent: sidebarCollapsed ? 'center' : 'flex-start', marginBottom: '12px',
+                                    boxShadow: '0 4px 12px rgba(229,62,62,0.2)'
+                                }}
+                                title="Close Shift"
+                            >
+                                <span>🔒</span> {!sidebarCollapsed && <span>Close Shift</span>}
+                            </button>
+                        )}
+
+                        {/* Interactive Profile/Shop Settings Panel */}
+                        <div 
+                            onClick={() => setShowProfileModal(true)} 
+                            style={{
+                                display: 'flex', alignItems: 'center', gap: '12px',
+                                padding: '12px', borderRadius: '12px', background: '#F8FAFC',
+                                border: '1px solid #E2E8F0', cursor: 'pointer', marginBottom: '12px',
+                                transition: 'all 0.2s', justifyContent: sidebarCollapsed ? 'center' : 'flex-start'
+                            }}
+                            title="Shop & Profile Settings"
+                            className="sidebar-profile-panel"
+                        >
+                            <div style={{
+                                width: '36px', height: '36px', borderRadius: '50%',
+                                background: primaryColor, color: 'white', display: 'flex',
+                                alignItems: 'center', justifyContent: 'center', fontSize: '18px', flexShrink: 0
+                            }}>
+                                {company.logoUrl || company.imageUrl || '👨‍🍳'}
+                            </div>
+                            {!sidebarCollapsed && (
+                                <div style={{ minWidth: 0, flex: 1 }}>
+                                    <p style={{ margin: 0, fontSize: '13px', fontWeight: 800, color: '#1A1A2E', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        {company.name}
+                                    </p>
+                                    <p style={{ margin: '2px 0 0', fontSize: '10px', color: '#718096', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        {user?.name || 'Administrator'}
+                                    </p>
+                                </div>
+                            )}
+                        </div>
 
                         {/* Exit Portal Link */}
                         <Link 
@@ -1326,12 +1560,13 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
                 <main className="fooddesk-main">
                     {/* Top Search Bar & Profile */}
                     <header className="fooddesk-topbar">
-                        <div style={{ display: 'flex', alignItems: 'center', flex: 1, gap: '10px' }}>
+                        <div className="topbar-left-section" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                             <button 
                                 className="mobile-hamburger-btn" 
                                 onClick={() => setSidebarOpen(!sidebarOpen)}
                                 style={{
-                                    background: 'none', border: 'none', cursor: 'pointer', padding: '8px', display: 'none'
+                                    background: 'none', border: 'none', cursor: 'pointer', padding: '8px',
+                                    display: 'none'
                                 }}
                             >
                                 <Layers size={22} color={primaryColor} />
@@ -1347,67 +1582,43 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
                             >
                                 <Layers size={22} />
                             </button>
-                            <div className="search-box-wrapper" style={{ display: 'flex', gap: '8px', width: '100%', maxWidth: '450px' }}>
-                                <div style={{ position: 'relative', flex: 1 }}>
-                                    <Search size={16} color="#A0AEC0" className="search-icon" />
-                                    <input
-                                        placeholder="Search by name, barcode or HSN code..."
-                                        value={searchQuery}
-                                        onChange={(e) => setSearchQuery(e.target.value)}
-                                        className="search-input"
-                                        style={{ paddingRight: searchQuery ? '40px' : '16px' }}
-                                    />
-                                    {searchQuery && (
-                                        <button 
-                                            onClick={() => setSearchQuery('')}
-                                            style={{
-                                                position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)',
-                                                background: 'none', border: 'none', cursor: 'pointer', color: '#A0AEC0',
-                                                fontSize: '16px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                padding: '4px'
-                                            }}
-                                            title="Clear search"
-                                        >
-                                            ✕
-                                        </button>
-                                    )}
-                                </div>
-                                <button 
-                                    style={{
-                                        border: 'none', background: primaryColor, color: 'white',
-                                        borderRadius: '20px', padding: '0 16px', fontSize: '13px', fontWeight: 800, cursor: 'pointer'
-                                    }}
-                                    onClick={() => toast.success(`Searching: ${searchQuery}`)}
-                                >
-                                    Search
-                                </button>
+                        </div>
+                        <div className="search-box-wrapper" style={{ display: 'flex', gap: '8px', width: '100%', maxWidth: '450px' }}>
+                            <div style={{ position: 'relative', flex: 1 }}>
+                                <Search size={16} color="#A0AEC0" className="search-icon" />
+                                <input
+                                    placeholder="Search by name, barcode or HSN code..."
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    className="search-input"
+                                    style={{ paddingRight: searchQuery ? '40px' : '16px' }}
+                                />
+                                {searchQuery && (
+                                    <button 
+                                        onClick={() => setSearchQuery('')}
+                                        style={{
+                                            position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)',
+                                            background: 'none', border: 'none', cursor: 'pointer', color: '#A0AEC0',
+                                            fontSize: '16px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                            padding: '4px'
+                                        }}
+                                        title="Clear search"
+                                    >
+                                        ✕
+                                    </button>
+                                )}
                             </div>
+                            <button 
+                                style={{
+                                    border: 'none', background: primaryColor, color: 'white',
+                                    borderRadius: '20px', padding: '0 16px', fontSize: '13px', fontWeight: 800, cursor: 'pointer'
+                                }}
+                                onClick={() => toast.success(`Searching: ${searchQuery}`)}
+                            >
+                                Search
+                            </button>
                         </div>
                         <div className="topbar-user-area">
-                            {registerOpen && (
-                                <button
-                                    onClick={() => setShowCloseShiftModal(true)}
-                                    className="close-shift-btn"
-                                    style={{
-                                        background: '#E53E3E',
-                                        color: 'white',
-                                        border: 'none',
-                                        padding: '8px 14px',
-                                        borderRadius: '99px',
-                                        fontSize: '11px',
-                                        fontWeight: 800,
-                                        cursor: 'pointer',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '6px'
-                                    }}
-                                >
-                                    <span>🔒</span> Close Shift
-                                </button>
-                            )}
-                            <div className="location-selector">
-                                <span>📍</span> <strong>India</strong>
-                            </div>
                             <div style={{ position: 'relative' }}>
                                 <button className="notif-btn" onClick={() => { setShowNotifPanel(!showNotifPanel); setNotifications(prev => prev.map(n => ({ ...n, read: true }))); }} style={{ position: 'relative' }}>
                                     <Bell size={18} />
@@ -1455,7 +1666,7 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
                                 )}
                             </div>
                             <div className="user-avatar-circle" style={{ background: primaryColor, color: 'white' }}>
-                                👨‍🍳
+                                {company.imageUrl || '👨‍🍳'}
                             </div>
                         </div>
                     </header>
@@ -1578,7 +1789,7 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
                                         <div className="section-header" style={{ marginTop: '10px' }}>
                                             <h3>Dining Tables - {activeArea} Area ({tableConfig[activeArea] || 0} tables)</h3>
                                             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                                                {customAreas.map(area => (
+                                                {customAreas.map((area: any) => (
                                                     <button
                                                         key={area}
                                                         onClick={() => setActiveArea(area)}
@@ -1621,42 +1832,43 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
                                                 const isCompleted = cached && cached.status === 'completed';
                                                 
                                                 // Check if this table has a KDS order pending
-                                                const hasKdsReady = kitchenOrders.some(o => o.tableNum === tableNum && o.area === activeArea && o.status === 'ready');
+                                                const hasKdsReady = kitchenOrders.some((o: any) => o.tableNum === tableNum && o.area === activeArea && o.status === 'ready');
                                                 
-                                                let bg = '#F8FAFC';
-                                                let text = '#4A5568';
-                                                let border = '#E2E8F0';
+                                                // Default: Vacant (Green)
+                                                let bg = '#E6F4EA';
+                                                let text = '#137333';
+                                                let border = '#34A853';
                                                 let stateLabel = 'Vacant';
                                                 
                                                 if (isCompleted) {
-                                                    bg = '#FEF3C7';
-                                                    text = '#B45309';
-                                                    border = '#F59E0B';
-                                                    stateLabel = 'Pending Bill';
+                                                    // Yellow for Eat Done / Bill Pending
+                                                    bg = '#FEF7E0';
+                                                    text = '#B06000';
+                                                    border = '#FBBC04';
+                                                    stateLabel = 'Eat Done';
                                                 } else if (isOccupied) {
-                                                    bg = isBakery ? '#FCE7F3' : '#FFF5F2';
-                                                    text = primaryColor;
-                                                    border = primaryColor;
+                                                    // Red for Occupied
+                                                    bg = '#FCE8E6';
+                                                    text = '#C5221F';
+                                                    border = '#EA4335';
                                                     stateLabel = 'Occupied';
                                                 } else if (isDirty) {
-                                                    bg = '#EDF2F7';
-                                                    text = '#718096';
-                                                    border = '#CBD5E0';
+                                                    // Grey for Dirty
+                                                    bg = '#F1F3F4';
+                                                    text = '#5F6368';
+                                                    border = '#BDC1C6';
                                                     stateLabel = 'Dirty';
                                                 }
                                                 
-                                                if (isSelected) {
-                                                    border = primaryColor;
-                                                    bg = primaryColor;
-                                                    text = 'white';
-                                                }
+                                                const displayBorder = isSelected ? '#1A73E8' : (hasKdsReady ? '#22C55E' : border);
+                                                const displayBorderWidth = isSelected ? '3px' : '2px';
 
                                                 return (
                                                     <div
                                                         key={tableNum}
                                                         onClick={() => {
                                                             if (isDirty) {
-                                                                setDirtyTables(prev => ({ ...prev, [key]: false }));
+                                                                setDirtyTables((prev: any) => ({ ...prev, [key]: false }));
                                                                 toast.success(`Table ${tableNum} cleaned & ready!`);
                                                                 return;
                                                             }
@@ -1681,13 +1893,13 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
                                                         style={{
                                                             background: bg,
                                                             color: text,
-                                                            border: `2px solid ${hasKdsReady ? '#22C55E' : border}`,
+                                                            border: `${displayBorderWidth} solid ${displayBorder}`,
                                                             borderRadius: '16px',
                                                             padding: '12px',
                                                             textAlign: 'center',
                                                             cursor: 'pointer',
                                                             transition: 'all 0.2s',
-                                                            boxShadow: isSelected ? '0 4px 12px rgba(0,0,0,0.05)' : hasKdsReady ? '0 0 0 3px rgba(34,197,94,0.2)' : 'none',
+                                                            boxShadow: isSelected ? '0 4px 12px rgba(26,115,232,0.15)' : hasKdsReady ? '0 0 0 3px rgba(34,197,94,0.2)' : 'none',
                                                             position: 'relative'
                                                         }}
                                                     >
@@ -1697,9 +1909,36 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
                                                         {isCompleted && !hasKdsReady && (
                                                             <span style={{ position: 'absolute', top: '-6px', right: '-6px', background: '#F59E0B', color: 'white', borderRadius: '50%', width: '18px', height: '18px', fontSize: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900 }}>🏁</span>
                                                         )}
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setActionTable({ tableNum, area: activeArea });
+                                                            }}
+                                                            style={{
+                                                                position: 'absolute',
+                                                                top: '4px',
+                                                                right: '4px',
+                                                                background: 'rgba(255, 255, 255, 0.7)',
+                                                                border: 'none',
+                                                                borderRadius: '4px',
+                                                                width: '20px',
+                                                                height: '20px',
+                                                                fontSize: '12px',
+                                                                cursor: 'pointer',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                justifyContent: 'center',
+                                                                fontWeight: 'bold',
+                                                                color: '#1E293B',
+                                                                boxShadow: '0 1px 4px rgba(0,0,0,0.1)'
+                                                            }}
+                                                            title="Table Actions"
+                                                        >
+                                                            ⋮
+                                                        </button>
                                                         <p style={{ margin: 0, fontSize: '13px', fontWeight: 800 }}>Table {tableNum}</p>
                                                         <p style={{ margin: '4px 0 0 0', fontSize: '10px', fontWeight: 600, opacity: 0.8 }}>
-                                                            {isOccupied || isCompleted ? `₹${cached.cart.reduce((sum, c) => sum + (c.item.sellingPrice * c.qty), 0).toFixed(2)}` : hasKdsReady ? '🍽️ Ready!' : stateLabel}
+                                                            {isOccupied || isCompleted ? `₹${cached.cart.reduce((sum: number, c: any) => sum + (c.item.sellingPrice * c.qty), 0).toFixed(2)}` : hasKdsReady ? '🍽️ Ready!' : stateLabel}
                                                         </p>
                                                     </div>
                                                 );
@@ -1715,16 +1954,41 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
 
                                 {/* Promo Hero Banner */}
                                 <div className="promo-banner" style={{ background: bannerBg }}>
-                                    <div className="promo-content">
-                                        <span className="promo-tag" style={{ background: primaryColor }}>PROMO</span>
-                                        <h1 className="promo-title">{bannerTitle}</h1>
-                                        <p className="promo-subtitle">{bannerSub}</p>
-                                        <p className="promo-offer" style={{ color: primaryColor }}>{bannerOffer}</p>
+                                    <div className="promo-content promo-animate" key={activeDeal?.id || 'default'}>
+                                        <span className="promo-tag" style={{ background: primaryColor }}>
+                                            {promoDeals.length > 1 ? `PROMO ${activePromoIndex + 1}/${promoDeals.length}` : 'PROMO'}
+                                        </span>
+                                        <h1 className="promo-title">{activeBannerTitle}</h1>
+                                        <p className="promo-subtitle">{activeBannerSub}</p>
+                                        <p className="promo-offer" style={{ color: primaryColor }}>{activeBannerOffer}</p>
                                         <button className="order-now-btn" style={{ background: primaryColor }} onClick={() => {
-                                            if (products.length > 0) addToCart(products[0]);
+                                            if (activeDeal) {
+                                                const dealProduct: Product = {
+                                                    id: `deal-${activeDeal.id}`,
+                                                    companyId: company.id,
+                                                    name: activeDeal.name,
+                                                    category: 'Deals',
+                                                    sellingPrice: activeDeal.dealPrice,
+                                                    purchasePrice: activeDeal.dealPrice * 0.4,
+                                                    stockQty: 999,
+                                                    lowStockAlertQty: 0,
+                                                    gstRate: 5,
+                                                    taxIncluded: true,
+                                                    unit: 'combo',
+                                                    imageUrl: activeDeal.emoji,
+                                                    cessRate: 0
+                                                };
+                                                addToCart(dealProduct);
+                                                toast.success(`Added ${activeDeal.name} combo to cart!`);
+                                            } else {
+                                                if (products.length > 0) {
+                                                    addToCart(products[0]);
+                                                    toast.success(`Added ${products[0].name} to cart!`);
+                                                }
+                                            }
                                         }}>Order Now</button>
                                     </div>
-                                    <div className="promo-graphic">{bannerIcon}</div>
+                                    <div className="promo-graphic promo-animate" key={(activeDeal?.id || 'default') + '-icon'}>{activeBannerIcon}</div>
                                 </div>
 
                                 {/* Meal Time Filter */}
@@ -1749,14 +2013,14 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
                                 </div>
 
                                 {/* Deals & Combos Quick-Add */}
-                                {deals.filter(d => d.validFor === 'All' || d.validFor === mealTimeFilter).length > 0 && (
+                                {deals.filter((d: any) => d.validFor === 'All' || d.validFor === mealTimeFilter).length > 0 && (
                                     <div style={{ marginBottom: '20px' }}>
                                         <div className="section-header" style={{ marginBottom: '10px' }}>
                                             <h3 style={{ fontSize: '14px' }}>🎁 Deals & Combos</h3>
                                             <button style={{ color: '#EC4899', background: 'none', border: 'none', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }} onClick={() => setActiveView('deals')}>Manage Deals</button>
                                         </div>
                                         <div style={{ display: 'flex', gap: '10px', overflowX: 'auto', paddingBottom: '8px' }} className="no-scrollbar">
-                                            {deals.filter(d => d.validFor === 'All' || d.validFor === mealTimeFilter).map(deal => (
+                                            {deals.filter((d: any) => d.validFor === 'All' || d.validFor === mealTimeFilter).map((deal: any) => (
                                                 <button
                                                     key={deal.id}
                                                     onClick={() => {
@@ -1774,9 +2038,7 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
                                                             barcode: '',
                                                             hsnCode: '',
                                                             gstRate: 5,
-                                                            taxIncluded: false,
-                                                            createdAt: new Date().toISOString(),
-                                                            updatedAt: new Date().toISOString()
+                                                            taxIncluded: false
                                                         };
                                                         addToCart(dealProduct);
                                                         toast.success(`${deal.name} deal added to cart!`);
@@ -1889,7 +2151,13 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
                                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '16px' }}>
                                         {[...invoices]
                                             .filter(i => i.invoiceType === 'sale')
-                                            .sort((a, b) => new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime())
+                                            .sort((a, b) => {
+                                                const dateCompare = (b.date || '').localeCompare(a.date || '');
+                                                if (dateCompare !== 0) return dateCompare;
+                                                const timeCompare = (b.time || '00:00').localeCompare(a.time || '00:00');
+                                                if (timeCompare !== 0) return timeCompare;
+                                                return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+                                            })
                                             .slice(0, 3)
                                             .map(inv => {
                                                 const itemsSummary = inv.items.map(it => `${it.qty}x ${it.name}`).join(', ');
@@ -1948,15 +2216,35 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
                                 <div className="custom-view-container">
                                     <div className="view-title-row">
                                         <h2>Menu Items Catalog</h2>
-                                        <button className="view-action-btn" style={{ background: viewThemeColor }} onClick={() => setShowAddItemModal(true)}>
-                                            ➕ Add New Dish
-                                        </button>
+                                        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                                            {selectedProductIds.length > 0 && (
+                                                <button
+                                                    className="view-action-btn"
+                                                    style={{ background: '#EF4444' }}
+                                                    onClick={handleBulkDelete}
+                                                >
+                                                    🗑 Delete Selected ({selectedProductIds.length})
+                                                </button>
+                                            )}
+                                            <button className="view-action-btn" style={{ background: viewThemeColor }} onClick={() => setShowAddItemModal(true)}>
+                                                ➕ Add New Dish
+                                            </button>
+                                        </div>
                                     </div>
 
                                     <div className="custom-table-wrapper">
                                         <table className="custom-table">
                                             <thead>
                                                 <tr>
+                                                    <th style={{ width: '40px' }}>
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={products.length > 0 && selectedProductIds.length === products.length}
+                                                            onChange={e => setSelectedProductIds(e.target.checked ? products.map(p => p.id) : [])}
+                                                            style={{ cursor: 'pointer', accentColor: viewThemeColor }}
+                                                            title="Select All"
+                                                        />
+                                                    </th>
                                                     <th>Dish</th>
                                                     <th>Category</th>
                                                     <th>Price</th>
@@ -1974,7 +2262,17 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
                                                     products.map(p => {
                                                         const isExpired = p.expiryDate ? new Date(p.expiryDate).getTime() < new Date().getTime() : false;
                                                         return (
-                                                            <tr key={p.id}>
+                                                            <tr key={p.id} style={{ background: selectedProductIds.includes(p.id) ? '#EFF6FF' : undefined }}>
+                                                                <td style={{ width: '40px' }}>
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={selectedProductIds.includes(p.id)}
+                                                                        onChange={e => setSelectedProductIds(prev =>
+                                                                            e.target.checked ? [...prev, p.id] : prev.filter(id => id !== p.id)
+                                                                        )}
+                                                                        style={{ cursor: 'pointer', accentColor: viewThemeColor }}
+                                                                    />
+                                                                </td>
                                                                 <td>
                                                                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                                                                         {p.imageUrl && (p.imageUrl.startsWith('http') || p.imageUrl.startsWith('/')) ? (
@@ -2012,7 +2310,7 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
                                                                         <button onClick={() => setEditingProduct(p)} className="action-icon-btn text-blue">
                                                                             <Edit2 size={14} />
                                                                         </button>
-                                                                        <button onClick={() => confirm(`Delete ${p.name}?`) && deleteProduct(p.id)} className="action-icon-btn text-red">
+                                                                        <button onClick={() => window.confirm(`Delete ${p.name}?`) && deleteProduct(p.id)} className="action-icon-btn text-red">
                                                                             <Trash2 size={14} />
                                                                         </button>
                                                                     </div>
@@ -2347,7 +2645,7 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
                                                         <td colSpan={8} style={{ textAlign: 'center', color: '#A0AEC0', padding: '30px' }}>No shift closing Z-Reports found. Close a register shift to generate one.</td>
                                                     </tr>
                                                 ) : (
-                                                    recentZReports.map((rep, idx) => (
+                                                    recentZReports.map((rep: any, idx: number) => (
                                                         <tr key={idx}>
                                                             <td><strong>{rep.biller}</strong></td>
                                                             <td>{new Date(rep.closingTime).toLocaleString()}</td>
@@ -2593,7 +2891,7 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
                                     </div>
                                     <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
                                         {/* Platform badges */}
-                                        {deliveryIntegrations.map(di => (
+                                        {deliveryIntegrations.map((di: any) => (
                                             <span key={di.platform} style={{
                                                 display: 'flex', alignItems: 'center', gap: '4px',
                                                 background: di.enabled ? di.color + '15' : '#F1F5F9',
@@ -2613,35 +2911,6 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
                                         >
                                             ⚙️ API Settings
                                         </button>
-                                        <button
-                                            onClick={() => {
-                                                // Simulate incoming order
-                                                const platforms = deliveryIntegrations.filter(d => d.enabled).map(d => d.platform);
-                                                const platform = platforms.length > 0 ? platforms[Math.floor(Math.random() * platforms.length)] : 'Direct';
-                                                const names = ['Ravi Kumar', 'Priya Sharma', 'Amit Patel', 'Sunita Rao'];
-                                                const items = [['Butter Chicken', 'Naan'], ['Dal Makhani', 'Rice'], ['Paneer Tikka', 'Roti']];
-                                                const selected = items[Math.floor(Math.random() * items.length)];
-                                                const newOrder = {
-                                                    id: 'ORD-' + Math.floor(Math.random() * 9000 + 1000),
-                                                    channel: platform,
-                                                    customer: names[Math.floor(Math.random() * names.length)],
-                                                    phone: '98' + Math.floor(Math.random() * 90000000 + 10000000),
-                                                    address: `${Math.floor(Math.random() * 200 + 1)}, Main Street, Mumbai`,
-                                                    items: selected.map(name => ({ name, qty: 1, price: Math.floor(Math.random() * 200 + 100) })),
-                                                    total: Math.floor(Math.random() * 600 + 150),
-                                                    time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
-                                                    status: 'pending'
-                                                };
-                                                const updated = [newOrder, ...appOrders];
-                                                setAppOrders(updated);
-                                                addNotification(`\uD83D\uDEFC New ${platform} order from ${newOrder.customer} — ₹${newOrder.total}`, 'order');
-                                                toast.success(`New order received from ${platform}!`);
-                                            }}
-                                            className="view-action-btn"
-                                            style={{ background: primaryColor }}
-                                        >
-                                            + Simulate Order
-                                        </button>
                                     </div>
                                 </div>
 
@@ -2650,7 +2919,7 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
                                     <div style={{ background: '#F8FAFC', borderRadius: '16px', padding: '20px', marginBottom: '20px', border: '1px solid #E2E8F0' }}>
                                         <h4 style={{ margin: '0 0 16px 0', fontSize: '13px', fontWeight: 800 }}>🔌 Delivery Platform API Integration</h4>
                                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
-                                            {deliveryIntegrations.map((di, idx) => (
+                                            {deliveryIntegrations.map((di: any, idx: number) => (
                                                 <div key={di.platform} style={{ background: 'white', borderRadius: '12px', padding: '16px', border: `1px solid ${di.enabled ? di.color + '30' : '#E2E8F0'}` }}>
                                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -2661,7 +2930,7 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
                                                             <span style={{ fontSize: '11px', color: di.enabled ? '#22C55E' : '#94A3B8', fontWeight: 700 }}>{di.enabled ? 'Active' : 'Inactive'}</span>
                                                             <button
                                                                 onClick={() => {
-                                                                    const updated = deliveryIntegrations.map((d, i) => i === idx ? { ...d, enabled: !d.enabled } : d);
+                                                                    const updated = deliveryIntegrations.map((d: any, i: number) => i === idx ? { ...d, enabled: !d.enabled } : d);
                                                                     setDeliveryIntegrations(updated);
                                                                     toast.success(`${di.platform} ${!di.enabled ? 'enabled' : 'disabled'}!`);
                                                                 }}
@@ -2685,7 +2954,7 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
                                                             placeholder="Restaurant ID / Branch Code"
                                                             value={di.restaurantId}
                                                             onChange={e => {
-                                                                const updated = deliveryIntegrations.map((d, i) => i === idx ? { ...d, restaurantId: e.target.value } : d);
+                                                                const updated = deliveryIntegrations.map((d: any, i: number) => i === idx ? { ...d, restaurantId: e.target.value } : d);
                                                                 setDeliveryIntegrations(updated);
                                                             }}
                                                             className="modal-input"
@@ -2696,7 +2965,7 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
                                                             value={di.apiKey}
                                                             type={di.platform === 'Direct' ? 'text' : 'password'}
                                                             onChange={e => {
-                                                                const updated = deliveryIntegrations.map((d, i) => i === idx ? { ...d, apiKey: e.target.value } : d);
+                                                                const updated = deliveryIntegrations.map((d: any, i: number) => i === idx ? { ...d, apiKey: e.target.value } : d);
                                                                 setDeliveryIntegrations(updated);
                                                             }}
                                                             className="modal-input"
@@ -2717,23 +2986,28 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
                                         <p style={{ margin: '12px 0 0', fontSize: '11px', color: '#94A3B8' }}>
                                             ⚠️ Zomato, Swiggy & Dunzo APIs require business approval. Contact your account manager to get API credentials. Direct orders work without API keys.
                                         </p>
+                                        <div style={{ marginTop: '16px', background: '#EFF6FF', border: '1px dashed #BFDBFE', padding: '12px 16px', borderRadius: '12px' }}>
+                                            <p style={{ margin: '0 0 6px 0', fontSize: '11px', fontWeight: 800, color: '#1E40AF' }}>📥 Live Delivery Webhook URL (POST):</p>
+                                            <code style={{ fontSize: '10px', wordBreak: 'break-all', display: 'block', background: 'white', padding: '8px', borderRadius: '6px', border: '1px solid #D1E2FF', color: '#1A1A2E' }}>
+                                                {typeof window !== 'undefined' ? window.location.origin : ''}/api/webhooks/delivery?companyId={company.id}
+                                            </code>
+                                        </div>
                                     </div>
                                 )}
-
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', minHeight: '400px' }} className="app-orders-kanban">
                                     {/* Column 1: Incoming / Pending */}
                                     <div style={{ background: '#F8FAFC', borderRadius: '16px', padding: '16px', border: '1px solid #E2E8F0' }}>
-                                        <h4 style={{ fontSize: '13px', fontWeight: 900, color: 'white', background: '#718096', padding: '6px 12px', borderRadius: '8px', margin: '0 0 16px 0', textAlign: 'center' }}>INCOMING ({appOrders.filter(o => o.status === 'pending').length})</h4>
+                                        <h4 style={{ fontSize: '13px', fontWeight: 900, color: 'white', background: '#718096', padding: '6px 12px', borderRadius: '8px', margin: '0 0 16px 0', textAlign: 'center' }}>INCOMING ({appOrders.filter((o: any) => o.status === 'pending').length})</h4>
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                                            {appOrders.filter(o => o.status === 'pending').map(order => {
-                                                const plat = deliveryIntegrations.find(d => d.platform === order.channel);
+                                            {appOrders.filter((o: any) => o.status === 'pending').map((order: any) => {
+                                                const plat = deliveryIntegrations.find((d: any) => d.platform === order.channel);
                                                 return (
                                                     <div key={order.id} style={{ background: 'white', borderRadius: '12px', padding: '12px', border: '1.5px solid #CBD5E0', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
                                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                                                             <span style={{ fontSize: '11px', fontWeight: 900, color: 'white', background: plat?.color || '#718096', padding: '2px 8px', borderRadius: '6px' }}>
                                                                 {plat?.icon} {order.channel}
-                                                            </span>
-                                                            <span style={{ fontSize: '10px', color: '#A0AEC0' }}>{order.time}</span>
+                                                             </span>
+                                                             <span style={{ fontSize: '10px', color: '#A0AEC0' }}>{order.time}</span>
                                                         </div>
                                                         <p style={{ fontSize: '12px', fontWeight: 800, color: '#1A1A2E', margin: '0 0 2px 0' }}>{order.customer}</p>
                                                         {order.phone && <p style={{ fontSize: '10px', color: '#94A3B8', margin: '0 0 4px 0' }}>📞 {order.phone}</p>}
@@ -2742,11 +3016,11 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
                                                             <span style={{ fontSize: '13px', fontWeight: 900, color: primaryColor }}>₹{order.total.toFixed(2)}</span>
                                                             <button 
                                                                 onClick={() => {
-                                                                    const updated = appOrders.map(o => o.id === order.id ? { ...o, status: 'preparing' } : o);
+                                                                    const updated = appOrders.map((o: any) => o.id === order.id ? { ...o, status: 'preparing' } : o);
                                                                     setAppOrders(updated);
                                                                     // Push to KDS
                                                                     const kdsOrd = { id: order.id, tableNum: 'Delivery', area: order.channel, items: order.items, status: 'new' as const, orderedAt: new Date().toISOString(), servedBy: order.channel };
-                                                                    setKitchenOrders(prev => [kdsOrd, ...prev]);
+                                                                    setKitchenOrders((prev: any) => [kdsOrd, ...prev]);
                                                                     toast.success('Order accepted! Moved to kitchen.');
                                                                 }}
                                                                 style={{ border: 'none', background: primaryColor, color: 'white', padding: '5px 10px', borderRadius: '8px', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}
@@ -2757,7 +3031,7 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
                                                     </div>
                                                 );
                                             })}
-                                            {appOrders.filter(o => o.status === 'pending').length === 0 && (
+                                            {appOrders.filter((o: any) => o.status === 'pending').length === 0 && (
                                                 <div style={{ textAlign: 'center', color: '#A0AEC0', fontSize: '12px', padding: '20px' }}>No incoming orders</div>
                                             )}
                                         </div>
@@ -2765,9 +3039,9 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
 
                                     {/* Column 2: Preparing */}
                                     <div style={{ background: '#F8FAFC', borderRadius: '16px', padding: '16px', border: '1px solid #E2E8F0' }}>
-                                        <h4 style={{ fontSize: '13px', fontWeight: 900, color: 'white', background: '#ED8936', padding: '6px 12px', borderRadius: '8px', margin: '0 0 16px 0', textAlign: 'center' }}>PREPARING ({appOrders.filter(o => o.status === 'preparing').length})</h4>
+                                        <h4 style={{ fontSize: '13px', fontWeight: 900, color: 'white', background: '#ED8936', padding: '6px 12px', borderRadius: '8px', margin: '0 0 16px 0', textAlign: 'center' }}>PREPARING ({appOrders.filter((o: any) => o.status === 'preparing').length})</h4>
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                                            {appOrders.filter(o => o.status === 'preparing').map(order => (
+                                            {appOrders.filter((o: any) => o.status === 'preparing').map((order: any) => (
                                                 <div key={order.id} style={{ background: 'white', borderRadius: '12px', padding: '12px', border: '1.5px solid #ED8936', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
                                                     <p style={{ fontSize: '12px', fontWeight: 800, color: '#1A1A2E', margin: '0 0 4px 0' }}>{order.customer}</p>
                                                     <p style={{ fontSize: '11px', color: '#718096', margin: '0 0 8px 0' }}>{order.items.map((i: any) => `${i.qty}x ${i.name}`).join(', ')}</p>
@@ -2775,7 +3049,7 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
                                                         <span style={{ fontSize: '13px', fontWeight: 900, color: primaryColor }}>₹{order.total.toFixed(2)}</span>
                                                         <button 
                                                             onClick={() => {
-                                                                const updated = appOrders.map(o => o.id === order.id ? { ...o, status: 'dispatched' } : o);
+                                                                const updated = appOrders.map((o: any) => o.id === order.id ? { ...o, status: 'dispatched' } : o);
                                                                 setAppOrders(updated);
                                                                 toast.success('Food ready! Order dispatched.');
                                                             }}
@@ -2791,9 +3065,9 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
 
                                     {/* Column 3: Dispatched */}
                                     <div style={{ background: '#F8FAFC', borderRadius: '16px', padding: '16px', border: '1px solid #E2E8F0' }}>
-                                        <h4 style={{ fontSize: '13px', fontWeight: 900, color: 'white', background: '#4299E1', padding: '6px 12px', borderRadius: '8px', margin: '0 0 16px 0', textAlign: 'center' }}>OUT FOR DELIVERY ({appOrders.filter(o => o.status === 'dispatched').length})</h4>
+                                        <h4 style={{ fontSize: '13px', fontWeight: 900, color: 'white', background: '#4299E1', padding: '6px 12px', borderRadius: '8px', margin: '0 0 16px 0', textAlign: 'center' }}>OUT FOR DELIVERY ({appOrders.filter((o: any) => o.status === 'dispatched').length})</h4>
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                                            {appOrders.filter(o => o.status === 'dispatched').map(order => (
+                                            {appOrders.filter((o: any) => o.status === 'dispatched').map((order: any) => (
                                                 <div key={order.id} style={{ background: 'white', borderRadius: '12px', padding: '12px', border: '1.5px solid #4299E1' }}>
                                                     <p style={{ fontSize: '12px', fontWeight: 800, color: '#1A1A2E', margin: '0 0 4px 0' }}>{order.customer}</p>
                                                     {order.address && <p style={{ fontSize: '10px', color: '#94A3B8', margin: '0 0 4px 0' }}>📍 {order.address}</p>}
@@ -2815,9 +3089,10 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
                                                                     paymentMethod: 'upi', partyName: `${order.channel} - ${order.customer}`,
                                                                     notes: `App Order Delivery to ${order.address}`,
                                                                     isGstBill: false, isHidden: false, isPrivate: false,
-                                                                    createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
+                                                                    createdAt: new Date().toISOString(),
+                                                                    updatedAt: new Date().toISOString()
                                                                 });
-                                                                const updated = appOrders.map(o => o.id === order.id ? { ...o, status: 'completed' } : o);
+                                                                const updated = appOrders.map((o: any) => o.id === order.id ? { ...o, status: 'completed' } : o);
                                                                 setAppOrders(updated);
                                                                 addNotification(`\u2705 Delivery Order #${order.id} completed — ₹${order.total} from ${order.channel}`, 'billing');
                                                                 toast.success('Order completed and added to sales ledger!');
@@ -2834,9 +3109,9 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
 
                                     {/* Column 4: Completed */}
                                     <div style={{ background: '#F8FAFC', borderRadius: '16px', padding: '16px', border: '1px solid #E2E8F0' }}>
-                                        <h4 style={{ fontSize: '13px', fontWeight: 900, color: 'white', background: '#38A169', padding: '6px 12px', borderRadius: '8px', margin: '0 0 16px 0', textAlign: 'center' }}>COMPLETED TODAY ({appOrders.filter(o => o.status === 'completed').length})</h4>
+                                        <h4 style={{ fontSize: '13px', fontWeight: 900, color: 'white', background: '#38A169', padding: '6px 12px', borderRadius: '8px', margin: '0 0 16px 0', textAlign: 'center' }}>COMPLETED TODAY ({appOrders.filter((o: any) => o.status === 'completed').length})</h4>
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                            {appOrders.filter(o => o.status === 'completed').map(order => (
+                                            {appOrders.filter((o: any) => o.status === 'completed').map((order: any) => (
                                                 <div key={order.id} style={{ background: 'white', borderRadius: '10px', padding: '10px', border: '1px solid #E2E8F0', opacity: 0.8 }}>
                                                     <p style={{ fontSize: '11px', fontWeight: 800, color: '#718096', textDecoration: 'line-through', margin: '0 0 2px 0' }}>{order.customer}</p>
                                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -2853,298 +3128,239 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
 
                         {/* VIEW: KITCHEN DISPLAY SYSTEM (KDS) */}
                         {activeView === 'kitchen' && (
-                            <div className="custom-view-container" style={{ background: '#0F172A', padding: '24px', borderRadius: '24px', color: '#F8FAFC', border: '1px solid #1E293B', minHeight: '80vh' }}>
+                            <div className="custom-view-container" style={{ background: '#F1F5F9', padding: '24px', borderRadius: '24px', minHeight: '80vh' }}>
                                 <style>{`
-                                    @keyframes pulse-kds-red {
-                                        0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
-                                        70% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
-                                        100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
-                                    }
-                                    @keyframes pulse-kds-orange {
-                                        0% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.5); }
-                                        70% { box-shadow: 0 0 0 6px rgba(245, 158, 11, 0); }
-                                        100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
-                                    }
+                                    @keyframes kds-urgency { 0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,0.4)} 70%{box-shadow:0 0 0 8px rgba(239,68,68,0)} }
+                                    @keyframes kds-fadeIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+                                    .kds-card { animation: kds-fadeIn 0.22s ease; transition: transform 0.15s, box-shadow 0.15s !important; }
+                                    .kds-card:hover { transform: translateY(-2px) !important; box-shadow: 0 8px 24px rgba(0,0,0,0.09) !important; }
+                                    .kds-item-row:hover { background: #F8FAFC !important; }
+                                    .kds-btn:hover { filter: brightness(1.07); transform: translateY(-1px); }
                                 `}</style>
 
-                                <div className="view-title-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
-                                    <div>
-                                        <h2 style={{ color: 'white', fontWeight: 900, fontSize: '22px', display: 'flex', alignItems: 'center', gap: '10px' }}>👨‍🍳 Kitchen Display System</h2>
-                                        <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#94A3B8' }}>
-                                            Real-time order queue for chefs — mark items as preparing and ready to serve
-                                        </p>
-                                    </div>
-                                    <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                                        <button
-                                            onClick={() => setIsMuted(!isMuted)}
-                                            style={{ background: isMuted ? '#EF4444' : '#10B981', color: 'white', border: 'none', borderRadius: '10px', padding: '8px 14px', fontSize: '11px', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
-                                        >
-                                            {isMuted ? '🔇 Muted' : '🔊 Sound Chimes'}
-                                        </button>
-                                        <div style={{ display: 'flex', gap: '8px' }}>
-                                            <span style={{ background: 'rgba(252,211,77,0.1)', color: '#FCD34D', border: '1px solid rgba(252,211,77,0.2)', borderRadius: '8px', padding: '4px 10px', fontSize: '11px', fontWeight: 700 }}>
-                                                🔔 New: {kitchenOrders.filter(o => o.status === 'new').length}
-                                            </span>
-                                            <span style={{ background: 'rgba(245,158,11,0.1)', color: '#F59E0B', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '8px', padding: '4px 10px', fontSize: '11px', fontWeight: 700 }}>
-                                                🍳 Cooking: {kitchenOrders.filter(o => o.status === 'preparing').length}
-                                            </span>
-                                            <span style={{ background: 'rgba(34,197,94,0.1)', color: '#10B981', border: '1px solid rgba(34,197,94,0.2)', borderRadius: '8px', padding: '4px 10px', fontSize: '11px', fontWeight: 700 }}>
-                                                ✅ Ready: {kitchenOrders.filter(o => o.status === 'ready').length}
-                                            </span>
+                                {/* KDS Header */}
+                                <div style={{ background: 'white', borderRadius: '20px', padding: '20px 24px', marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', border: '1px solid #E2E8F0' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                                        <div style={{ width: 50, height: 50, background: 'linear-gradient(135deg, #EF4444 0%, #3B82F6 50%, #22C55E 100%)', borderRadius: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px', flexShrink: 0 }}>👨‍🍳</div>
+                                        <div>
+                                            <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 900, color: '#0F172A' }}>Kitchen Display System</h2>
+                                            <p style={{ margin: '3px 0 0', fontSize: '12px', color: '#94A3B8' }}>Real-time order queue — mark items as cooking and ready to serve</p>
                                         </div>
-                                        <button
-                                            onClick={() => setKitchenOrders(prev => prev.filter(o => o.status !== 'ready'))}
-                                            style={{ background: '#1E293B', color: '#94A3B8', border: '1px solid #334155', borderRadius: '10px', padding: '8px 14px', fontSize: '11px', fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s' }}
-                                            onMouseEnter={(e) => { e.currentTarget.style.color = 'white'; e.currentTarget.style.background = '#334155'; }}
-                                            onMouseLeave={(e) => { e.currentTarget.style.color = '#94A3B8'; e.currentTarget.style.background = '#1E293B'; }}
-                                        >
-                                            Clear Served Orders
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                        <div style={{ background: '#FFF1F2', border: '1.5px solid #FECDD3', borderRadius: '12px', padding: '6px 14px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#EF4444', display: 'inline-block' }} />
+                                            <span style={{ fontSize: '12px', fontWeight: 800, color: '#EF4444' }}>New: {kitchenOrders.filter((o: any) => o.status === 'new').length}</span>
+                                        </div>
+                                        <div style={{ background: '#EFF6FF', border: '1.5px solid #BFDBFE', borderRadius: '12px', padding: '6px 14px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#3B82F6', display: 'inline-block' }} />
+                                            <span style={{ fontSize: '12px', fontWeight: 800, color: '#3B82F6' }}>Cooking: {kitchenOrders.filter((o: any) => o.status === 'preparing').length}</span>
+                                        </div>
+                                        <div style={{ background: '#F0FDF4', border: '1.5px solid #BBF7D0', borderRadius: '12px', padding: '6px 14px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22C55E', display: 'inline-block' }} />
+                                            <span style={{ fontSize: '12px', fontWeight: 800, color: '#22C55E' }}>Ready: {kitchenOrders.filter((o: any) => o.status === 'ready').length}</span>
+                                        </div>
+                                        <button onClick={() => setIsMuted(!isMuted)}
+                                            style={{ background: isMuted ? '#FEE2E2' : '#DCFCE7', color: isMuted ? '#EF4444' : '#16A34A', border: 'none', borderRadius: '12px', padding: '8px 16px', fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}>
+                                            {isMuted ? '🔇 Muted' : '🔊 Sound On'}
+                                        </button>
+                                        <button onClick={() => setKitchenOrders((prev: any) => prev.filter((o: any) => o.status !== 'ready'))}
+                                            style={{ background: 'white', color: '#64748B', border: '1.5px solid #E2E8F0', borderRadius: '12px', padding: '8px 16px', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
+                                            🗑 Clear Served
                                         </button>
                                     </div>
                                 </div>
 
-                                {/* KDS Grid - 3 columns */}
-                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
-                                    {/* Column 1: New Orders */}
-                                    <div style={{ background: 'rgba(30,41,59,0.3)', padding: '16px', borderRadius: '16px', border: '1px solid #1E293B' }}>
-                                        <div style={{ background: '#1E1E38', borderRadius: '12px', padding: '10px 16px', marginBottom: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid rgba(252,211,77,0.15)' }}>
-                                            <span style={{ color: '#FCD34D', fontWeight: 900, fontSize: '13px', letterSpacing: '0.05em' }}>🔔 NEW TICKETS</span>
-                                            <span style={{ background: '#EF4444', color: 'white', borderRadius: '20px', padding: '2px 10px', fontSize: '11px', fontWeight: 900 }}>{kitchenOrders.filter(o => o.status === 'new').length}</span>
-                                        </div>
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                                            {kitchenOrders.filter(o => o.status === 'new').map(order => {
-                                                const elapsedMs = timeTicker - new Date(order.orderedAt).getTime();
-                                                const elapsedMins = Math.floor(elapsedMs / 60000);
-                                                let timeBadgeBg = '#10B981';
-                                                let isUrgent = false;
-                                                if (elapsedMins >= 20) {
-                                                    timeBadgeBg = '#EF4444';
-                                                    isUrgent = true;
-                                                } else if (elapsedMins >= 10) {
-                                                    timeBadgeBg = '#F59E0B';
-                                                }
+                                {/* KDS Kanban Grid */}
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(290px, 1fr))', gap: '20px', alignItems: 'start' }}>
 
+                                    {/* ─── Column 1: NEW ORDERS (Red) ─── */}
+                                    <div style={{ background: 'white', borderRadius: '20px', overflow: 'hidden', boxShadow: '0 2px 16px rgba(239,68,68,0.08)', border: '1px solid #FECDD3' }}>
+                                        <div style={{ background: 'linear-gradient(135deg, #EF4444, #DC2626)', padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                <div style={{ width: 34, height: 34, background: 'rgba(255,255,255,0.22)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px' }}>🔔</div>
+                                                <div>
+                                                    <p style={{ margin: 0, fontSize: '13px', fontWeight: 900, color: 'white', letterSpacing: '0.5px' }}>NEW TICKETS</p>
+                                                    <p style={{ margin: 0, fontSize: '10px', color: 'rgba(255,255,255,0.75)' }}>Awaiting chef</p>
+                                                </div>
+                                            </div>
+                                            <span style={{ background: 'white', color: '#EF4444', borderRadius: '20px', padding: '4px 12px', fontSize: '14px', fontWeight: 900 }}>{kitchenOrders.filter((o: any) => o.status === 'new').length}</span>
+                                        </div>
+                                        <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px', minHeight: '160px' }}>
+                                            {kitchenOrders.filter((o: any) => o.status === 'new').map((order: any) => {
+                                                const elapsedMins = getSafeElapsedMins(order.orderedAt);
+                                                const timeBg = elapsedMins >= 20 ? '#EF4444' : elapsedMins >= 10 ? '#F59E0B' : '#22C55E';
+                                                const isUrgent = elapsedMins >= 20;
                                                 return (
-                                                    <div key={order.id} style={{
-                                                        background: '#1E293B', borderRadius: '16px', padding: '16px',
-                                                        border: '2px solid #FCD34D', boxShadow: '0 4px 14px rgba(252,211,77,0.08)',
-                                                        animation: isUrgent ? 'pulse-kds-red 1.5s infinite' : 'pulse-kds-orange 3s infinite'
+                                                    <div key={order.id} className="kds-card" style={{
+                                                        background: 'white', borderRadius: '16px', padding: '16px',
+                                                        border: '1px solid #FECDD3', borderLeft: '5px solid #EF4444',
+                                                        boxShadow: isUrgent ? '0 0 0 0 rgba(239,68,68,0.4)' : '0 2px 10px rgba(239,68,68,0.06)',
+                                                        animation: isUrgent ? 'kds-urgency 1.5s infinite' : 'none'
                                                     }}>
-                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
                                                             <div>
-                                                                <p style={{ margin: 0, fontSize: '14px', fontWeight: 900, color: 'white' }}>
-                                                                    {order.area} — {order.tableNum !== 'Delivery' ? `Table ${order.tableNum}` : '🛵 Delivery'}
+                                                                <p style={{ margin: 0, fontSize: '14px', fontWeight: 900, color: '#0F172A' }}>
+                                                                    🪑 {order.area} {order.tableNum !== 'Delivery' ? `· T${order.tableNum}` : '· 🛵 Delivery'}
                                                                 </p>
-                                                                <p style={{ margin: '2px 0 0', fontSize: '10px', color: '#94A3B8', fontWeight: 600 }}>
-                                                                    {new Date(order.orderedAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
-                                                                    {order.servedBy && ` • ${order.servedBy}`}
+                                                                <p style={{ margin: '3px 0 0', fontSize: '10px', color: '#94A3B8', fontWeight: 600 }}>
+                                                                    {getSafeTimeString(order.orderedAt)}
+                                                                    {order.servedBy && ` · ${order.servedBy}`}
                                                                 </p>
                                                             </div>
-                                                            <span style={{
-                                                                background: timeBadgeBg,
-                                                                color: 'white',
-                                                                fontSize: '10px',
-                                                                fontWeight: 800,
-                                                                padding: '4px 8px',
-                                                                borderRadius: '6px',
-                                                                display: 'inline-flex',
-                                                                alignItems: 'center',
-                                                                gap: '4px'
-                                                            }}>
-                                                                ⏱️ {elapsedMins}m
-                                                            </span>
+                                                            <span style={{ background: timeBg, color: 'white', fontSize: '10px', fontWeight: 800, padding: '4px 9px', borderRadius: '8px' }}>⏱ {elapsedMins}m</span>
                                                         </div>
-                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '14px' }}>
-                                                            {order.items.map((item, idx) => {
+                                                        <div style={{ background: '#FFF5F5', borderRadius: '12px', padding: '10px 12px', marginBottom: '12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                                            {order.items.map((item: any, idx: number) => {
                                                                 const itemKey = `${order.id}-${idx}`;
                                                                 const isChecked = !!checkedItems[itemKey];
                                                                 return (
-                                                                    <div 
-                                                                        key={idx} 
-                                                                        onClick={() => setCheckedItems(prev => ({ ...prev, [itemKey]: !isChecked }))}
-                                                                        style={{ 
-                                                                            display: 'flex', alignItems: 'center', gap: '10px', 
-                                                                            background: isChecked ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.05)', 
-                                                                            borderRadius: '10px', padding: '8px 12px',
-                                                                            border: `1px solid ${isChecked ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.08)'}`,
-                                                                            cursor: 'pointer', transition: 'all 0.15s'
-                                                                        }}
-                                                                    >
-                                                                        <input type="checkbox" checked={isChecked} readOnly style={{ accentColor: '#10B981', cursor: 'pointer' }} />
-                                                                        <span style={{ background: isChecked ? '#475569' : '#8B5CF6', color: 'white', borderRadius: '4px', padding: '1px 6px', fontSize: '11px', fontWeight: 800 }}>×{item.qty}</span>
-                                                                        <span style={{ fontSize: '12px', fontWeight: 700, color: isChecked ? '#64748B' : '#F8FAFC', textDecoration: isChecked ? 'line-through' : 'none' }}>{item.name}</span>
-                                                                        {item.notes && <span style={{ fontSize: '10px', color: '#F59E0B', marginLeft: 'auto' }}>📝 {item.notes}</span>}
+                                                                    <div key={idx} className="kds-item-row"
+                                                                        onClick={() => setCheckedItems((prev: any) => ({ ...prev, [itemKey]: !isChecked }))}
+                                                                        style={{ display: 'flex', alignItems: 'center', gap: '9px', background: isChecked ? '#F1F5F9' : 'transparent', borderRadius: '8px', padding: '5px 8px', cursor: 'pointer', transition: 'background 0.15s', opacity: isChecked ? 0.5 : 1 }}>
+                                                                        <input type="checkbox" checked={isChecked} readOnly style={{ accentColor: '#EF4444', cursor: 'pointer', flexShrink: 0 }} />
+                                                                        <span style={{ background: '#EF4444', color: 'white', borderRadius: '6px', padding: '2px 8px', fontSize: '11px', fontWeight: 900, flexShrink: 0 }}>×{item.qty}</span>
+                                                                        <span style={{ fontSize: '13px', fontWeight: 700, color: '#1E293B', textDecoration: isChecked ? 'line-through' : 'none' }}>{item.name}</span>
+                                                                        {item.notes && <span style={{ fontSize: '10px', color: '#F59E0B', marginLeft: 'auto', fontWeight: 700 }}>📝 {item.notes}</span>}
                                                                     </div>
                                                                 );
                                                             })}
                                                         </div>
-                                                        <button
-                                                            onClick={() => {
-                                                                const updated = kitchenOrders.map(o => o.id === order.id ? { ...o, status: 'preparing' as const } : o);
-                                                                setKitchenOrders(updated);
-                                                                toast.success(`Order started cooking!`);
-                                                            }}
-                                                            style={{ width: '100%', background: '#F59E0B', color: 'white', border: 'none', borderRadius: '10px', padding: '10px', fontSize: '12px', fontWeight: 800, cursor: 'pointer', transition: 'opacity 0.15s' }}
-                                                            onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.9'; }}
-                                                            onMouseLeave={(e) => { e.currentTarget.style.opacity = '1'; }}
-                                                        >
+                                                        <button className="kds-btn"
+                                                            onClick={() => { const updated = kitchenOrders.map((o: any) => o.id === order.id ? { ...o, status: 'preparing' as const } : o); setKitchenOrders(updated); toast.success('Order started cooking!'); }}
+                                                            style={{ width: '100%', background: 'linear-gradient(135deg, #3B82F6, #2563EB)', color: 'white', border: 'none', borderRadius: '12px', padding: '11px', fontSize: '13px', fontWeight: 800, cursor: 'pointer', transition: 'all 0.15s' }}>
                                                             🍳 Start Cooking
                                                         </button>
                                                     </div>
                                                 );
                                             })}
-                                            {kitchenOrders.filter(o => o.status === 'new').length === 0 && (
-                                                <div style={{ textAlign: 'center', color: '#94A3B8', fontSize: '13px', padding: '40px 20px', background: 'rgba(30,41,59,0.2)', borderRadius: '16px', border: '1.5px dashed #334155' }}>
-                                                    <div style={{ fontSize: '32px', marginBottom: '8px' }}>🎉</div>
-                                                    All caught up!
+                                            {kitchenOrders.filter((o: any) => o.status === 'new').length === 0 && (
+                                                <div style={{ textAlign: 'center', padding: '36px 20px' }}>
+                                                    <div style={{ fontSize: '40px', marginBottom: '10px' }}>🎉</div>
+                                                    <p style={{ fontWeight: 700, color: '#94A3B8', margin: '0 0 4px', fontSize: '14px' }}>All caught up!</p>
+                                                    <p style={{ fontSize: '12px', color: '#CBD5E1', margin: 0 }}>No new tickets right now</p>
                                                 </div>
                                             )}
                                         </div>
                                     </div>
 
-                                    {/* Column 2: Preparing */}
-                                    <div style={{ background: 'rgba(30,41,59,0.3)', padding: '16px', borderRadius: '16px', border: '1px solid #1E293B' }}>
-                                        <div style={{ background: '#3B2314', borderRadius: '12px', padding: '10px 16px', marginBottom: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid rgba(245,158,11,0.15)' }}>
-                                            <span style={{ color: '#F59E0B', fontWeight: 900, fontSize: '13px', letterSpacing: '0.05em' }}>🍳 COOKING NOW</span>
-                                            <span style={{ background: 'rgba(255,255,255,0.2)', color: 'white', borderRadius: '20px', padding: '2px 10px', fontSize: '11px', fontWeight: 900 }}>{kitchenOrders.filter(o => o.status === 'preparing').length}</span>
+                                    {/* ─── Column 2: COOKING (Yellow/Amber) ─── */}
+                                    <div style={{ background: 'white', borderRadius: '20px', overflow: 'hidden', boxShadow: '0 2px 16px rgba(245,158,11,0.08)', border: '1px solid #FDE68A' }}>
+                                        <div style={{ background: 'linear-gradient(135deg, #F59E0B, #D97706)', padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                <div style={{ width: 34, height: 34, background: 'rgba(255,255,255,0.22)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px' }}>🍳</div>
+                                                <div>
+                                                    <p style={{ margin: 0, fontSize: '13px', fontWeight: 900, color: 'white', letterSpacing: '0.5px' }}>COOKING NOW</p>
+                                                    <p style={{ margin: 0, fontSize: '10px', color: 'rgba(255,255,255,0.75)' }}>Being prepared</p>
+                                                </div>
+                                            </div>
+                                            <span style={{ background: 'white', color: '#D97706', borderRadius: '20px', padding: '4px 12px', fontSize: '14px', fontWeight: 900 }}>{kitchenOrders.filter((o: any) => o.status === 'preparing').length}</span>
                                         </div>
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                                            {kitchenOrders.filter(o => o.status === 'preparing').map(order => {
-                                                const elapsedMs = timeTicker - new Date(order.orderedAt).getTime();
-                                                const elapsedMins = Math.floor(elapsedMs / 60000);
-                                                let timeBadgeBg = '#10B981';
-                                                let isUrgent = false;
-                                                if (elapsedMins >= 20) {
-                                                    timeBadgeBg = '#EF4444';
-                                                    isUrgent = true;
-                                                } else if (elapsedMins >= 10) {
-                                                    timeBadgeBg = '#F59E0B';
-                                                }
-
+                                        <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px', minHeight: '160px' }}>
+                                            {kitchenOrders.filter((o: any) => o.status === 'preparing').map((order: any) => {
+                                                const elapsedMins = getSafeElapsedMins(order.orderedAt);
+                                                const timeBg = elapsedMins >= 20 ? '#EF4444' : elapsedMins >= 10 ? '#F59E0B' : '#22C55E';
                                                 return (
-                                                    <div key={order.id} style={{ background: '#1E293B', borderRadius: '16px', padding: '16px', border: '2px solid #F59E0B', boxShadow: '0 4px 12px rgba(245,158,11,0.06)' }}>
-                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
+                                                    <div key={order.id} className="kds-card" style={{ background: 'white', borderRadius: '16px', padding: '16px', border: '1px solid #FDE68A', borderLeft: '5px solid #F59E0B', boxShadow: '0 2px 10px rgba(245,158,11,0.06)' }}>
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
                                                             <div>
-                                                                <p style={{ margin: 0, fontSize: '14px', fontWeight: 900, color: 'white' }}>
-                                                                    {order.area} — {order.tableNum !== 'Delivery' ? `Table ${order.tableNum}` : '🛵 Delivery'}
+                                                                <p style={{ margin: 0, fontSize: '14px', fontWeight: 900, color: '#0F172A' }}>
+                                                                    🪑 {order.area} {order.tableNum !== 'Delivery' ? `· T${order.tableNum}` : '· 🛵 Delivery'}
                                                                 </p>
-                                                                <p style={{ margin: '2px 0 0', fontSize: '10px', color: '#94A3B8' }}>
-                                                                    {new Date(order.orderedAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
-                                                                </p>
+                                                                <p style={{ margin: '3px 0 0', fontSize: '10px', color: '#94A3B8', fontWeight: 600 }}>{getSafeTimeString(order.orderedAt)}</p>
                                                             </div>
-                                                            <span style={{
-                                                                background: timeBadgeBg,
-                                                                color: 'white',
-                                                                fontSize: '10px',
-                                                                fontWeight: 800,
-                                                                padding: '4px 8px',
-                                                                borderRadius: '6px',
-                                                                display: 'inline-flex',
-                                                                alignItems: 'center',
-                                                                gap: '4px'
-                                                            }}>
-                                                                ⏱️ {elapsedMins}m
-                                                            </span>
+                                                            <span style={{ background: timeBg, color: 'white', fontSize: '10px', fontWeight: 800, padding: '4px 9px', borderRadius: '8px' }}>⏱ {elapsedMins}m</span>
                                                         </div>
-                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '14px' }}>
-                                                            {order.items.map((item, idx) => {
+                                                        <div style={{ background: '#FFFDF5', borderRadius: '12px', padding: '10px 12px', marginBottom: '12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                                            {order.items.map((item: any, idx: number) => {
                                                                 const itemKey = `${order.id}-${idx}`;
                                                                 const isChecked = !!checkedItems[itemKey];
                                                                 return (
-                                                                    <div 
-                                                                        key={idx} 
-                                                                        onClick={() => setCheckedItems(prev => ({ ...prev, [itemKey]: !isChecked }))}
-                                                                        style={{ 
-                                                                            display: 'flex', alignItems: 'center', gap: '10px', 
-                                                                            background: isChecked ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.05)', 
-                                                                            borderRadius: '10px', padding: '8px 12px',
-                                                                            border: `1px solid ${isChecked ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.08)'}`,
-                                                                            cursor: 'pointer', transition: 'all 0.15s'
-                                                                        }}
-                                                                    >
-                                                                        <input type="checkbox" checked={isChecked} readOnly style={{ accentColor: '#10B981', cursor: 'pointer' }} />
-                                                                        <span style={{ background: isChecked ? '#475569' : '#EA580C', color: 'white', borderRadius: '4px', padding: '1px 6px', fontSize: '11px', fontWeight: 800 }}>×{item.qty}</span>
-                                                                        <span style={{ fontSize: '12px', fontWeight: 700, color: isChecked ? '#64748B' : '#F8FAFC', textDecoration: isChecked ? 'line-through' : 'none' }}>{item.name}</span>
-                                                                        {item.notes && <span style={{ fontSize: '10px', color: '#F59E0B', marginLeft: 'auto' }}>📝 {item.notes}</span>}
+                                                                    <div key={idx} className="kds-item-row"
+                                                                        onClick={() => setCheckedItems((prev: any) => ({ ...prev, [itemKey]: !isChecked }))}
+                                                                        style={{ display: 'flex', alignItems: 'center', gap: '9px', background: isChecked ? '#F1F5F9' : 'transparent', borderRadius: '8px', padding: '5px 8px', cursor: 'pointer', transition: 'background 0.15s', opacity: isChecked ? 0.5 : 1 }}>
+                                                                        <input type="checkbox" checked={isChecked} readOnly style={{ accentColor: '#F59E0B', cursor: 'pointer', flexShrink: 0 }} />
+                                                                        <span style={{ background: '#F59E0B', color: 'white', borderRadius: '6px', padding: '2px 8px', fontSize: '11px', fontWeight: 900, flexShrink: 0 }}>×{item.qty}</span>
+                                                                        <span style={{ fontSize: '13px', fontWeight: 700, color: '#1E293B', textDecoration: isChecked ? 'line-through' : 'none' }}>{item.name}</span>
+                                                                        {item.notes && <span style={{ fontSize: '10px', color: '#EA580C', marginLeft: 'auto', fontWeight: 700 }}>📝 {item.notes}</span>}
                                                                     </div>
                                                                 );
                                                             })}
                                                         </div>
-                                                        <button
-                                                            onClick={() => {
-                                                                const updated = kitchenOrders.map(o => o.id === order.id ? { ...o, status: 'ready' as const } : o);
-                                                                setKitchenOrders(updated);
-                                                                addNotification(`✅ Table ${order.tableNum} (${order.area}) order is READY to serve!`, 'order');
-                                                                toast.success(`Order ready! Table ${order.tableNum} notified.`);
-                                                            }}
-                                                            style={{ width: '100%', background: '#10B981', color: 'white', border: 'none', borderRadius: '10px', padding: '10px', fontSize: '12px', fontWeight: 800, cursor: 'pointer', transition: 'opacity 0.15s' }}
-                                                            onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.9'; }}
-                                                            onMouseLeave={(e) => { e.currentTarget.style.opacity = '1'; }}
-                                                        >
-                                                            ✅ Mark as Ready to Serve
+                                                        <button className="kds-btn"
+                                                            onClick={() => { const updated = kitchenOrders.map((o: any) => o.id === order.id ? { ...o, status: 'ready' as const } : o); setKitchenOrders(updated); addNotification(`✅ Table ${order.tableNum} (${order.area}) order is READY to serve!`, 'order'); toast.success(`Order ready! Table ${order.tableNum} notified.`); }}
+                                                            style={{ width: '100%', background: 'linear-gradient(135deg, #22C55E, #16A34A)', color: 'white', border: 'none', borderRadius: '12px', padding: '11px', fontSize: '13px', fontWeight: 800, cursor: 'pointer', transition: 'all 0.15s' }}>
+                                                            ✅ Mark Ready to Serve
                                                         </button>
                                                     </div>
                                                 );
                                             })}
-                                            {kitchenOrders.filter(o => o.status === 'preparing').length === 0 && (
-                                                <div style={{ textAlign: 'center', color: '#94A3B8', fontSize: '13px', padding: '40px 20px', background: 'rgba(30,41,59,0.2)', borderRadius: '16px', border: '1.5px dashed #334155' }}>
-                                                    <div style={{ fontSize: '32px', marginBottom: '8px' }}>🍳</div>
-                                                    Kitchen is quiet...
+                                            {kitchenOrders.filter((o: any) => o.status === 'preparing').length === 0 && (
+                                                <div style={{ textAlign: 'center', padding: '36px 20px' }}>
+                                                    <div style={{ fontSize: '40px', marginBottom: '10px' }}>🍽️</div>
+                                                    <p style={{ fontWeight: 700, color: '#94A3B8', margin: '0 0 4px', fontSize: '14px' }}>Kitchen is quiet...</p>
+                                                    <p style={{ fontSize: '12px', color: '#CBD5E1', margin: 0 }}>Accept a ticket to start cooking</p>
                                                 </div>
                                             )}
                                         </div>
                                     </div>
 
-                                    {/* Column 3: Ready to Serve */}
-                                    <div style={{ background: 'rgba(30,41,59,0.3)', padding: '16px', borderRadius: '16px', border: '1px solid #1E293B' }}>
-                                        <div style={{ background: '#062F19', borderRadius: '12px', padding: '10px 16px', marginBottom: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid rgba(16,185,129,0.15)' }}>
-                                            <span style={{ color: '#10B981', fontWeight: 900, fontSize: '13px', letterSpacing: '0.05em' }}>✅ READY TO SERVE</span>
-                                            <span style={{ background: 'rgba(255,255,255,0.2)', color: 'white', borderRadius: '20px', padding: '2px 10px', fontSize: '11px', fontWeight: 900 }}>{kitchenOrders.filter(o => o.status === 'ready').length}</span>
+                                    {/* ─── Column 3: READY TO SERVE (Green) ─── */}
+                                    <div style={{ background: 'white', borderRadius: '20px', overflow: 'hidden', boxShadow: '0 2px 16px rgba(34,197,94,0.08)', border: '1px solid #BBF7D0' }}>
+                                        <div style={{ background: 'linear-gradient(135deg, #22C55E, #16A34A)', padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                <div style={{ width: 34, height: 34, background: 'rgba(255,255,255,0.22)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px' }}>✅</div>
+                                                <div>
+                                                    <p style={{ margin: 0, fontSize: '13px', fontWeight: 900, color: 'white', letterSpacing: '0.5px' }}>READY TO SERVE</p>
+                                                    <p style={{ margin: 0, fontSize: '10px', color: 'rgba(255,255,255,0.75)' }}>Awaiting delivery</p>
+                                                </div>
+                                            </div>
+                                            <span style={{ background: 'white', color: '#16A34A', borderRadius: '20px', padding: '4px 12px', fontSize: '14px', fontWeight: 900 }}>{kitchenOrders.filter((o: any) => o.status === 'ready').length}</span>
                                         </div>
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                                            {kitchenOrders.filter(o => o.status === 'ready').map(order => (
-                                                <div key={order.id} style={{ background: '#1E293B', borderRadius: '16px', padding: '16px', border: '2px solid #10B981', boxShadow: '0 4px 12px rgba(16,185,129,0.06)' }}>
-                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
+                                        <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px', minHeight: '160px' }}>
+                                            {kitchenOrders.filter((o: any) => o.status === 'ready').map((order: any) => (
+                                                <div key={order.id} className="kds-card" style={{ background: 'white', borderRadius: '16px', padding: '16px', border: '1px solid #BBF7D0', borderLeft: '5px solid #22C55E', boxShadow: '0 2px 10px rgba(34,197,94,0.06)' }}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
                                                         <div>
-                                                            <p style={{ margin: 0, fontSize: '14px', fontWeight: 900, color: '#10B981' }}>
-                                                                {order.area} — {order.tableNum !== 'Delivery' ? `Table ${order.tableNum}` : '🛵 Delivery'}
+                                                            <p style={{ margin: 0, fontSize: '14px', fontWeight: 900, color: '#16A34A' }}>
+                                                                🪑 {order.area} {order.tableNum !== 'Delivery' ? `· T${order.tableNum}` : '· 🛵 Delivery'}
                                                             </p>
+                                                            <p style={{ margin: '3px 0 0', fontSize: '10px', color: '#94A3B8', fontWeight: 600 }}>{getSafeTimeString(order.orderedAt)}</p>
                                                         </div>
-                                                        <span style={{ background: '#10B981', color: 'white', fontSize: '10px', fontWeight: 800, padding: '3px 8px', borderRadius: '6px' }}>✓ READY</span>
+                                                        <span style={{ background: '#DCFCE7', color: '#16A34A', fontSize: '11px', fontWeight: 800, padding: '4px 10px', borderRadius: '8px', border: '1px solid #BBF7D0' }}>✓ READY</span>
                                                     </div>
-                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '14px' }}>
-                                                        {order.items.map((item, idx) => (
-                                                            <div key={idx} style={{ fontSize: '12px', color: '#10B981', fontWeight: 600, display: 'flex', gap: '6px' }}>
-                                                                <span>•</span> <span>×{item.qty} {item.name}</span>
+                                                    <div style={{ background: '#F0FDF4', borderRadius: '12px', padding: '10px 12px', marginBottom: '12px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                                                        {order.items.map((item: any, idx: number) => (
+                                                            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '3px 0' }}>
+                                                                <span style={{ background: '#22C55E', color: 'white', borderRadius: '6px', padding: '2px 8px', fontSize: '11px', fontWeight: 900, flexShrink: 0 }}>×{item.qty}</span>
+                                                                <span style={{ fontSize: '13px', fontWeight: 700, color: '#166534' }}>{item.name}</span>
                                                             </div>
                                                         ))}
                                                     </div>
-                                                    <button
+                                                    <button className="kds-btn"
                                                         onClick={() => {
-                                                            setKitchenOrders(prev => prev.filter(o => o.id !== order.id));
-                                                            // Mark table as dirty
+                                                            setKitchenOrders((prev: any) => prev.filter((o: any) => o.id !== order.id));
                                                             if (order.tableNum !== 'Delivery') {
                                                                 const key = `${order.area}-${order.tableNum}`;
-                                                                setDirtyTables(prev => ({ ...prev, [key]: true }));
+                                                                setDirtyTables((prev: any) => ({ ...prev, [key]: true }));
                                                             }
-                                                            toast.success('Order served! Table cleared.');
+                                                            toast.success('🎉 Order served! Table cleared.');
                                                         }}
-                                                        style={{ width: '100%', background: '#334155', color: 'white', border: 'none', borderRadius: '10px', padding: '8px', fontSize: '11px', fontWeight: 800, cursor: 'pointer', transition: 'background 0.15s' }}
-                                                        onMouseEnter={(e) => { e.currentTarget.style.background = '#475569'; }}
-                                                        onMouseLeave={(e) => { e.currentTarget.style.background = '#334155'; }}
-                                                    >
+                                                        style={{ width: '100%', background: 'linear-gradient(135deg, #FBBF24, #F59E0B)', color: 'white', border: 'none', borderRadius: '12px', padding: '11px', fontSize: '13px', fontWeight: 800, cursor: 'pointer', transition: 'all 0.15s' }}>
                                                         🍽️ Served — Close Order
                                                     </button>
                                                 </div>
                                             ))}
-                                            {kitchenOrders.filter(o => o.status === 'ready').length === 0 && (
-                                                <div style={{ textAlign: 'center', color: '#94A3B8', fontSize: '13px', padding: '40px 20px', background: 'rgba(30,41,59,0.2)', borderRadius: '16px', border: '1.5px dashed #334155' }}>
-                                                    <div style={{ fontSize: '32px', marginBottom: '8px' }}>⏳</div>
-                                                    Waiting for chefs...
+                                            {kitchenOrders.filter((o: any) => o.status === 'ready').length === 0 && (
+                                                <div style={{ textAlign: 'center', padding: '36px 20px' }}>
+                                                    <div style={{ fontSize: '40px', marginBottom: '10px' }}>⏳</div>
+                                                    <p style={{ fontWeight: 700, color: '#94A3B8', margin: '0 0 4px', fontSize: '14px' }}>Waiting for chefs...</p>
+                                                    <p style={{ fontSize: '12px', color: '#CBD5E1', margin: 0 }}>Mark orders ready to see here</p>
                                                 </div>
                                             )}
                                         </div>
                                     </div>
+
                                 </div>
                             </div>
                         )}
@@ -3161,7 +3377,7 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
                                     </div>
                                     <button
                                         onClick={() => {
-                                            setDealForm({ name: '', description: '', dealPrice: '', emoji: '🎁', type: 'combo', validFor: 'All' });
+                                            setDealForm({ name: '', description: '', dealPrice: '', emoji: '🎁', type: 'combo', validFor: 'All', startDate: '', endDate: '', isPromo: true });
                                             setShowAddDealModal(true);
                                         }}
                                         className="view-action-btn"
@@ -3182,15 +3398,26 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
                                     </div>
                                 ) : (
                                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px' }}>
-                                        {deals.map(deal => (
+                                        {deals.map((deal: any) => (
                                             <div key={deal.id} style={{
                                                 background: 'white', borderRadius: '20px', padding: '20px',
-                                                border: '1.5px solid #FCE7F3', boxShadow: '0 4px 16px rgba(236,72,153,0.05)',
-                                                transition: 'transform 0.2s'
+                                                border: deal.isPromo !== false ? '1.5px solid #EC4899' : '1.5px solid #E2E8F0',
+                                                boxShadow: deal.isPromo !== false ? '0 4px 16px rgba(236,72,153,0.12)' : '0 4px 16px rgba(0,0,0,0.03)',
+                                                transition: 'transform 0.2s',
+                                                position: 'relative'
                                             }}
                                                 onMouseEnter={e => (e.currentTarget.style.transform = 'translateY(-4px)')}
                                                 onMouseLeave={e => (e.currentTarget.style.transform = 'translateY(0)')}
                                             >
+                                                {deal.isPromo !== false && (
+                                                    <div style={{
+                                                        position: 'absolute', top: '-8px', left: '16px',
+                                                        background: 'linear-gradient(135deg, #EC4899, #BE185D)',
+                                                        color: 'white', fontSize: '9px', fontWeight: 900,
+                                                        padding: '3px 10px', borderRadius: '99px',
+                                                        letterSpacing: '0.08em'
+                                                    }}>🌟 PROMO</div>
+                                                )}
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                                         <span style={{ fontSize: '28px' }}>{deal.emoji}</span>
@@ -3207,8 +3434,8 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
                                                     </div>
                                                     <button
                                                         onClick={() => {
-                                                            if (confirm(`Delete "${deal.name}"?`)) {
-                                                                const updated = deals.filter(d => d.id !== deal.id);
+                                                            if (window.confirm(`Delete "${deal.name}"?`)) {
+                                                                const updated = deals.filter((d: any) => d.id !== deal.id);
                                                                 setDeals(updated);
                                                                 toast.success('Deal deleted');
                                                             }
@@ -3222,26 +3449,50 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderTop: '1px solid #F1F5F9' }}>
                                                     <div>
                                                         <p style={{ margin: 0, fontSize: '20px', fontWeight: 900, color: '#EC4899' }}>₹{deal.dealPrice}</p>
-                                                        <p style={{ margin: '2px 0 0', fontSize: '10px', color: '#94A3B8' }}>Valid for: {deal.validFor}</p>
+                                                        <p style={{ margin: '2px 0 0', fontSize: '10px', color: '#94A3B8' }}>
+                                                            Valid for: {deal.validFor}
+                                                            {deal.startDate || deal.endDate ? ` (${deal.startDate || 'Anytime'} to ${deal.endDate || 'Anytime'})` : ''}
+                                                        </p>
                                                     </div>
-                                                    <button
-                                                        onClick={() => {
-                                                            const dealProduct: Product = {
-                                                                id: 'deal_' + deal.id, companyId: company.id,
-                                                                name: `${deal.emoji} ${deal.name}`, category: 'Deals',
-                                                                sellingPrice: deal.dealPrice, purchasePrice: deal.dealPrice * 0.6,
-                                                                stockQty: 999, lowStockAlertQty: 0, unit: 'set',
-                                                                barcode: '', hsnCode: '', gstRate: 5, taxIncluded: false,
-                                                                createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
-                                                            };
-                                                            addToCart(dealProduct);
-                                                            setActiveView('dashboard');
-                                                            toast.success(`${deal.name} added to cart!`);
-                                                        }}
-                                                        style={{ background: '#EC4899', color: 'white', border: 'none', borderRadius: '10px', padding: '8px 14px', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}
-                                                    >
-                                                        + Add to Order
-                                                    </button>
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'flex-end' }}>
+                                                        <button
+                                                            onClick={() => {
+                                                                const updated = deals.map((d: any) =>
+                                                                    d.id === deal.id ? { ...d, isPromo: d.isPromo === false ? true : false } : d
+                                                                );
+                                                                setDeals(updated);
+                                                                toast.success(deal.isPromo === false ? `${deal.name} added to promo banner!` : `${deal.name} removed from promo`);
+                                                            }}
+                                                            style={{
+                                                                background: deal.isPromo !== false ? '#FDF2F8' : '#F1F5F9',
+                                                                color: deal.isPromo !== false ? '#EC4899' : '#94A3B8',
+                                                                border: deal.isPromo !== false ? '1px solid #FBCFE8' : '1px solid #E2E8F0',
+                                                                borderRadius: '8px', padding: '4px 10px', fontSize: '10px', fontWeight: 800,
+                                                                cursor: 'pointer', transition: 'all 0.2s'
+                                                            }}
+                                                            title={deal.isPromo !== false ? 'Click to remove from promo' : 'Click to add to promo banner'}
+                                                        >
+                                                            {deal.isPromo !== false ? '🌟 In Promo' : '☆ Set Promo'}
+                                                        </button>
+                                                        <button
+                                                            onClick={() => {
+                                                                const dealProduct: Product = {
+                                                                    id: 'deal_' + deal.id, companyId: company.id,
+                                                                    name: `${deal.emoji} ${deal.name}`, category: 'Deals',
+                                                                    sellingPrice: deal.dealPrice, purchasePrice: deal.dealPrice * 0.6,
+                                                                    stockQty: 999, lowStockAlertQty: 0, unit: 'set',
+                                                                    barcode: '', hsnCode: '', gstRate: 5, taxIncluded: false,
+                                                                    
+                                                                };
+                                                                addToCart(dealProduct);
+                                                                setActiveView('dashboard');
+                                                                toast.success(`${deal.name} added to cart!`);
+                                                            }}
+                                                            style={{ background: '#EC4899', color: 'white', border: 'none', borderRadius: '10px', padding: '8px 14px', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}
+                                                        >
+                                                            + Add to Order
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             </div>
                                         ))}
@@ -3284,7 +3535,7 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
                                                     <td colSpan={8} style={{ textAlign: 'center', color: '#A0AEC0', padding: '30px' }}>No caterings or festival booking orders logged.</td>
                                                 </tr>
                                             ) : (
-                                                bulkOrders.map(b => (
+                                                bulkOrders.map((b: any) => (
                                                     <tr key={b.id}>
                                                         <td>
                                                             <strong>{b.customerName}</strong>
@@ -3346,10 +3597,11 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
                                                                             partyPhone: b.customerPhone,
                                                                             notes: `Event Date: ${b.eventDate} || Guests: ${b.guestCount} || Fully Paid Sale`,
                                                                             isGstBill: false, isHidden: false, isPrivate: false,
-                                                                            createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
+                                                                            createdAt: new Date().toISOString(),
+                                                                            updatedAt: new Date().toISOString()
                                                                         });
 
-                                                                        const updated = bulkOrders.map(o => o.id === b.id ? { ...o, status: 'completed' } : o);
+                                                                        const updated = bulkOrders.map((o: any) => o.id === b.id ? { ...o, status: 'completed' } : o);
                                                                         setBulkOrders(updated);
                                                                         toast.success('Catering Event marked completed and final sale generated!');
                                                                     }}
@@ -3468,6 +3720,16 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
                                                 onChange={e => setSettingsForm(s => ({ ...s, address: e.target.value }))}
                                                 className="modal-input"
                                             />
+                                        </div>
+                                        <div className="form-group" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '10px', marginTop: '15px', marginBottom: '15px' }}>
+                                            <input 
+                                                type="checkbox"
+                                                id="kds-toggle"
+                                                checked={settingsForm.kitchenDisplayEnabled} 
+                                                onChange={e => setSettingsForm(s => ({ ...s, kitchenDisplayEnabled: e.target.checked }))}
+                                                style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: primaryColor }}
+                                            />
+                                            <label htmlFor="kds-toggle" style={{ margin: 0, fontWeight: 600, cursor: 'pointer', fontSize: '13px' }}>Enable Kitchen Display System (KDS)</label>
                                         </div>
                                         <button type="submit" className="save-btn" style={{ background: primaryColor, marginTop: 10 }}>
                                             Save Profile Settings
@@ -4436,7 +4698,7 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
                         <div className="cart-totals-area">
                             <div className="total-row-item">
                                 <span>Service Charge</span>
-                                <strong>+₹10.00</strong>
+                                <strong>+₹{serviceCharge.toFixed(2)}</strong>
                             </div>
                             <div className="total-row-item">
                                 <span>Subtotal</span>
@@ -4444,7 +4706,7 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
                             </div>
                             <div className="total-row-grand" style={{ borderTop: `2px dashed ${primaryColor}` }}>
                                 <span>Total</span>
-                                <strong style={{ color: primaryColor }}>₹{(subTotal > 0 ? subTotal + tax + 10 : 0).toFixed(2)}</strong>
+                                <strong style={{ color: primaryColor }}>₹{total.toFixed(2)}</strong>
                             </div>
                             {selectedTable && (
                                 <button 
@@ -4513,6 +4775,7 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
                 {/* Floating Checkout Sidebar Toggle Button */}
                 {activeView === 'dashboard' && (
                     <button
+                        className="desktop-cart-toggle-btn"
                         onClick={() => setCartCollapsed(!cartCollapsed)}
                         style={{
                             position: 'fixed',
@@ -4974,7 +5237,7 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
                             <p style={{ fontSize: '12px', color: '#718096', marginBottom: '20px' }}>
                                 Configure the number of tables in each seating area. Changes are saved automatically.
                             </p>
-                            {customAreas.map(area => (
+                            {customAreas.map((area: any) => (
                                 <div key={area} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid #F1F5F9' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                         <span style={{ fontSize: '18px' }}>
@@ -5008,7 +5271,7 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
                                         >+</button>
                                         <button
                                             onClick={() => {
-                                                const updated = customAreas.filter(a => a !== area);
+                                                const updated = customAreas.filter((a: any) => a !== area);
                                                 const updatedCounts = { ...tableConfig };
                                                 delete updatedCounts[area];
                                                 setCustomAreas(updated);
@@ -5050,6 +5313,112 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
                         </div>
                         <div style={{ padding: '16px 24px', borderTop: '1px solid #F1F5F9', textAlign: 'right' }}>
                             <button onClick={() => setShowTableConfigModal(false)} style={{ background: primaryColor, color: 'white', border: 'none', borderRadius: '10px', padding: '10px 24px', fontWeight: 800, cursor: 'pointer' }}>Done</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* --- Shop & Profile Settings Modal --- */}
+            {showProfileModal && (
+                <div className="fooddesk-modal-overlay" onClick={() => setShowProfileModal(false)}>
+                    <div className="fooddesk-modal" style={{ maxWidth: '520px', width: '90%' }} onClick={e => e.stopPropagation()}>
+                        <div className="modal-header" style={{ background: `linear-gradient(135deg, ${primaryColor}, ${primaryHoverColor})`, color: 'white', borderRadius: '20px 20px 0 0' }}>
+                            <h3 style={{ color: 'white' }}>⚙️ Shop & Profile Settings</h3>
+                            <button className="close-btn" style={{ color: 'white', background: 'rgba(255,255,255,0.2)' }} onClick={() => setShowProfileModal(false)}>×</button>
+                        </div>
+                        <div className="modal-body" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr', gap: '14px', alignItems: 'center' }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
+                                    <label style={{ fontSize: '10px', fontWeight: 800, color: '#64748B', textTransform: 'uppercase' }}>Avatar</label>
+                                    <input
+                                        value={profileForm.avatar}
+                                        onChange={e => setProfileForm(prev => ({ ...prev, avatar: e.target.value }))}
+                                        className="modal-input"
+                                        style={{ textAlign: 'center', fontSize: '24px', padding: '8px', width: '60px' }}
+                                        maxLength={2}
+                                        placeholder="👨‍🍳"
+                                    />
+                                </div>
+                                <div>
+                                    <label style={{ fontSize: '11px', fontWeight: 800, color: '#4A5568', display: 'block', marginBottom: '6px', textTransform: 'uppercase' }}>Shop Name</label>
+                                    <input
+                                        placeholder="e.g. My Cafe"
+                                        value={profileForm.companyName}
+                                        onChange={e => setProfileForm(prev => ({ ...prev, companyName: e.target.value }))}
+                                        className="modal-input"
+                                        style={{ width: '100%' }}
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label style={{ fontSize: '11px', fontWeight: 800, color: '#4A5568', display: 'block', marginBottom: '6px', textTransform: 'uppercase' }}>Shop Address</label>
+                                <input
+                                    placeholder="e.g. 12 Main St, City"
+                                    value={profileForm.companyAddress}
+                                    onChange={e => setProfileForm(prev => ({ ...prev, companyAddress: e.target.value }))}
+                                    className="modal-input"
+                                    style={{ width: '100%' }}
+                                />
+                            </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                                <div>
+                                    <label style={{ fontSize: '11px', fontWeight: 800, color: '#4A5568', display: 'block', marginBottom: '6px', textTransform: 'uppercase' }}>Shop Phone</label>
+                                    <input
+                                        placeholder="e.g. +919988776655"
+                                        value={profileForm.companyPhone}
+                                        onChange={e => setProfileForm(prev => ({ ...prev, companyPhone: e.target.value }))}
+                                        className="modal-input"
+                                        style={{ width: '100%' }}
+                                    />
+                                </div>
+                                <div>
+                                    <label style={{ fontSize: '11px', fontWeight: 800, color: '#4A5568', display: 'block', marginBottom: '6px', textTransform: 'uppercase' }}>Cashier Name</label>
+                                    <input
+                                        placeholder="e.g. Alex"
+                                        value={profileForm.userName}
+                                        onChange={e => setProfileForm(prev => ({ ...prev, userName: e.target.value }))}
+                                        className="modal-input"
+                                        style={{ width: '100%' }}
+                                    />
+                                </div>
+                            </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', borderTop: '1px solid #E2E8F0', paddingTop: '16px' }}>
+                                <div>
+                                    <label style={{ fontSize: '11px', fontWeight: 800, color: '#4A5568', display: 'block', marginBottom: '6px', textTransform: 'uppercase' }}>Default Service Charge (₹)</label>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        placeholder="10.00"
+                                        value={profileForm.serviceCharge}
+                                        onChange={e => setProfileForm(prev => ({ ...prev, serviceCharge: parseFloat(e.target.value) || 0 }))}
+                                        className="modal-input"
+                                        style={{ width: '100%' }}
+                                    />
+                                </div>
+                                <div>
+                                    <label style={{ fontSize: '11px', fontWeight: 800, color: '#4A5568', display: 'block', marginBottom: '6px', textTransform: 'uppercase' }}>Default Tax / GST (%)</label>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        max="100"
+                                        placeholder="5"
+                                        value={profileForm.gstRate}
+                                        onChange={e => setProfileForm(prev => ({ ...prev, gstRate: parseFloat(e.target.value) || 0 }))}
+                                        className="modal-input"
+                                        style={{ width: '100%' }}
+                                    />
+                                </div>
+                            </div>
+
+                            <button
+                                onClick={handleSaveProfile}
+                                style={{ width: '100%', background: `linear-gradient(135deg, ${primaryColor}, ${primaryHoverColor})`, color: 'white', border: 'none', borderRadius: '12px', padding: '14px', fontSize: '13px', fontWeight: 800, cursor: 'pointer', marginTop: '10px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                            >
+                                ✓ Save Profile & Shop Details
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -5124,6 +5493,39 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
                                     </select>
                                 </div>
                             </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+                                <div>
+                                    <label style={{ fontSize: '11px', fontWeight: 700, color: '#4A5568', display: 'block', marginBottom: '6px' }}>Start Date</label>
+                                    <input
+                                        type="date"
+                                        value={dealForm.startDate}
+                                        onChange={e => setDealForm(prev => ({ ...prev, startDate: e.target.value }))}
+                                        className="modal-input"
+                                        style={{ width: '100%' }}
+                                    />
+                                </div>
+                                <div>
+                                    <label style={{ fontSize: '11px', fontWeight: 700, color: '#4A5568', display: 'block', marginBottom: '6px' }}>End Date</label>
+                                    <input
+                                        type="date"
+                                        value={dealForm.endDate}
+                                        onChange={e => setDealForm(prev => ({ ...prev, endDate: e.target.value }))}
+                                        className="modal-input"
+                                        style={{ width: '100%' }}
+                                    />
+                                </div>
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 14px', background: dealForm.isPromo ? '#FDF2F8' : '#F8FAFC', borderRadius: '10px', border: dealForm.isPromo ? '1px solid #FBCFE8' : '1px solid #E2E8F0', cursor: 'pointer', transition: 'all 0.2s', userSelect: 'none' }} onClick={() => setDealForm(prev => ({ ...prev, isPromo: !prev.isPromo }))}>
+                                <div style={{ width: '36px', height: '20px', borderRadius: '99px', background: dealForm.isPromo ? '#EC4899' : '#CBD5E1', position: 'relative', transition: 'all 0.2s', flexShrink: 0 }}>
+                                    <div style={{ position: 'absolute', width: '16px', height: '16px', borderRadius: '50%', background: 'white', top: '2px', left: dealForm.isPromo ? '18px' : '2px', transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
+                                </div>
+                                <div>
+                                    <p style={{ margin: 0, fontSize: '12px', fontWeight: 800, color: dealForm.isPromo ? '#EC4899' : '#4A5568' }}>🌟 Show in Promotional Banner</p>
+                                    <p style={{ margin: 0, fontSize: '10px', color: '#94A3B8', fontWeight: 500 }}>When active, this deal appears in the dashboard promo carousel</p>
+                                </div>
+                            </div>
+
                             <button
                                 onClick={() => {
                                     if (!dealForm.name || !dealForm.dealPrice) return toast.error('Name and price are required');
@@ -5131,7 +5533,10 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
                                         id: Math.random().toString(36).slice(2), name: dealForm.name,
                                         description: dealForm.description, items: [],
                                         dealPrice: parseFloat(dealForm.dealPrice), emoji: dealForm.emoji || '🎁',
-                                        type: dealForm.type, validFor: dealForm.validFor
+                                        type: dealForm.type, validFor: dealForm.validFor,
+                                        startDate: dealForm.startDate || null,
+                                        endDate: dealForm.endDate || null,
+                                        isPromo: dealForm.isPromo
                                     };
                                     const updated = [...deals, newDeal];
                                     setDeals(updated);
@@ -5236,6 +5641,249 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
                 </div>
             )}
 
+            {/* --- Table Actions Modal --- */}
+            {actionTable && (() => {
+                const key = `${actionTable.area}-${actionTable.tableNum}`;
+                const cached = tableCarts[key];
+                const isOccupied = !!(cached && cached.cart && cached.cart.length > 0);
+                const isDirty = dirtyTables[key];
+                const isCompleted = cached && cached.status === 'completed';
+
+                let statusText = 'Vacant';
+                let statusBg = '#E6F4EA';
+                let statusColor = '#137333';
+                if (isCompleted) {
+                    statusText = 'Completed (Eat Done / Pending Bill)';
+                    statusBg = '#FEF7E0';
+                    statusColor = '#B06000';
+                } else if (isOccupied) {
+                    statusText = 'Occupied';
+                    statusBg = '#FCE8E6';
+                    statusColor = '#C5221F';
+                } else if (isDirty) {
+                    statusText = 'Dirty (Needs Cleaning)';
+                    statusBg = '#F1F3F4';
+                    statusColor = '#5F6368';
+                }
+
+                return (
+                    <div className="fooddesk-modal-overlay" onClick={() => setActionTable(null)}>
+                        <div className="fooddesk-modal" style={{ maxWidth: '400px', width: '95%' }} onClick={e => e.stopPropagation()}>
+                            <div className="modal-header" style={{ borderBottom: '1px solid #F1F5F9' }}>
+                                <h3>🪑 Table {actionTable.tableNum} Actions</h3>
+                                <button className="close-btn" onClick={() => setActionTable(null)}>×</button>
+                            </div>
+                            <div className="modal-body" style={{ padding: '20px 24px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', paddingBottom: '12px', borderBottom: '1px dashed #E2E8F0' }}>
+                                    <span style={{ fontSize: '13px', fontWeight: 600, color: '#718096' }}>Seating Area:</span>
+                                    <span style={{ fontSize: '13px', fontWeight: 700, color: '#1A1A2E' }}>{actionTable.area}</span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+                                    <span style={{ fontSize: '13px', fontWeight: 600, color: '#718096' }}>Current Status:</span>
+                                    <span style={{
+                                        fontSize: '11px',
+                                        fontWeight: 900,
+                                        padding: '4px 10px',
+                                        borderRadius: '20px',
+                                        background: statusBg,
+                                        color: statusColor,
+                                        textTransform: 'uppercase',
+                                        letterSpacing: '0.5px'
+                                    }}>{statusText}</span>
+                                </div>
+
+                                {isOccupied && cached.cart && (
+                                    <div style={{ background: '#F8FAFC', padding: '12px', borderRadius: '12px', marginBottom: '20px', border: '1px solid #E2E8F0' }}>
+                                        <p style={{ margin: '0 0 8px', fontSize: '12px', fontWeight: 800, color: '#1A1A2E' }}>Active Order Items:</p>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '120px', overflowY: 'auto' }}>
+                                            {cached.cart.map((cartItem: any, idx: number) => (
+                                                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontWeight: 500 }}>
+                                                    <span style={{ color: '#4A5568' }}>{cartItem.item.name} <span style={{ fontWeight: 800, color: '#1A1A2E' }}>× {cartItem.qty}</span></span>
+                                                    <span style={{ fontWeight: 700, color: '#1A1A2E' }}>₹{(cartItem.item.sellingPrice * cartItem.qty).toFixed(2)}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                    {/* Action: Take or Edit Order */}
+                                    <button
+                                        style={{
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
+                                            background: '#F0FDF4', color: '#166534', border: '1px solid #BBF7D0',
+                                            borderRadius: '12px', padding: '12px', fontWeight: 800, fontSize: '13px',
+                                            cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s'
+                                        }}
+                                        onClick={() => {
+                                            setSelectedTable(actionTable.tableNum);
+                                            setTableNumber(`${actionTable.area} - Table ${actionTable.tableNum}`);
+                                            setOrderType('Dining');
+                                            if (isOccupied || isCompleted) {
+                                                setCart(cached.cart);
+                                                if (cached.notes) setNotesText(cached.notes);
+                                                if (cached.customerId) {
+                                                    const partyObj = parties.find(p => p.id === cached.customerId);
+                                                    if (partyObj) setSelectedParty(partyObj);
+                                                }
+                                            } else {
+                                                setCart([]);
+                                                setSelectedParty(null);
+                                                setNotesText('');
+                                            }
+                                            setActionTable(null);
+                                            toast.success(`Active POS Cart switched to Table ${actionTable.tableNum}`);
+                                        }}
+                                    >
+                                        📝 {isOccupied ? 'Edit Order / Add Items' : 'Take Order (Open POS Cart)'}
+                                    </button>
+
+                                    {/* Action: Mark Eat Done (Only for Occupied) */}
+                                    {isOccupied && !isCompleted && (
+                                        <button
+                                            style={{
+                                                display: 'flex', alignItems: 'center', gap: '10px',
+                                                background: '#FEF3C7', color: '#B45309', border: '1px solid #FDE68A',
+                                                borderRadius: '12px', padding: '12px', fontWeight: 800, fontSize: '13px',
+                                                cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s'
+                                            }}
+                                            onClick={() => {
+                                                setTableCarts((prev: any) => ({
+                                                    ...prev,
+                                                    [key]: {
+                                                        ...prev[key],
+                                                        status: 'completed'
+                                                    }
+                                                }));
+                                                toast.success(`Table ${actionTable.tableNum} marked Done (Dining Completed)!`);
+                                                setActionTable(null);
+                                            }}
+                                        >
+                                            🏁 Mark Eat Done (Dining Completed)
+                                        </button>
+                                    )}
+
+                                    {/* Action: Checkout & Bill */}
+                                    {(isOccupied || isCompleted) && (
+                                        <button
+                                            style={{
+                                                display: 'flex', alignItems: 'center', gap: '10px',
+                                                background: `linear-gradient(135deg, ${primaryColor}, ${primaryHoverColor})`, color: 'white', border: 'none',
+                                                borderRadius: '12px', padding: '12px', fontWeight: 800, fontSize: '13px',
+                                                cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s', boxShadow: '0 4px 10px rgba(0,0,0,0.05)'
+                                            }}
+                                            onClick={() => {
+                                                // Load to cart first
+                                                setSelectedTable(actionTable.tableNum);
+                                                setTableNumber(`${actionTable.area} - Table ${actionTable.tableNum}`);
+                                                setOrderType('Dining');
+                                                setCart(cached.cart);
+                                                if (cached.notes) setNotesText(cached.notes);
+                                                if (cached.customerId) {
+                                                    const partyObj = parties.find(p => p.id === cached.customerId);
+                                                    if (partyObj) setSelectedParty(partyObj);
+                                                }
+                                                setActionTable(null);
+                                                // Scroll to checkout section / alert
+                                                toast.success(`Loaded Table ${actionTable.tableNum} cart. Click 'Checkout & Print' to bill.`);
+                                            }}
+                                        >
+                                            🧾 Checkout & Bill (₹{cached.cart.reduce((sum: number, c: any) => sum + (c.item.sellingPrice * c.qty), 0).toFixed(2)})
+                                        </button>
+                                    )}
+
+                                    {/* Action: Send KOT to Kitchen (Only if occupied) */}
+                                    {isOccupied && (
+                                        <button
+                                            style={{
+                                                display: 'flex', alignItems: 'center', gap: '10px',
+                                                background: '#EFF6FF', color: '#1E40AF', border: '1px solid #BFDBFE',
+                                                borderRadius: '12px', padding: '12px', fontWeight: 800, fontSize: '13px',
+                                                cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s'
+                                            }}
+                                            onClick={() => {
+                                                setSelectedTable(actionTable.tableNum);
+                                                setTableNumber(`${actionTable.area} - Table ${actionTable.tableNum}`);
+                                                setOrderType('Dining');
+                                                setCart(cached.cart);
+                                                if (cached.notes) setNotesText(cached.notes);
+                                                if (cached.customerId) {
+                                                    const partyObj = parties.find(p => p.id === cached.customerId);
+                                                    if (partyObj) setSelectedParty(partyObj);
+                                                }
+                                                setActionTable(null);
+                                                // Send KOT directly
+                                                setTimeout(() => {
+                                                    handleSendToKitchen();
+                                                }, 100);
+                                            }}
+                                        >
+                                            🍳 Send KOT to Kitchen
+                                        </button>
+                                    )}
+
+                                    {/* Action: Clean / Reset Table */}
+                                    {(isOccupied || isCompleted || isDirty) && (
+                                        <button
+                                            style={{
+                                                display: 'flex', alignItems: 'center', gap: '10px',
+                                                background: '#FEF2F2', color: '#991B1B', border: '1px solid #FCA5A5',
+                                                borderRadius: '12px', padding: '12px', fontWeight: 800, fontSize: '13px',
+                                                cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s'
+                                            }}
+                                            onClick={() => {
+                                                // Clear table cart
+                                                setTableCarts((prev: any) => {
+                                                    const next = { ...prev };
+                                                    delete next[key];
+                                                    return next;
+                                                });
+                                                setDirtyTables((prev: any) => ({
+                                                    ...prev,
+                                                    [key]: false
+                                                }));
+                                                if (selectedTable === actionTable.tableNum) {
+                                                    setCart([]);
+                                                    setSelectedTable(null);
+                                                    setSelectedParty(null);
+                                                    setNotesText('');
+                                                }
+                                                toast.success(`Table ${actionTable.tableNum} has been fully cleared & set to Vacant!`);
+                                                setActionTable(null);
+                                            }}
+                                        >
+                                            🧹 Clean & Vacate Table
+                                        </button>
+                                    )}
+
+                                    {/* Action: Just mark clean (Only if Dirty) */}
+                                    {isDirty && !isOccupied && !isCompleted && (
+                                        <button
+                                            style={{
+                                                display: 'flex', alignItems: 'center', gap: '10px',
+                                                background: '#F1F5F9', color: '#334155', border: '1px solid #CBD5E1',
+                                                borderRadius: '12px', padding: '12px', fontWeight: 800, fontSize: '13px',
+                                                cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s'
+                                            }}
+                                            onClick={() => {
+                                                setDirtyTables((prev: any) => ({
+                                                    ...prev,
+                                                    [key]: false
+                                                }));
+                                                toast.success(`Table ${actionTable.tableNum} marked Clean.`);
+                                                setActionTable(null);
+                                            }}
+                                        >
+                                            🧹 Mark Table as Cleaned
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
+
             {/* --- Thermal Receipt Modal --- */}
             {viewingReceipt && (
                 <div className="fooddesk-modal-overlay" onClick={() => setViewingReceipt(null)}>
@@ -5298,24 +5946,6 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
                                 </div>
                             )}
 
-                            {/* WhatsApp share widget */}
-                            <div style={{ borderTop: '1px dashed #000', paddingTop: '16px', marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'center' }}>
-                                <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
-                                    <input 
-                                        type="tel"
-                                        placeholder="WhatsApp Phone Number"
-                                        value={whatsappPhone}
-                                        onChange={(e) => setWhatsappPhone(e.target.value)}
-                                        style={{ flex: 1, padding: '8px 12px', border: '1px solid #CBD5E0', borderRadius: '8px', fontSize: '12px', fontFamily: 'sans-serif' }}
-                                    />
-                                    <button 
-                                        onClick={handleShareWhatsApp}
-                                        style={{ background: '#25D366', color: '#FFFFFF', border: 'none', borderRadius: '8px', padding: '8px 12px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
-                                    >
-                                        💬 Share
-                                    </button>
-                                </div>
-                            </div>
 
                             <div style={{ textAlign: 'center', marginTop: '24px', fontSize: '11px' }}>
                                 <p style={{ margin: 0 }}>Thank you for your visit!</p>
@@ -5336,22 +5966,22 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
             {/* FOODDESK PORTAL STYLES */}
             <style>{`
                 .fooddesk-shell { display: flex; height: 100vh; width: 100vw; background: #F8FAFC; overflow: hidden; font-family: 'Outfit', 'Inter', sans-serif; }
-                .fooddesk-sidebar { width: 250px; background: #1A1A2E; color: white; display: flex; flex-direction: column; flex-shrink: 0; box-shadow: 4px 0 24px rgba(0,0,0,0.05); }
+                .fooddesk-sidebar { width: 250px; background: white; color: #1E293B; display: flex; flex-direction: column; flex-shrink: 0; box-shadow: 4px 0 24px rgba(0,0,0,0.05); border-right: 1px solid #E2E8F0; }
                 
-                .brand-logo-panel { padding: 24px 20px; border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; gap: 12px; }
-                .brand-logo-img-wrapper { width: 44px; height: 44px; border-radius: 12px; overflow: hidden; background: white; padding: 4px; display: flex; align-items: center; justify-content: center; }
+                .brand-logo-panel { padding: 24px 20px; border-bottom: 1px solid #E2E8F0; display: flex; align-items: center; gap: 12px; }
+                .brand-logo-img-wrapper { width: 44px; height: 44px; border-radius: 12px; overflow: hidden; background: white; padding: 4px; display: flex; align-items: center; justify-content: center; border: 1px solid #E2E8F0; }
                 .brand-logo-img { width: 100%; height: 100%; object-fit: contain; }
-                .brand-name { font-weight: 900; font-size: 20px; margin: 0; color: white; }
-                .brand-mode { font-size: 11px; margin: 2px 0 0; color: rgba(255,255,255,0.4); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+                .brand-name { font-weight: 900; font-size: 20px; margin: 0; color: #1A1A2E; }
+                .brand-mode { font-size: 11px; margin: 2px 0 0; color: #64748B; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
                 
                 .sidebar-links-panel { display: flex; flex-direction: column; gap: 6px; }
-                .sidebar-tab-btn { border: none; background: none; display: flex; align-items: center; gap: 14px; padding: 12px 16px; border-radius: 12px; color: rgba(255,255,255,0.6); text-decoration: none; font-size: 14px; font-weight: 600; transition: all 0.2s; cursor: pointer; text-align: left; width: 100%; }
-                .sidebar-tab-btn:hover { background: rgba(255,255,255,0.04); color: white; }
-                .sidebar-tab-btn.active { color: white; box-shadow: 0 8px 16px rgba(0,0,0,0.15); }
+                .sidebar-tab-btn { border: none; background: none; display: flex; align-items: center; gap: 14px; padding: 12px 16px; border-radius: 12px; color: #475569; text-decoration: none; font-size: 14px; font-weight: 600; transition: all 0.2s; cursor: pointer; text-align: left; width: 100%; }
+                .sidebar-tab-btn:hover { background: rgba(0,0,0,0.04); color: #1E293B; }
+                .sidebar-tab-btn.active { color: white !important; box-shadow: 0 8px 16px rgba(0,0,0,0.1); }
                 
-                .sidebar-exit-area { padding: 20px 16px; margin-top: auto; border-top: 1px solid rgba(255,255,255,0.08); }
-                .exit-link { display: flex; align-items: center; gap: 12px; color: rgba(255,255,255,0.4); text-decoration: none; font-size: 13px; font-weight: 700; transition: color 0.2s; }
-                .exit-link:hover { color: #EA4335; }
+                .sidebar-exit-area { padding: 20px 16px; margin-top: auto; border-top: 1px solid #E2E8F0; }
+                .exit-link { display: flex; align-items: center; gap: 12px; color: #64748B; text-decoration: none; font-size: 13px; font-weight: 700; transition: color 0.2s; }
+                .exit-link:hover { color: #EF4444; }
                 
                 .fooddesk-main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
                 .fooddesk-topbar { height: 75px; background: white; border-bottom: 1px solid #E2E8F0; display: flex; align-items: center; justify-content: space-between; padding: 0 32px; flex-shrink: 0; }
@@ -5364,6 +5994,9 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
                 .notif-btn { width: 40px; height: 40px; border-radius: 50%; border: 1px solid #E2E8F0; background: white; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #4A5568; }
                 .notif-btn:hover { background: #F8FAFC; }
                 .user-avatar-circle { width: 40px; height: 40px; border-radius: 50%; font-size: 20px; display: flex; align-items: center; justify-content: center; font-weight: bold; }
+                .mobile-hamburger-btn { display: none; }
+                .desktop-sidebar-toggle-btn { display: flex; }
+                .mobile-cart-toggle-btn { display: none; }
 
                 .fooddesk-body { flex: 1; padding: 24px 32px; overflow-y: auto; }
                 .promo-banner { border-radius: 24px; padding: 28px 36px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 10px 30px rgba(0,0,0,0.02); margin-bottom: 28px; position: relative; overflow: hidden; }
@@ -5375,6 +6008,13 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
                 .order-now-btn { color: white; border: none; font-weight: 800; font-size: 13px; padding: 10px 24px; border-radius: 12px; cursor: pointer; box-shadow: 0 8px 16px rgba(0,0,0,0.08); transition: transform 0.2s; }
                 .order-now-btn:hover { transform: translateY(-1px); }
                 .promo-graphic { font-size: 96px; position: absolute; right: 36px; top: 50%; transform: translateY(-50%); opacity: 0.95; user-select: none; }
+                .sidebar-profile-panel:hover { background: #F1F5F9 !important; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+
+                @keyframes promoFadeIn {
+                    from { opacity: 0; transform: translateX(16px); }
+                    to { opacity: 1; transform: translateX(0); }
+                }
+                .promo-animate { animation: promoFadeIn 0.45s cubic-bezier(0.22, 1, 0.36, 1); }
 
                 .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; margin-top: 12px; }
                 .section-header h3 { font-size: 18px; font-weight: 900; color: #1A1A2E; margin: 0; }
@@ -5523,6 +6163,12 @@ function RestaurantBakeryDashboard({ company }: { company: any }) {
                     .mobile-cart-toggle-btn {
                         display: flex !important;
                     }
+                    .desktop-sidebar-toggle-btn {
+                        display: none !important;
+                    }
+                    .desktop-cart-toggle-btn {
+                        display: none !important;
+                    }
                 }
                 @media (max-width: 768px) {
                     .fooddesk-topbar {
@@ -5571,6 +6217,12 @@ function LogisticsDashboard({ company }: { company: any }) {
     const invoices = useCompanyData('invoices') as Invoice[];
     const { addInvoice, nextInvoiceNumber } = useStore();
     const router = useRouter();
+
+    useEffect(() => {
+        if (company && company.type === 'Logistics') {
+            router.replace('/logistics/tracking');
+        }
+    }, [company, router]);
 
     const [searchQuery, setSearchQuery] = useState('');
     const [activeStatus, setActiveStatus] = useState('All');
@@ -6600,14 +7252,364 @@ function RetailDashboard({ company }: { company: any }) {
 }
 
 // ============================================================================
-// 4. MAIN ENTRY POINT SWITCH ROUTER
+// 4. FRANCHISE CONSOLIDATED DASHBOARD (HEAD OFFICE MAIN VIEW)
+// ============================================================================
+function FranchiseConsolidatedDashboard({ company }: { company: any }) {
+    const invoices = useCompanyData('invoices') as Invoice[];
+    const expenses = useCompanyData('expenses') as Expense[];
+    const products = useCompanyData('products') as Product[];
+    const stockTransfers = useStore(state => state.stockTransfers) || [];
+
+    const DRAFT_TYPES = ['estimate', 'proforma', 'delivery_challan'];
+    const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
+    
+    const todayInv = useMemo(() => {
+        return invoices.filter(inv => inv.date === today && inv.invoiceType === 'sale' && !DRAFT_TYPES.includes(inv.invoiceType));
+    }, [invoices, today]);
+
+    const todayConsolidatedSales = useMemo(() => {
+        return todayInv.reduce((sum, inv) => sum + (inv.grandTotal || 0), 0);
+    }, [todayInv]);
+
+    const totalConsolidatedStockValue = useMemo(() => {
+        return products.reduce((acc, p) => {
+            const hoStock = p.branchStock?.head_office ?? p.stockQty ?? 0;
+            let otherStockSum = 0;
+            if (p.branchStock) {
+                otherStockSum = Object.entries(p.branchStock)
+                    .filter(([key]) => key !== 'head_office')
+                    .reduce((sum, [_, q]) => sum + (parseFloat(q as any) || 0), 0);
+            }
+            const totalProductStock = hoStock + otherStockSum;
+            return acc + (totalProductStock * (p.purchasePrice || 0));
+        }, 0);
+    }, [products]);
+
+    const pendingTransfersCount = useMemo(() => {
+        return stockTransfers.filter(t => t.status === 'pending').length;
+    }, [stockTransfers]);
+
+    const outletStatsData = useMemo(() => {
+        const hoSales = invoices.filter(i => (!i.branchId || i.branchId === 'head_office') && i.invoiceType === 'sale' && !DRAFT_TYPES.includes(i.invoiceType)).reduce((sum, i) => sum + (i.grandTotal || 0), 0);
+        const hoPurchases = invoices.filter(i => (!i.branchId || i.branchId === 'head_office') && i.invoiceType === 'purchase').reduce((sum, i) => sum + (i.grandTotal || 0), 0);
+        const hoExpenses = expenses.filter(e => !e.branchId || e.branchId === 'head_office').reduce((sum, e) => sum + (e.amount || 0), 0);
+        const hoProfit = hoSales - hoPurchases - hoExpenses;
+        const hoStockValue = products.reduce((acc, p) => {
+            const qty = p.branchStock?.head_office ?? p.stockQty ?? 0;
+            return acc + (qty * (p.purchasePrice || 0));
+        }, 0);
+
+        const hoTodaySales = invoices.filter(i => (!i.branchId || i.branchId === 'head_office') && i.date === today && i.invoiceType === 'sale' && !DRAFT_TYPES.includes(i.invoiceType)).reduce((sum, i) => sum + (i.grandTotal || 0), 0);
+
+        const data = [
+            {
+                name: 'Head Office',
+                sales: hoSales,
+                profit: hoProfit,
+                stockValue: hoStockValue,
+                todaySales: hoTodaySales,
+                manager: company.managerName || 'Owner',
+                color: '#4F46E5',
+                target: company.dailyTarget || 50000
+            }
+        ];
+
+        const colors = ['#10B981', '#3B82F6', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#14B8A6'];
+
+        (company.branches || []).forEach((b: any, index: number) => {
+            const bSales = invoices.filter(i => i.branchId === b.id && i.invoiceType === 'sale' && !DRAFT_TYPES.includes(i.invoiceType)).reduce((sum, i) => sum + (i.grandTotal || 0), 0);
+            const bPurchases = invoices.filter(i => i.branchId === b.id && i.invoiceType === 'purchase').reduce((sum, i) => sum + (i.grandTotal || 0), 0);
+            const bExpenses = expenses.filter(e => e.branchId === b.id).reduce((sum, e) => sum + (e.amount || 0), 0);
+            const bProfit = bSales - bPurchases - bExpenses;
+            const bStockValue = products.reduce((acc, p) => {
+                const qty = p.branchStock?.[b.id] ?? 0;
+                return acc + (qty * (p.purchasePrice || 0));
+            }, 0);
+
+            const bTodaySales = invoices.filter(i => i.branchId === b.id && i.date === today && i.invoiceType === 'sale' && !DRAFT_TYPES.includes(i.invoiceType)).reduce((sum, i) => sum + (i.grandTotal || 0), 0);
+
+            data.push({
+                name: b.name,
+                sales: bSales,
+                profit: bProfit,
+                stockValue: bStockValue,
+                todaySales: bTodaySales,
+                manager: b.managerName || 'Staff',
+                color: colors[index % colors.length],
+                target: b.dailyTarget || company.dailyTarget || 25000
+            });
+        });
+
+        return data;
+    }, [company.branches, invoices, expenses, products, company.managerName, today, company.dailyTarget]);
+
+    const bestSellersData = useMemo(() => {
+        const saleInvs = invoices.filter(i => i.invoiceType === 'sale' && !DRAFT_TYPES.includes(i.invoiceType));
+        const itemMap: Record<string, { name: string; qty: number; value: number }> = {};
+        saleInvs.forEach((inv) => {
+            (inv.items || []).forEach((it) => {
+                if (!itemMap[it.name]) {
+                    itemMap[it.name] = { name: it.name, qty: 0, value: 0 };
+                }
+                itemMap[it.name].qty += it.qty;
+                itemMap[it.name].value += it.amount;
+            });
+        });
+        return Object.values(itemMap)
+            .sort((a, b) => b.qty - a.qty)
+            .slice(0, 5);
+    }, [invoices]);
+
+    return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 1200, padding: 32 }} className="franchise-dash">
+            {/* Header Banner */}
+            <div style={{
+                background: 'linear-gradient(135deg, #4F46E5 0%, #312E81 100%)',
+                borderRadius: 24, padding: '32px 32px 28px', position: 'relative', overflow: 'hidden',
+                boxShadow: '0 20px 40px rgba(79, 70, 229, 0.15)', border: '1px solid rgba(255,255,255,0.1)'
+            }}>
+                <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: 'linear-gradient(90deg, #10B981, #3B82F6, #F59E0B, #EF4444)' }} />
+                <div style={{ position: 'absolute', right: -30, bottom: -30, width: 200, height: 200, borderRadius: 999, background: 'rgba(255,255,255,0.03)', pointerEvents: 'none' }} />
+                
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24, position: 'relative', zIndex: 1, gap: 16 }}>
+                    <div>
+                        <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>
+                            {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}
+                        </p>
+                        <h1 style={{ color: 'white', fontWeight: 900, fontSize: 28, margin: 0, letterSpacing: '-0.02em' }}>Consolidated Dashboard</h1>
+                        <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13, marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#10B981' }}></span>
+                            Head Office Portal · {company.name} · {company.branches?.length || 0} Outlets Online
+                        </p>
+                    </div>
+                    <Link href="/company/settings?tab=franchise" style={{
+                        display: 'flex', alignItems: 'center', gap: 8,
+                        background: 'white', color: '#4F46E5',
+                        padding: '10px 20px', borderRadius: 12, textDecoration: 'none',
+                        fontWeight: 700, fontSize: 13, boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                        transition: 'transform 0.2s, box-shadow 0.2s'
+                    }} className="hover-scale">
+                        <Settings size={14} /> Manage Outlets
+                    </Link>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 16 }}>
+                    {[
+                        { label: 'Total Branches', value: String(company.branches?.length || 0), desc: 'Connected nodes' },
+                        { label: "Today's Consolidated Sales", value: `₹${todayConsolidatedSales.toLocaleString('en-IN')}`, desc: `${todayInv.length} total bills today` },
+                        { label: 'Consolidated Stock Value', value: `₹${totalConsolidatedStockValue.toLocaleString('en-IN')}`, desc: 'Across all warehouses' },
+                    ].map(({ label, value, desc }) => (
+                        <div key={label} style={{ background: 'rgba(255,255,255,0.06)', backdropFilter: 'blur(10px)', borderRadius: 16, padding: '16px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                            <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>{label}</p>
+                            <p style={{ color: 'white', fontWeight: 900, fontSize: 22, margin: 0 }}>{value}</p>
+                            <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: 10, marginTop: 4, margin: 0 }}>{desc}</p>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            {/* KPI Cards Grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 20 }}>
+                <div className="kpi-card" style={{ borderLeft: '4px solid #4F46E5' }}>
+                    <div className="kpi-card-header">
+                        <span>ACTIVE OUTLETS</span>
+                        <Warehouse size={18} color="#4F46E5" />
+                    </div>
+                    <div className="kpi-card-body">
+                        <h2 className="kpi-val">{company.branches?.length || 0} Outlets</h2>
+                        <p style={{ fontSize: 11, color: '#64748B', fontWeight: 600 }}>Active franchise licenses</p>
+                    </div>
+                </div>
+
+                <div className="kpi-card" style={{ borderLeft: '4px solid #10B981' }}>
+                    <div className="kpi-card-header">
+                        <span>TODAY'S SALES</span>
+                        <DollarSign size={18} color="#10B981" />
+                    </div>
+                    <div className="kpi-card-body">
+                        <h2 className="kpi-val">₹{todayConsolidatedSales.toLocaleString('en-IN')}</h2>
+                        <p style={{ fontSize: 11, color: '#64748B', fontWeight: 600 }}>Combined network revenue</p>
+                    </div>
+                </div>
+
+                <div className="kpi-card" style={{ borderLeft: '4px solid #F59E0B' }}>
+                    <div className="kpi-card-header">
+                        <span>CONSOLIDATED INVENTORY</span>
+                        <Package size={18} color="#F59E0B" />
+                    </div>
+                    <div className="kpi-card-body">
+                        <h2 className="kpi-val">₹{totalConsolidatedStockValue.toLocaleString('en-IN')}</h2>
+                        <p style={{ fontSize: 11, color: '#64748B', fontWeight: 600 }}>Total asset valuation</p>
+                    </div>
+                </div>
+
+                <Link href="/company/inventory?tab=transfers" style={{ textDecoration: 'none', color: 'inherit' }} className="kpi-card-link">
+                    <div className="kpi-card" style={{ borderLeft: `4px solid ${pendingTransfersCount > 0 ? '#EF4444' : '#6366F1'}`, cursor: 'pointer', height: '100%' }}>
+                        <div className="kpi-card-header">
+                            <span>PENDING TRANSFERS</span>
+                            <RefreshCw size={18} color={pendingTransfersCount > 0 ? '#EF4444' : '#6366F1'} className={pendingTransfersCount > 0 ? 'spin-slow' : ''} />
+                        </div>
+                        <div className="kpi-card-body">
+                            <h2 className="kpi-val" style={{ color: pendingTransfersCount > 0 ? '#EF4444' : 'inherit' }}>{pendingTransfersCount} Requests</h2>
+                            <p style={{ fontSize: 11, color: '#64748B', fontWeight: 600 }}>
+                                {pendingTransfersCount > 0 ? '⚠️ Action required to approve' : 'All stock transfers resolved'}
+                            </p>
+                        </div>
+                    </div>
+                </Link>
+            </div>
+
+            {/* Charts Section */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(480px, 1fr))', gap: 24 }} className="charts-grid">
+                {/* Sales & Profit Chart */}
+                <div className="card" style={{ padding: 24 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+                        <h3 style={{ fontSize: 15, fontWeight: 800, color: '#1A1A2E', margin: 0 }}>Sales & Net Profit by Outlet</h3>
+                        <span style={{ fontSize: 10, color: '#94A3B8', fontWeight: 700, textTransform: 'uppercase' }}>All-Time Performance</span>
+                    </div>
+                    <div style={{ height: 260, width: '100%' }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={outletStatsData}>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+                                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 600, fill: '#64748B' }} />
+                                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 600, fill: '#64748B' }} tickFormatter={formatShort} />
+                                <Tooltip formatter={(val: any) => [`₹${(val || 0).toLocaleString()}`]} contentStyle={{ borderRadius: 12, border: 'none', boxShadow: '0 8px 24px rgba(0,0,0,0.08)', fontWeight: 700 }} />
+                                <Legend wrapperStyle={{ fontSize: 11, fontWeight: 600 }} />
+                                <Bar dataKey="sales" name="Sales Revenue" fill="#4F46E5" radius={[4, 4, 0, 0]} />
+                                <Bar dataKey="profit" name="Net Profit" fill="#10B981" radius={[4, 4, 0, 0]} />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+
+                {/* Stock Value Distribution */}
+                <div className="card" style={{ padding: 24 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+                        <h3 style={{ fontSize: 15, fontWeight: 800, color: '#1A1A2E', margin: 0 }}>Inventory Valuation by Outlet</h3>
+                        <span style={{ fontSize: 10, color: '#94A3B8', fontWeight: 700, textTransform: 'uppercase' }}>Warehouse Value</span>
+                    </div>
+                    <div style={{ height: 260, width: '100%' }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={outletStatsData} layout="vertical">
+                                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#F1F5F9" />
+                                <XAxis type="number" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 600, fill: '#64748B' }} tickFormatter={formatShort} />
+                                <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 600, fill: '#64748B' }} />
+                                <Tooltip formatter={(val: any) => [`₹${(val || 0).toLocaleString()}`]} contentStyle={{ borderRadius: 12, border: 'none', boxShadow: '0 8px 24px rgba(0,0,0,0.08)', fontWeight: 700 }} />
+                                <Bar dataKey="stockValue" name="Stock Value" radius={[0, 4, 4, 0]}>
+                                    {outletStatsData.map((entry, index) => (
+                                        <Cell key={`cell-${index}`} fill={entry.color} />
+                                    ))}
+                                </Bar>
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+            </div>
+
+            {/* Bottom Row: Outlet Targets & Top Products */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(480px, 1fr))', gap: 24 }}>
+                {/* Outlets Performance Tracker */}
+                <div className="card" style={{ padding: 24 }}>
+                    <div style={{ borderBottom: '1px solid #F1F5F9', paddingBottom: 16, marginBottom: 16 }}>
+                        <h3 style={{ fontSize: 15, fontWeight: 800, color: '#1A1A2E', margin: 0 }}>Outlet Daily Target Tracker</h3>
+                        <p style={{ fontSize: 11, color: '#94A3B8', margin: '4px 0 0', fontWeight: 600 }}>Tracking today's sales progress against set daily targets</p>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                        {outletStatsData.map((outlet) => {
+                            const percent = Math.min(100, Math.round((outlet.todaySales / outlet.target) * 100));
+                            return (
+                                <div key={outlet.name} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                            <div style={{ width: 10, height: 10, borderRadius: '50%', background: outlet.color }} />
+                                            <span style={{ fontSize: 13, fontWeight: 800, color: '#1E293B' }}>{outlet.name}</span>
+                                            <span style={{ fontSize: 10, color: '#64748B', fontWeight: 600 }}>({outlet.manager})</span>
+                                        </div>
+                                        <div style={{ textAlign: 'right' }}>
+                                            <span style={{ fontSize: 12, fontWeight: 900, color: '#1E293B' }}>₹{outlet.todaySales.toLocaleString('en-IN')}</span>
+                                            <span style={{ fontSize: 11, color: '#64748B', fontWeight: 600 }}> / ₹{outlet.target.toLocaleString('en-IN')}</span>
+                                        </div>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                        <div style={{ flex: 1, height: 8, background: '#E2E8F0', borderRadius: 99, overflow: 'hidden' }}>
+                                            <div style={{ width: `${percent}%`, height: '100%', background: outlet.color, borderRadius: 99, transition: 'width 0.4s ease' }} />
+                                        </div>
+                                        <span style={{ fontSize: 11, fontWeight: 800, color: '#475569', minWidth: 32, textAlign: 'right' }}>{percent}%</span>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+
+                {/* Best Selling Products */}
+                <div className="card" style={{ padding: 24 }}>
+                    <div style={{ borderBottom: '1px solid #F1F5F9', paddingBottom: 16, marginBottom: 16 }}>
+                        <h3 style={{ fontSize: 15, fontWeight: 800, color: '#1A1A2E', margin: 0 }}>Top Selling Products across Franchise</h3>
+                        <p style={{ fontSize: 11, color: '#94A3B8', margin: '4px 0 0', fontWeight: 600 }}>Highest unit volume products sold throughout the network</p>
+                    </div>
+                    {bestSellersData.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: '40px 20px', color: '#94A3B8' }}>
+                            <Package size={32} style={{ margin: '0 auto 8px' }} />
+                            <p style={{ fontSize: 12, fontWeight: 600 }}>No sales data available yet</p>
+                        </div>
+                    ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                            {bestSellersData.map((item, index) => (
+                                <div key={item.name} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', background: '#FAFAFA', borderRadius: 12, border: '1px solid #F1F5F9' }}>
+                                    <div style={{ width: 28, height: 28, borderRadius: 8, background: '#EFF6FF', color: '#1E40AF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 12 }}>
+                                        #{index + 1}
+                                    </div>
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                        <h4 style={{ fontSize: 13, fontWeight: 800, color: '#1E293B', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</h4>
+                                        <span style={{ fontSize: 10, color: '#64748B', fontWeight: 600 }}>{item.qty} units sold</span>
+                                    </div>
+                                    <div style={{ textAlign: 'right' }}>
+                                        <span style={{ fontSize: 13, fontWeight: 900, color: '#10B981', display: 'block' }}>₹{item.value.toLocaleString('en-IN')}</span>
+                                        <span style={{ fontSize: 9, color: '#94A3B8', fontWeight: 700 }}>REVENUE</span>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            <style>{`
+                .franchise-dash .kpi-card { background: white; border: 1px solid #E2E8F0; padding: 20px; border-radius: 16px; box-shadow: 0 4px 16px rgba(0,0,0,0.02); display: flex; flex-direction: column; gap: 12px; }
+                .franchise-dash .kpi-card-header { display: flex; justify-content: space-between; align-items: center; }
+                .franchise-dash .kpi-card-header span { font-size: 10px; font-weight: 800; color: #64748B; letter-spacing: 0.05em; }
+                .franchise-dash .kpi-val { font-size: 22px; font-weight: 900; color: #1E293B; margin: 0; }
+                .franchise-dash .kpi-card-link { transition: transform 0.15s; }
+                .franchise-dash .kpi-card-link:hover { transform: translateY(-2px); }
+                @keyframes spinSlow {
+                    from { transform: rotate(0deg); }
+                    to { transform: rotate(360deg); }
+                }
+                .spin-slow { animation: spinSlow 8s linear infinite; }
+                .hover-scale:hover { transform: scale(1.02); box-shadow: 0 6px 16px rgba(0,0,0,0.12) !important; }
+                @media (max-width: 768px) {
+                    .charts-grid { grid-template-columns: 1fr !important; }
+                }
+            `}</style>
+        </div>
+    );
+}
+
+// ============================================================================
+// 5. MAIN ENTRY POINT SWITCH ROUTER
 // ============================================================================
 export default function DashboardPage() {
-    const { isHydrating, activeCompanyId } = useStore();
+    const { isHydrating, activeBranchId, isSubBranchLogin } = useStore();
     const company = useActiveCompany();
 
     if (isHydrating) return <SkeletonDashboard />;
     if (!company) return null;
+
+    // Head office franchise consolidated dashboard
+    if (company.franchiseEnabled && !isSubBranchLogin && !activeBranchId) {
+        return <FranchiseConsolidatedDashboard company={company} />;
+    }
 
     if (company.type === 'Restaurant' || company.type === 'Bakery') {
         return <RestaurantBakeryDashboard company={company} />;
@@ -6617,3 +7619,4 @@ export default function DashboardPage() {
         return <RetailDashboard company={company} />;
     }
 }
+

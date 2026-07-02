@@ -142,6 +142,27 @@ export default function AppLayout({ children, title }: AppLayoutProps) {
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     const pathname = usePathname();
     const company = useActiveCompany();
+    const router = useRouter();
+
+    useEffect(() => {
+        if (company && company.type === 'Logistics') {
+            if (pathname.startsWith('/company/dashboard')) {
+                router.replace('/logistics/tracking');
+            } else if (pathname.startsWith('/company/inventory')) {
+                router.replace('/logistics/vehicles');
+            } else if (pathname.startsWith('/company/expenses')) {
+                router.replace('/logistics/fuel');
+            } else if (pathname.startsWith('/company/parties')) {
+                router.replace('/logistics/drivers');
+            } else if (pathname.startsWith('/company/reports')) {
+                router.replace('/logistics/analytics');
+            } else if (pathname.startsWith('/company/settings')) {
+                router.replace('/logistics/settings');
+            } else if (pathname.startsWith('/company/help')) {
+                router.replace('/logistics/settings');
+            }
+        }
+    }, [company, pathname, router]);
 
     useEffect(() => {
         const stored = localStorage.getItem('sidebar_collapsed');

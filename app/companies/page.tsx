@@ -155,11 +155,7 @@ export default function CompaniesPage() {
                                 <button
                                     onClick={() => {
                                         if (typeof (window as any).forceEdibioCloudSync === 'function') {
-                                            (window as any).forceEdibioCloudSync().then(() => {
-                                                setTimeout(() => window.location.reload(), 1000);
-                                            });
-                                        } else {
-                                            window.location.reload();
+                                            (window as any).forceEdibioCloudSync();
                                         }
                                     }}
                                     style={{ background: 'linear-gradient(135deg, #4285F4, #1967D2)', color: 'white', border: 'none', padding: '10px 18px', borderRadius: 10, fontWeight: 700, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, boxShadow: '0 4px 12px rgba(66,133,244,0.3)' }}

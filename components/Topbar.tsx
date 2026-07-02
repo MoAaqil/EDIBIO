@@ -18,7 +18,7 @@ interface TopbarProps {
 }
 
 export default function Topbar({ title, onMenuOpen, onDesktopToggle, isSidebarCollapsed }: TopbarProps) {
-    const { user, resetAll } = useStore();
+    const { user, resetAll, activeBranchId, setActiveBranchId, isSubBranchLogin } = useStore();
     const company = useActiveCompany();
     const products = useCompanyData('products') as any[] || [];
     const parties = useCompanyData('parties') as any[] || [];
@@ -28,7 +28,21 @@ export default function Topbar({ title, onMenuOpen, onDesktopToggle, isSidebarCo
     const router = useRouter();
     const pathname = usePathname();
 
-    const displayTitle = title || deriveTitleFromPath(pathname);
+    const displayTitle = useMemo(() => {
+        if (title) return title;
+        const parts = pathname.split('/').filter(Boolean);
+        if (parts.length === 3 && parts[0] === 'company') {
+            const [_, segment, id] = parts;
+            if (segment === 'inventory') {
+                const prod = products.find(p => p.id === id);
+                if (prod) return prod.name;
+            } else if (segment === 'parties') {
+                const party = parties.find(p => p.id === id);
+                if (party) return party.name;
+            }
+        }
+        return deriveTitleFromPath(pathname);
+    }, [title, pathname, products, parties]);
 
     const handleLogout = async () => {
         try {
@@ -118,19 +132,29 @@ export default function Topbar({ title, onMenuOpen, onDesktopToggle, isSidebarCo
                 <h1 style={{ fontSize: 18, fontWeight: 800, color: '#1A1A2E', flex: 1 }}>{displayTitle}</h1>
             )}
 
-            {/* Godown selector */}
-            {company && company.godowns.length > 1 && (
-                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }} className="godown-selector">
-                    <Store size={14} color="#718096" />
-                    <select className="e-select" style={{ width: 'auto', padding: '6px 10px', fontSize: 12 }}>
-                        {company.godowns.map(g => (
-                            <option key={g.id} value={g.id}>{g.name}</option>
-                        ))}
-                    </select>
+            {/* Branch selector / Switcher */}
+            {company && company.franchiseEnabled && (
+                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }} className="branch-selector">
+                    <Store size={14} color="#7C3AED" />
+                    {isSubBranchLogin ? (
+                        <span style={{ fontSize: 13, fontWeight: 800, color: '#7C3AED', background: '#F5F3FF', padding: '6px 12px', borderRadius: 8, border: '1.5px solid #DDD6FE' }}>
+                            📍 {company.branches?.find((b: any) => b.id === activeBranchId)?.name || 'Sub Branch'}
+                        </span>
+                    ) : (
+                        <select 
+                            className="e-select" 
+                            style={{ width: 'auto', padding: '6px 10px', fontSize: 12, border: '1.5px solid #7C3AED', color: '#7C3AED', fontWeight: 'bold', borderRadius: 8, background: 'white' }}
+                            value={activeBranchId || ''}
+                            onChange={(e) => setActiveBranchId(e.target.value || null)}
+                        >
+                            <option value="">🏢 Head Office (All Branches)</option>
+                            {(company.branches || []).map((b: any) => (
+                                <option key={b.id} value={b.id}>📍 {b.name}</option>
+                            ))}
+                        </select>
+                    )}
                 </div>
             )}
-
-            {/* Spacer */}
             <div style={{ flex: 1 }} className="mobile-hide" />
 
             {/* Trial Alert */}

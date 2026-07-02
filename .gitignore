@@ -68,3 +68,9 @@ vercel_log.txt
 build_err.txt
 lint_errors.json
 lint_output.txt
+build_err2.txt
+build_log.txt
+dollars_output.txt
+find_dollars.js
+scratch/
+

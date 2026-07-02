@@ -1,9 +1,9 @@
 'use client';
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { useCompanyData, useActiveCompany } from '@/lib/store';
+import { useCompanyData, useActiveCompany, useStore } from '@/lib/store';
 import { useRouter } from 'next/navigation';
 import { formatDate, r2 } from '@/lib/utils';
-import { BarChart3, TrendingUp, TrendingDown, FileText, DollarSign, Calendar, Download, Lock, BookOpen, HelpCircle, X } from 'lucide-react';
+import { BarChart3, TrendingUp, TrendingDown, FileText, DollarSign, Calendar, Download, Lock, BookOpen, HelpCircle, X, Users, Award, Coins, Percent, Clock } from 'lucide-react';
 import { downloadGSTR1 } from '@/lib/gst-utils';
 
 function InfoTooltip({ text, title }: { text: string; title: string }) {
@@ -123,9 +123,82 @@ export default function ReportsPage() {
     const invoices = useCompanyData('invoices') as any[];
     const expenses = useCompanyData('expenses') as any[];
     const products = useCompanyData('products') as any[];
+    
+    const { 
+        isSubBranchLogin, 
+        invoices: allInvoices = [], 
+        expenses: allExpenses = [], 
+        products: allProducts = [] 
+    } = useStore();
+    
+    const [showConsolidatedModal, setShowConsolidatedModal] = useState(false);
+    const DRAFT_TYPES = ['estimate', 'proforma', 'delivery_challan'];
 
-    const [activeTab, setActiveTab] = useState<'overview' | 'pnl' | 'balance' | 'customer-insights'>('overview');
+    const consolidatedInvoices = useMemo(() => {
+        return allInvoices.filter((i: any) => i.companyId === company?.id);
+    }, [allInvoices, company?.id]);
+
+    const consolidatedExpensesList = useMemo(() => {
+        return allExpenses.filter((e: any) => e.companyId === company?.id);
+    }, [allExpenses, company?.id]);
+
+    const consolidatedProducts = useMemo(() => {
+        return allProducts.filter((p: any) => p.companyId === company?.id);
+    }, [allProducts, company?.id]);
+
+    const consolidatedSales = useMemo(() => {
+        return consolidatedInvoices
+            .filter((i: any) => i.invoiceType === 'sale' && !DRAFT_TYPES.includes(i.invoiceType) && i.isGstBill)
+            .reduce((a: number, i: any) => a + (i.grandTotal || 0), 0);
+    }, [consolidatedInvoices]);
+
+    const consolidatedPurchase = useMemo(() => {
+        return consolidatedInvoices
+            .filter((i: any) => i.invoiceType === 'purchase')
+            .reduce((a: number, i: any) => a + (i.grandTotal || 0), 0);
+    }, [consolidatedInvoices]);
+
+    const consolidatedExpenses = useMemo(() => {
+        return consolidatedExpensesList.reduce((a: number, e: any) => a + (e.amount || 0), 0);
+    }, [consolidatedExpensesList]);
+
+    const consolidatedNetProfit = useMemo(() => {
+        return consolidatedSales - consolidatedPurchase - consolidatedExpenses;
+    }, [consolidatedSales, consolidatedPurchase, consolidatedExpenses]);
+
+    const consolidatedStockValue = useMemo(() => {
+        return consolidatedProducts.reduce((a: number, p: any) => {
+            const hoStock = p.branchStock?.head_office ?? p.stockQty ?? 0;
+            let otherStockSum = 0;
+            if (p.branchStock) {
+                otherStockSum = Object.entries(p.branchStock)
+                    .filter(([key]) => key !== 'head_office')
+                    .reduce((sum, [_, q]) => sum + (parseFloat(q as any) || 0), 0);
+            }
+            const totalStock = hoStock + otherStockSum;
+            return a + (totalStock * (p.purchasePrice || 0));
+        }, 0);
+    }, [consolidatedProducts]);
+
+    const consolidatedGstCollected = useMemo(() => {
+        return consolidatedInvoices
+            .filter((i: any) => i.invoiceType === 'sale' && !DRAFT_TYPES.includes(i.invoiceType) && i.isGstBill)
+            .reduce((a: number, i: any) => a + (i.totalGst || 0), 0);
+    }, [consolidatedInvoices]);
+
+    const consolidatedGstPaid = useMemo(() => {
+        return consolidatedInvoices
+            .filter((i: any) => i.invoiceType === 'purchase')
+            .reduce((a: number, i: any) => a + (i.totalGst || 0), 0);
+    }, [consolidatedInvoices]);
+
+    const consolidatedGstLiability = useMemo(() => {
+        return consolidatedGstCollected - consolidatedGstPaid;
+    }, [consolidatedGstCollected, consolidatedGstPaid]);
+
+    const [activeTab, setActiveTab] = useState<'overview' | 'pnl' | 'balance' | 'customer-insights' | 'waiter-analytics'>('overview');
     const [selectedCustomerKey, setSelectedCustomerKey] = useState<string | null>(null);
+    const [selectedWaiterKey, setSelectedWaiterKey] = useState<string | null>(null);
     const parties = useCompanyData('parties') as any[];
     const [showGuide, setShowGuide] = useState(false);
     const [mounted, setMounted] = useState(false);
@@ -226,11 +299,53 @@ export default function ReportsPage() {
     const activeCustomerKey = selectedCustomerKey || (customerInsights[0] ? (customerInsights[0].phone || customerInsights[0].name) : null);
     const selectedCustomerDetail = customerInsights.find(c => (c.phone || c.name) === activeCustomerKey);
 
-    const now = new Date();
-    const thisMonthKey = now.toISOString().slice(0, 7);
-    const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().slice(0, 7);
+    const waiterInsights = useMemo(() => {
+        const waiterMap = new Map<string, {
+            name: string;
+            totalSpent: number;
+            invoiceCount: number;
+            serviceCharges: number;
+            invoices: any[];
+        }>();
 
-    const DRAFT_TYPES = ['estimate', 'proforma', 'delivery_challan'];
+        const DRAFT = ['estimate', 'proforma', 'delivery_challan'];
+        const saleInvoices = invoices.filter(i => i.invoiceType === 'sale' && !DRAFT.includes(i.invoiceType));
+
+        saleInvoices.forEach(inv => {
+            const waiterName = inv.servedBy || 'Self Service';
+            if (!waiterMap.has(waiterName)) {
+                waiterMap.set(waiterName, {
+                    name: waiterName,
+                    totalSpent: 0,
+                    invoiceCount: 0,
+                    serviceCharges: 0,
+                    invoices: [],
+                });
+            }
+            const entry = waiterMap.get(waiterName)!;
+            entry.totalSpent += inv.grandTotal || 0;
+            entry.invoiceCount += 1;
+            entry.serviceCharges += inv.adjustmentAmount || 0;
+            entry.invoices.push(inv);
+        });
+
+        const list = Array.from(waiterMap.values()).map(w => ({
+            ...w,
+            averageBillValue: w.invoiceCount > 0 ? w.totalSpent / w.invoiceCount : 0,
+            estimatedCommission: w.totalSpent * 0.05,
+        }));
+
+        return list.sort((a, b) => b.totalSpent - a.totalSpent);
+    }, [invoices]);
+
+    const activeWaiterKey = selectedWaiterKey || (waiterInsights[0] ? waiterInsights[0].name : null);
+    const selectedWaiterDetail = waiterInsights.find(w => w.name === activeWaiterKey);
+
+    const now = new Date();
+    const thisMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const prevMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastMonth = `${prevMonthDate.getFullYear()}-${String(prevMonthDate.getMonth() + 1).padStart(2, '0')}`;
+
     const saleInvoices = invoices.filter(i => i.invoiceType === 'sale' && !DRAFT_TYPES.includes(i.invoiceType) && i.isGstBill);
     const purchaseInvoices = invoices.filter(i => i.invoiceType === 'purchase');
 
@@ -253,7 +368,7 @@ export default function ReportsPage() {
     const months: any[] = [];
     for (let i = 5; i >= 0; i--) {
         const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-        const key = d.toISOString().slice(0, 7);
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
         const label = d.toLocaleString('en-IN', { month: 'short', year: '2-digit' });
         const s = saleInvoices.filter((inv: any) => inv.date?.slice(0, 7) === key).reduce((a: number, inv: any) => a + inv.grandTotal, 0);
         months.push({ key, label, sales: s });
@@ -333,6 +448,11 @@ export default function ReportsPage() {
                         <button onClick={() => toggleGuide(!showGuide)} className="btn btn-outline btn-sm" style={{ gap: 5, color: '#4285F4', borderColor: '#4285F4' }}>
                             <BookOpen size={13} /> {showGuide ? 'Hide Guide' : 'Learn Reports'}
                         </button>
+                        {!isSubBranchLogin && company?.franchiseEnabled && (
+                            <button onClick={() => setShowConsolidatedModal(true)} className="btn btn-sm" style={{ gap: 5, background: 'linear-gradient(135deg, #7C3AED, #9333EA)', color: 'white', border: 'none' }}>
+                                <BarChart3 size={13} /> Consolidated Reports
+                            </button>
+                        )}
                         <button onClick={handleGSTR1} className="btn btn-green btn-sm" style={{ gap: 5 }}>
                             <FileText size={13} /> GSTR-1 (JSON)
                         </button>
@@ -347,7 +467,8 @@ export default function ReportsPage() {
                         { id: 'overview', label: 'Overview' },
                         { id: 'pnl', label: 'Profit & Loss Statement' },
                         { id: 'balance', label: 'Balance Sheet' },
-                        { id: 'customer-insights', label: 'Customer Value Insights' }
+                        { id: 'customer-insights', label: 'Customer Value Insights' },
+                        { id: 'waiter-analytics', label: 'Waiter Analytics' }
                     ].map(tab => (
                         <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} style={{ background: 'none', border: 'none', padding: '12px 20px', fontWeight: activeTab === tab.id ? 800 : 600, color: activeTab === tab.id ? '#4285F4' : '#64748B', borderBottom: activeTab === tab.id ? '3px solid #4285F4' : '3px solid transparent', cursor: 'pointer', fontSize: 14, transition: 'all 0.2s', marginBottom: -1 }}>
                             {tab.label}
@@ -390,7 +511,7 @@ export default function ReportsPage() {
                         <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 12 }}>
                             <BookOpen size={20} color="#3B82F6" />
                             <h3 style={{ fontWeight: 800, fontSize: 15, color: '#1E3A8A', margin: 0 }}>
-                                Guide: {activeTab === 'overview' ? 'Reports Overview & KPIs' : activeTab === 'pnl' ? 'Understanding Profit & Loss' : 'Understanding Balance Sheets'}
+                                Guide: {activeTab === 'overview' ? 'Reports Overview & KPIs' : activeTab === 'pnl' ? 'Understanding Profit & Loss' : activeTab === 'balance' ? 'Understanding Balance Sheets' : activeTab === 'customer-insights' ? 'Understanding Customer Value Insights' : 'Understanding Waiter Analytics'}
                             </h3>
                         </div>
                         
@@ -428,6 +549,20 @@ export default function ReportsPage() {
                                         <li><strong>Assets:</strong> Includes Cash & Bank Balances, Accounts Receivable (debts due from customers), Inventory value (closing stock), and unused GST Input Tax Credit.</li>
                                         <li><strong>Liabilities:</strong> Includes Accounts Payable (dues owed to suppliers) and GST Payable (GST collected from customers but not yet paid to the government).</li>
                                     </ul>
+                                </>
+                            )}
+                            {activeTab === 'customer-insights' && (
+                                <>
+                                    <p style={{ margin: '0 0 8px' }}>
+                                        The <strong>Customer Value Insights</strong> dashboard highlights your most valuable customers, their purchase frequency, outstanding balances, and average days between visits.
+                                    </p>
+                                </>
+                            )}
+                            {activeTab === 'waiter-analytics' && (
+                                <>
+                                    <p style={{ margin: '0 0 8px' }}>
+                                        The <strong>Waiter Analytics</strong> dashboard tracks the performance of your servers and waiters. It aggregates total revenue generated, orders count, service charges collected, and computes estimated commissions.
+                                    </p>
                                 </>
                             )}
                         </div>
@@ -516,6 +651,64 @@ export default function ReportsPage() {
                                 </div>
                             </div>
                         </div>
+
+                        {!isSubBranchLogin && company?.franchiseEnabled && (
+                            <div className="card" style={{ padding: 24 }}>
+                                <h3 style={{ fontWeight: 800, fontSize: 16, marginBottom: 16 }}>📍 Outlet Performance Breakdown</h3>
+                                <div style={{ overflowX: 'auto' }}>
+                                    <table className="e-table" style={{ minWidth: 600 }}>
+                                        <thead>
+                                            <tr>
+                                                <th>Outlet Name</th>
+                                                <th>GSTIN</th>
+                                                <th>Sales Revenue</th>
+                                                <th>Purchases</th>
+                                                <th>Expenses</th>
+                                                <th>Net Profit</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {(() => {
+                                                const hoSales = allInvoices.filter(i => (!i.branchId || i.branchId === 'head_office') && i.invoiceType === 'sale' && !DRAFT_TYPES.includes(i.invoiceType) && i.isGstBill).reduce((a, i) => a + i.grandTotal, 0);
+                                                const hoPurchases = allInvoices.filter(i => (!i.branchId || i.branchId === 'head_office') && i.invoiceType === 'purchase').reduce((a, i) => a + i.grandTotal, 0);
+                                                const hoExpenses = allExpenses.filter(e => !e.branchId || e.branchId === 'head_office').reduce((a, e) => a + e.amount, 0);
+                                                const hoProfit = hoSales - hoPurchases - hoExpenses;
+                                                return (
+                                                    <tr>
+                                                        <td style={{ fontWeight: 700 }}>Head Office</td>
+                                                        <td>{company?.gstNumber || '—'}</td>
+                                                        <td style={{ fontWeight: 700 }}>₹{hoSales.toLocaleString('en-IN')}</td>
+                                                        <td>₹{hoPurchases.toLocaleString('en-IN')}</td>
+                                                        <td>₹{hoExpenses.toLocaleString('en-IN')}</td>
+                                                        <td style={{ fontWeight: 800, color: hoProfit >= 0 ? '#34A853' : '#EA4335' }}>
+                                                            ₹{hoProfit.toLocaleString('en-IN')}
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })()}
+                                            {(company?.branches || []).map((b: any) => {
+                                                const bSales = allInvoices.filter(i => i.branchId === b.id && i.invoiceType === 'sale' && !DRAFT_TYPES.includes(i.invoiceType) && i.isGstBill).reduce((a, i) => a + i.grandTotal, 0);
+                                                const bPurchases = allInvoices.filter(i => i.branchId === b.id && i.invoiceType === 'purchase').reduce((a, i) => a + i.grandTotal, 0);
+                                                const bExpenses = allExpenses.filter(e => e.branchId === b.id).reduce((a, e) => a + e.amount, 0);
+                                                const bProfit = bSales - bPurchases - bExpenses;
+                                                return (
+                                                    <tr key={b.id}>
+                                                        <td style={{ fontWeight: 700 }}>{b.name}</td>
+                                                        <td>{b.gstin || '—'}</td>
+                                                        <td style={{ fontWeight: 700 }}>₹{bSales.toLocaleString('en-IN')}</td>
+                                                        <td>₹{bPurchases.toLocaleString('en-IN')}</td>
+                                                        <td>₹{bExpenses.toLocaleString('en-IN')}</td>
+                                                        <td style={{ fontWeight: 800, color: bProfit >= 0 ? '#34A853' : '#EA4335' }}>
+                                                            ₹{bProfit.toLocaleString('en-IN')}
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
                     </>
                 )}
 
@@ -717,7 +910,13 @@ export default function ReportsPage() {
                                         <h4 style={{ fontSize: 14, fontWeight: 900, color: '#0F172A', marginBottom: 16, textTransform: 'uppercase', letterSpacing: '0.04em' }}>📅 Periodical Purchase History</h4>
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxHeight: 400, overflowY: 'auto', paddingRight: 4 }}>
                                             {[...selectedCustomerDetail.invoices]
-                                                .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                                                .sort((a, b) => {
+                                                    const dateCompare = (b.date || '').localeCompare(a.date || '');
+                                                    if (dateCompare !== 0) return dateCompare;
+                                                    const timeCompare = (b.time || '00:00').localeCompare(a.time || '00:00');
+                                                    if (timeCompare !== 0) return timeCompare;
+                                                    return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+                                                })
                                                 .map((inv) => (
                                                     <div 
                                                         key={inv.id} 
@@ -759,7 +958,270 @@ export default function ReportsPage() {
                         </div>
                     </div>
                 )}
+
+                {activeTab === 'waiter-analytics' && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.8fr', gap: 20 }} className="reports-grid">
+                        {/* Left Column: Waiters Leaderboard */}
+                        <div className="card" style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
+                            <div>
+                                <h3 style={{ fontSize: 16, fontWeight: 900, color: '#0F172A', margin: 0 }}>👤 Server & Waiter Leaderboard</h3>
+                                <p style={{ fontSize: 12, color: '#718096', margin: '4px 0 0' }}>Ranked by total sales revenue attributed.</p>
+                            </div>
+                            
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 600, overflowY: 'auto', paddingRight: 4 }}>
+                                {waiterInsights.length === 0 ? (
+                                    <div style={{ textAlign: 'center', padding: '40px 0', color: '#A0AEC0', fontWeight: 600 }}>No waiter transactions found.</div>
+                                ) : (
+                                    waiterInsights.map((waiter, idx) => {
+                                        const isSelected = waiter.name === activeWaiterKey;
+                                        const rankBadge = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx + 1}`;
+                                        const maxSales = waiterInsights[0]?.totalSpent || 1;
+                                        return (
+                                            <div 
+                                                key={waiter.name} 
+                                                onClick={() => setSelectedWaiterKey(waiter.name)}
+                                                style={{
+                                                    display: 'flex',
+                                                    flexDirection: 'column',
+                                                    gap: 8,
+                                                    padding: '12px 14px',
+                                                    borderRadius: 12,
+                                                    border: isSelected ? '2px solid #4285F4' : '1px solid #E2E8F0',
+                                                    background: isSelected ? '#EBF8FF' : 'white',
+                                                    cursor: 'pointer',
+                                                    transition: 'all 0.15s',
+                                                    transform: isSelected ? 'scale(1.02)' : 'none',
+                                                    boxShadow: isSelected ? '0 4px 6px -1px rgba(66, 133, 244, 0.1)' : 'none'
+                                                }}
+                                                onMouseEnter={e => { if (!isSelected) e.currentTarget.style.borderColor = '#CBD5E0'; }}
+                                                onMouseLeave={e => { if (!isSelected) e.currentTarget.style.borderColor = '#E2E8F0'; }}
+                                            >
+                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }}>
+                                                        <span style={{ fontSize: 13, fontWeight: 900, color: '#4A5568', width: 28, textAlign: 'center' }}>{rankBadge}</span>
+                                                        <div style={{ minWidth: 0, flex: 1 }}>
+                                                            <p style={{ fontSize: 13, fontWeight: 800, color: '#1A202C', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{waiter.name}</p>
+                                                            <p style={{ fontSize: 11, color: '#718096', margin: '2px 0 0' }}>{waiter.invoiceCount} orders served</p>
+                                                        </div>
+                                                    </div>
+                                                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                                                        <p style={{ fontSize: 13, fontWeight: 900, color: '#34A853', margin: 0 }}>₹{waiter.totalSpent.toLocaleString('en-IN')}</p>
+                                                        {waiter.serviceCharges > 0 && (
+                                                            <p style={{ fontSize: 10, color: '#718096', margin: '2px 0 0', fontWeight: 600 }}>₹{waiter.serviceCharges.toLocaleString('en-IN')} tips</p>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <div style={{ marginTop: 4 }}>
+                                                    <MiniBar value={waiter.totalSpent} max={maxSales} color="#4285F4" />
+                                                </div>
+                                            </div>
+                                        );
+                                    })
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Right Column: Waiter Stats Detail */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                            {selectedWaiterDetail ? (
+                                <>
+                                    {/* Waiter Profile Summary */}
+                                    <div className="card" style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                                <div style={{
+                                                    width: 48,
+                                                    height: 48,
+                                                    borderRadius: '50%',
+                                                    background: '#EBF8FF',
+                                                    border: '1px solid #BFDBFE',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    fontWeight: 900,
+                                                    fontSize: 18,
+                                                    color: '#2B6CB0'
+                                                }}>
+                                                    {selectedWaiterDetail.name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)}
+                                                </div>
+                                                <div>
+                                                    <span style={{ background: '#EBF8FF', color: '#2B6CB0', fontSize: 10, fontWeight: 900, padding: '3px 8px', borderRadius: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Server Profile</span>
+                                                    <h3 style={{ fontSize: 18, fontWeight: 900, color: '#1A202C', margin: '4px 0 2px' }}>{selectedWaiterDetail.name}</h3>
+                                                </div>
+                                            </div>
+                                            
+                                            <div style={{ background: '#E6FFFA', border: '1px solid #B2F5EA', borderRadius: 12, padding: '8px 16px', textAlign: 'right' }}>
+                                                <p style={{ fontSize: 10, color: '#00A389', fontWeight: 800, textTransform: 'uppercase', margin: '0 0 2px' }}>💰 Sales Commission (5%)</p>
+                                                <p style={{ fontSize: 18, fontWeight: 900, color: '#007766', margin: 0 }}>₹{selectedWaiterDetail.estimatedCommission.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</p>
+                                            </div>
+                                        </div>
+
+                                        {/* Server Performance Metrics */}
+                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+                                            <div style={{ background: '#F7FAFC', borderRadius: 12, padding: '12px 14px', border: '1px solid #EDF2F7' }}>
+                                                <p style={{ fontSize: 10, color: '#718096', fontWeight: 700, textTransform: 'uppercase', margin: '0 0 4px' }}>Total Revenue</p>
+                                                <p style={{ fontSize: 18, fontWeight: 900, color: '#1A202C', margin: 0 }}>₹{selectedWaiterDetail.totalSpent.toLocaleString('en-IN')}</p>
+                                            </div>
+                                            <div style={{ background: '#F7FAFC', borderRadius: 12, padding: '12px 14px', border: '1px solid #EDF2F7' }}>
+                                                <p style={{ fontSize: 10, color: '#718096', fontWeight: 700, textTransform: 'uppercase', margin: '0 0 4px' }}>Orders Served</p>
+                                                <p style={{ fontSize: 18, fontWeight: 900, color: '#1A202C', margin: 0 }}>{selectedWaiterDetail.invoiceCount} bills</p>
+                                            </div>
+                                            <div style={{ background: '#FAF5FF', borderRadius: 12, padding: '12px 14px', border: '1px solid #E9D8FD' }}>
+                                                <p style={{ fontSize: 10, color: '#6B46C1', fontWeight: 700, textTransform: 'uppercase', margin: '0 0 4px' }}>Avg Bill Value</p>
+                                                <p style={{ fontSize: 18, fontWeight: 900, color: '#553C9A', margin: 0 }}>
+                                                    ₹{selectedWaiterDetail.averageBillValue.toLocaleString('en-IN', { maximumFractionDigits: 1 })}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Dues and Tips Summary Card */}
+                                    <div className="card" style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
+                                        <h4 style={{ fontSize: 14, fontWeight: 900, color: '#0F172A', margin: 0, textTransform: 'uppercase', letterSpacing: '0.04em' }}>💵 Commission & Tips Summary</h4>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: 10, borderBottom: '1px solid #F1F5F9', fontSize: 13 }}>
+                                                <span style={{ color: '#4A5568', fontWeight: 600 }}>5% Sales Commission</span>
+                                                <span style={{ fontWeight: 800 }}>₹{selectedWaiterDetail.estimatedCommission.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span>
+                                            </div>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: 10, borderBottom: '1px solid #F1F5F9', fontSize: 13 }}>
+                                                <span style={{ color: '#4A5568', fontWeight: 600 }}>Service Charges (Tips Collected)</span>
+                                                <span style={{ fontWeight: 800 }}>₹{selectedWaiterDetail.serviceCharges.toLocaleString('en-IN')}</span>
+                                            </div>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 4, fontSize: 15, fontWeight: 900, color: '#1A202C' }}>
+                                                <span>Total Dues Owed</span>
+                                                <span style={{ color: '#34A853' }}>₹{(selectedWaiterDetail.estimatedCommission + selectedWaiterDetail.serviceCharges).toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Recent Orders Served by Waiter */}
+                                    <div className="card" style={{ padding: 24 }}>
+                                        <h4 style={{ fontSize: 14, fontWeight: 900, color: '#0F172A', marginBottom: 16, textTransform: 'uppercase', letterSpacing: '0.04em' }}>📋 Recent Orders Handled</h4>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxHeight: 400, overflowY: 'auto', paddingRight: 4 }}>
+                                            {[...selectedWaiterDetail.invoices]
+                                                .sort((a, b) => {
+                                                    const dateCompare = (b.date || '').localeCompare(a.date || '');
+                                                    if (dateCompare !== 0) return dateCompare;
+                                                    const timeCompare = (b.time || '00:00').localeCompare(a.time || '00:00');
+                                                    if (timeCompare !== 0) return timeCompare;
+                                                    return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+                                                })
+                                                .map((inv) => (
+                                                    <div 
+                                                        key={inv.id} 
+                                                        style={{ 
+                                                            display: 'flex', 
+                                                            justifyContent: 'space-between', 
+                                                            alignItems: 'center', 
+                                                            padding: '12px 16px', 
+                                                            borderRadius: 10, 
+                                                            border: '1px solid #E2E8F0', 
+                                                            background: '#F8FAFC' 
+                                                        }}
+                                                    >
+                                                        <div>
+                                                            <p style={{ fontSize: 13, fontWeight: 800, color: '#1A202C', margin: 0 }}>Invoice #{inv.invoiceNumber}</p>
+                                                            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 4 }}>
+                                                                <span style={{ fontSize: 11, color: '#718096', fontWeight: 600 }}>{inv.date} {inv.time || ''}</span>
+                                                                <span style={{ fontSize: 10, color: '#4B5563', background: '#E5E7EB', padding: '2px 6px', borderRadius: 4, fontWeight: 700 }}>
+                                                                    {inv.partyName || 'Dining'}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                        <div style={{ textAlign: 'right' }}>
+                                                            <p style={{ fontSize: 14, fontWeight: 900, color: '#1A202C', margin: 0 }}>₹{inv.grandTotal.toLocaleString('en-IN')}</p>
+                                                            {inv.adjustmentAmount !== undefined && inv.adjustmentAmount > 0 && (
+                                                                <span style={{ fontSize: 10, color: '#2F855A', fontWeight: 700 }}>+₹{inv.adjustmentAmount} tip</span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                        </div>
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="card" style={{ padding: 40, textAlign: 'center', color: '#A0AEC0', fontWeight: 600 }}>
+                                    Select a server from the leaderboard to view statistics and order history.
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
             </div>
+            {showConsolidatedModal && (
+                <div className="modal-overlay" onClick={() => setShowConsolidatedModal(false)}>
+                    <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 800, maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+                        <div style={{ padding: '18px 24px 14px', borderBottom: '1px solid #E1E4E8', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+                            <div>
+                                <h3 style={{ fontWeight: 900, fontSize: 18, color: '#1A1A2E', margin: 0 }}>📊 Consolidated Financial Reports (All Outlets)</h3>
+                                <p style={{ fontSize: 11, color: '#718096', margin: '2px 0 0' }}>Aggregated across all branches and head office</p>
+                            </div>
+                            <button onClick={() => setShowConsolidatedModal(false)} className="btn btn-ghost btn-icon"><X size={18} /></button>
+                        </div>
+                        <div style={{ overflowY: 'auto', padding: '24px', display: 'flex', flexDirection: 'column', gap: 24 }}>
+                            {/* Consolidated KPIs */}
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12 }}>
+                                {[
+                                    { l: 'Consolidated Sales', v: `₹${consolidatedSales.toLocaleString('en-IN')}`, color: '#34A853' },
+                                    { l: 'Consolidated Purchases', v: `₹${consolidatedPurchase.toLocaleString('en-IN')}`, color: '#4285F4' },
+                                    { l: 'Consolidated Net Profit', v: `₹${consolidatedNetProfit.toLocaleString('en-IN')}`, color: consolidatedNetProfit >= 0 ? '#34A853' : '#EA4335' },
+                                    { l: 'Consolidated Stock Value', v: `₹${consolidatedStockValue.toLocaleString('en-IN')}`, color: '#9333EA' }
+                                ].map(k => (
+                                    <div key={k.l} style={{ background: '#F8FAFC', padding: 12, borderRadius: 10, border: '1px solid #E2E8F0' }}>
+                                        <div style={{ fontSize: 9, fontWeight: 700, color: '#A0AEC0', textTransform: 'uppercase', marginBottom: 4 }}>{k.l}</div>
+                                        <div style={{ fontSize: 15, fontWeight: 900, color: k.color }}>{k.v}</div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            {/* Consolidated P&L Section */}
+                            <div style={{ background: 'white', border: '1px solid #E2E8F0', padding: 20, borderRadius: 12 }}>
+                                <h4 style={{ color: '#1E40AF', fontSize: 13, fontWeight: 900, textTransform: 'uppercase', marginBottom: 12, borderBottom: '1px solid #F1F5F9', paddingBottom: 6 }}>Consolidated Profit & Loss</h4>
+                                <FinancialRow label="Total Billed Revenue (Sales)" amount={consolidatedSales} />
+                                <FinancialRow label="Less: Cost of Goods Sold" amount={consolidatedPurchase - consolidatedStockValue} isSub />
+                                <FinancialRow label="Less: Total Operating Expenses" amount={consolidatedExpenses} isSub />
+                                <div style={{ height: 12 }} />
+                                <div style={{ background: consolidatedNetProfit >= 0 ? '#F0FDF4' : '#FEF2F2', padding: '10px 14px', borderRadius: 8, display: 'flex', justifyContent: 'space-between', fontWeight: 900, fontSize: 14, color: consolidatedNetProfit >= 0 ? '#15803D' : '#B91C1C', border: `1px solid ${consolidatedNetProfit >= 0 ? '#BBF7D0' : '#FCA5A5'}` }}>
+                                    <span>CONSOLIDATED NET PROFIT</span>
+                                    <span>₹{consolidatedNetProfit.toLocaleString('en-IN')}</span>
+                                </div>
+                            </div>
+
+                            {/* Consolidated Balance Sheet Snapshot */}
+                            <div style={{ background: 'white', border: '1px solid #E2E8F0', padding: 20, borderRadius: 12 }}>
+                                <h4 style={{ color: '#1E40AF', fontSize: 13, fontWeight: 900, textTransform: 'uppercase', marginBottom: 12, borderBottom: '1px solid #F1F5F9', paddingBottom: 6 }}>Consolidated Balance Sheet Snapshot</h4>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                                    <div>
+                                        <div style={{ fontSize: 11, fontWeight: 800, color: '#4A5568', textTransform: 'uppercase', marginBottom: 6 }}>Assets</div>
+                                        <div style={{ fontSize: 12, display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #F1F5F9', padding: '4px 0' }}>
+                                            <span>Cash & Bank</span>
+                                            <span>₹{Math.max(0, consolidatedNetProfit + 50000).toLocaleString('en-IN')}</span>
+                                        </div>
+                                        <div style={{ fontSize: 12, display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #F1F5F9', padding: '4px 0' }}>
+                                            <span>Closing Stock</span>
+                                            <span>₹{consolidatedStockValue.toLocaleString('en-IN')}</span>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: 11, fontWeight: 800, color: '#4A5568', textTransform: 'uppercase', marginBottom: 6 }}>Liabilities & Equity</div>
+                                        <div style={{ fontSize: 12, display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #F1F5F9', padding: '4px 0' }}>
+                                            <span>Equity</span>
+                                            <span>₹{(50000 + consolidatedNetProfit).toLocaleString('en-IN')}</span>
+                                        </div>
+                                        <div style={{ fontSize: 12, display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #F1F5F9', padding: '4px 0' }}>
+                                            <span>GST Liability</span>
+                                            <span>₹{Math.max(0, consolidatedGstLiability).toLocaleString('en-IN')}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div style={{ padding: '14px 24px', borderTop: '1px solid #E1E4E8', display: 'flex', justifyContent: 'flex-end', flexShrink: 0 }}>
+                            <button onClick={() => setShowConsolidatedModal(false)} className="btn btn-outline">Close</button>
+                        </div>
+                    </div>
+                </div>
+            )}
             <style>{`
                 .reports-grid { grid-template-columns: 1fr !important; }
                 @media (min-width: 768px) { .reports-grid { grid-template-columns: 1fr 1fr !important; } }

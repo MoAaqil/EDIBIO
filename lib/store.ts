@@ -4,7 +4,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import type {
     EdibioUser, Company, Party, Product, Invoice, Expense,
     InvoiceTemplate, HsnCode, Godown, AgencyClient, AgencyProject, AuditLog, BalancePayment,
-    PurchaseOrder, StockLog, OfferScheme
+    PurchaseOrder, StockLog, OfferScheme, Branch, StockTransfer
 } from './types';
 
 import { get, set as idbSet, del } from 'idb-keyval';
@@ -23,7 +23,9 @@ const idbStorage = {
 };
 
 const syncAfter = (getState: () => any) => {
-    // No-op: CloudSync component handles this via store subscription
+    if (typeof window !== 'undefined' && (window as any).triggerEdibioCloudSync) {
+        (window as any).triggerEdibioCloudSync();
+    }
 };
 
 const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -174,6 +176,17 @@ interface EdibioState {
     // Active company
     activeCompanyId: string | null;
     setActiveCompany: (id: string | null) => void;
+    activeBranchId: string | null;
+    isSubBranchLogin: boolean;
+    setActiveBranchId: (id: string | null) => void;
+    setIsSubBranchLogin: (b: boolean) => void;
+    stockTransfers: StockTransfer[];
+    addBranch: (companyId: string, b: Omit<Branch, 'id' | 'licenseKey'>) => void;
+    updateBranch: (companyId: string, id: string, upd: Partial<Branch>) => void;
+    deleteBranch: (companyId: string, id: string) => void;
+    addStockTransfer: (t: Omit<StockTransfer, 'id' | 'createdAt' | 'status'>) => void;
+    approveStockTransfer: (id: string) => void;
+    rejectStockTransfer: (id: string) => void;
 
     // Companies (max 3)
     companies: Company[];
@@ -199,7 +212,7 @@ interface EdibioState {
     importProductsBulk: (products: Omit<Product, 'id'>[]) => void;
     updateProduct: (id: string, upd: Partial<Product>) => void;
     deleteProduct: (id: string) => void;
-    adjustStock: (id: string, delta: number, godownId?: string) => void;
+    adjustStock: (id: string, delta: number, reason?: string, branchIdOverride?: string) => void;
     appendStockLog: (productId: string, log: Omit<StockLog, 'id'>) => void;
 
     // Purchase Orders
@@ -218,6 +231,7 @@ interface EdibioState {
     // Expenses
     expenses: Expense[];
     addExpense: (e: Omit<Expense, 'id' | 'createdAt'>) => void;
+    updateExpense: (id: string, upd: Partial<Expense>) => void;
     deleteExpense: (id: string) => void;
 
     // Agency CRM (Clients)
@@ -257,7 +271,7 @@ interface EdibioState {
     importBackup: (json: string) => void;
 
     // Enterprise Audit
-    addAuditLog: (log: Omit<AuditLog, 'id' | 'timestamp'>) => void;
+    addAuditLog: (log: Partial<Omit<AuditLog, 'id' | 'timestamp'>> & { action: string; details: string }) => void;
 
     // Offers & Schemes
     addOfferScheme: (companyId: string, offer: Omit<OfferScheme, 'id'>) => void;
@@ -273,8 +287,44 @@ export const useActiveCompany = () => {
 export const useCompanyData = (
     type: 'parties' | 'products' | 'invoices' | 'expenses' | 'agencyClients' | 'agencyProjects' | 'purchaseOrders'
 ) => {
-    const { [type]: items, activeCompanyId } = useStore() as any;
-    return useMemo(() => (items as any[] || []).filter((i: any) => i.companyId === activeCompanyId), [items, activeCompanyId]);
+    const { [type]: items, activeCompanyId, activeBranchId } = useStore() as any;
+    return useMemo(() => {
+        const filtered = (items as any[] || []).filter((i: any) => i.companyId === activeCompanyId);
+        
+        if (activeBranchId) {
+            if (type === 'invoices' || type === 'expenses') {
+                return filtered.filter((i: any) => i.branchId === activeBranchId);
+            }
+            if (type === 'products') {
+                return filtered.map((p: any) => {
+                    const branchStock = p.branchStock?.[activeBranchId] ?? 0;
+                    const branchPrice = p.branchPrice?.[activeBranchId] ?? p.sellingPrice;
+                    return {
+                        ...p,
+                        stockQty: branchStock,
+                        sellingPrice: branchPrice
+                    };
+                });
+            }
+        } else {
+            if (type === 'products') {
+                return filtered.map((p: any) => {
+                    const hoStock = p.branchStock?.head_office ?? p.stockQty ?? 0;
+                    let otherStockSum = 0;
+                    if (p.branchStock) {
+                        otherStockSum = Object.entries(p.branchStock)
+                            .filter(([key]) => key !== 'head_office')
+                            .reduce((sum, [_, q]) => sum + (parseFloat(q as any) || 0), 0);
+                    }
+                    return {
+                        ...p,
+                        stockQty: hoStock + otherStockSum
+                    };
+                });
+            }
+        }
+        return filtered;
+    }, [items, activeCompanyId, activeBranchId, type]);
 };
 
 export const useUserCompanies = () => {
@@ -322,30 +372,40 @@ export const useStore = create<EdibioState>()(
                 set({ user: u, isAuthenticated: !!u, lastModified: Date.now() });
             },
             updateUser: (upd) => set(s => ({ user: s.user ? { ...s.user, ...upd } : null, lastModified: Date.now() })),
-            logout: () => set({ 
-                user: null, 
-                isAuthenticated: false, 
-                activeCompanyId: null, 
-                isDemo: false, 
-                demoExpiresAt: null,
-                companies: [], 
-                parties: [], 
-                products: [], 
-                invoices: [], 
-                expenses: [],
-                agencyClients: [], 
-                agencyProjects: [], 
-                hsnCache: [], 
-                templates: DEFAULT_TEMPLATES,
-                isHydrating: true, 
-                primarySwapCount: 0, 
-                aiApiKey: null, 
-                aiUsageCount: 0,
-                lastSyncedAt: null, 
-                syncStatus: 'idle', 
-                syncError: null,
-                lastModified: Date.now()
-            }),
+            logout: () => {
+                const u = get().user;
+                if (u?.uid && typeof window !== 'undefined') {
+                    localStorage.removeItem(`sync_ts_${u.uid}`);
+                }
+                set({ 
+                    user: null, 
+                    isAuthenticated: false, 
+                    activeCompanyId: null, 
+                    activeBranchId: null,
+                    isSubBranchLogin: false,
+                    stockTransfers: [],
+                    isDemo: false, 
+                    demoExpiresAt: null,
+                    companies: [], 
+                    parties: [], 
+                    products: [], 
+                    invoices: [], 
+                    expenses: [],
+                    purchaseOrders: [],
+                    agencyClients: [], 
+                    agencyProjects: [], 
+                    hsnCache: [], 
+                    templates: DEFAULT_TEMPLATES,
+                    isHydrating: true, 
+                    primarySwapCount: 0, 
+                    aiApiKey: null, 
+                    aiUsageCount: 0,
+                    lastSyncedAt: null, 
+                    syncStatus: 'idle', 
+                    syncError: null,
+                    lastModified: Date.now()
+                });
+            },
             lastModified: Date.now(),
             bump: () => set({ lastModified: Date.now() }),
 
@@ -353,6 +413,11 @@ export const useStore = create<EdibioState>()(
             aiUsageCount: 0,
             setAiApiKey: (key) => set({ aiApiKey: key, lastModified: Date.now() }),
             activeCompanyId: null,
+            activeBranchId: null,
+            isSubBranchLogin: false,
+            stockTransfers: [],
+            setActiveBranchId: (id) => set({ activeBranchId: id }),
+            setIsSubBranchLogin: (b) => set({ isSubBranchLogin: b }),
 
             primarySwapCount: 0,
             setPrimarySwapCount: (c) => set({ primarySwapCount: c, lastModified: Date.now() }),
@@ -499,14 +564,16 @@ export const useStore = create<EdibioState>()(
                 set(s => ({ companies: s.companies.map(c => c.id === id ? { ...c, ...upd } : c), lastModified: Date.now() }));
                 syncAfter(get);
             },
-            deleteCompany: (id) =>
+            deleteCompany: (id) => {
                 set(s => ({
                     companies: s.companies.filter(c => c.id !== id),
                     activeCompanyId: s.activeCompanyId === id ? null : s.activeCompanyId,
                     lastModified: Date.now()
-                })),
+                }));
+                syncAfter(get);
+            },
 
-            addGodown: (companyId, g) =>
+            addGodown: (companyId, g) => {
                 set(s => ({
                     companies: s.companies.map(c => {
                         if (c.id !== companyId) return c;
@@ -514,53 +581,216 @@ export const useStore = create<EdibioState>()(
                         return { ...c, godowns: [...c.godowns, { ...g, id: uid() }] };
                     }),
                     lastModified: Date.now()
-                })),
-            removeGodown: (companyId, godownId) =>
+                }));
+                syncAfter(get);
+            },
+            removeGodown: (companyId, godownId) => {
                 set(s => ({
                     companies: s.companies.map(c => c.id !== companyId ? c : {
                         ...c, godowns: c.godowns.filter(g => g.id !== godownId),
                     }),
                     lastModified: Date.now()
-                })),
+                }));
+                syncAfter(get);
+            },
 
-            addOfferScheme: (companyId, offer) =>
+            addOfferScheme: (companyId, offer) => {
                 set(s => ({
                     companies: s.companies.map(c => c.id !== companyId ? c : {
                         ...c,
                         offers: [...(c.offers || []), { ...offer, id: uid() }]
                     }),
                     lastModified: Date.now()
-                })),
-            updateOfferScheme: (companyId, id, upd) =>
+                }));
+                syncAfter(get);
+            },
+            updateOfferScheme: (companyId, id, upd) => {
                 set(s => ({
                     companies: s.companies.map(c => c.id !== companyId ? c : {
                         ...c,
                         offers: (c.offers || []).map(o => o.id === id ? { ...o, ...upd } : o)
                     }),
                     lastModified: Date.now()
-                })),
-            deleteOfferScheme: (companyId, id) =>
+                }));
+                syncAfter(get);
+            },
+            deleteOfferScheme: (companyId, id) => {
                 set(s => ({
                     companies: s.companies.map(c => c.id !== companyId ? c : {
                         ...c,
                         offers: (c.offers || []).filter(o => o.id !== id)
                     }),
                     lastModified: Date.now()
-                })),
+                }));
+                syncAfter(get);
+            },
+
+            addBranch: (companyId: string, b: Omit<Branch, 'id' | 'licenseKey'>) => {
+                const prefix = (b.invoiceSeries || b.name.substring(0, 3)).toUpperCase().replace(/[^A-Z]/g, '');
+                const licenseKey = 'EDIBIO-FRAN-' + prefix + '-' + Math.random().toString(36).substring(2, 8).toUpperCase();
+                set(s => ({
+                    companies: s.companies.map(c => {
+                        if (c.id !== companyId) return c;
+                        const newBranch: Branch = { ...b, id: uid(), licenseKey };
+                        return { ...c, branches: [...(c.branches || []), newBranch] };
+                    }),
+                    lastModified: Date.now()
+                }));
+                syncAfter(get);
+            },
+            updateBranch: (companyId: string, id: string, upd: Partial<Branch>) => {
+                set(s => ({
+                    companies: s.companies.map(c => {
+                        if (c.id !== companyId) return c;
+                        return {
+                            ...c,
+                            branches: (c.branches || []).map(b => b.id === id ? { ...b, ...upd } : b)
+                        };
+                    }),
+                    lastModified: Date.now()
+                }));
+                syncAfter(get);
+            },
+            deleteBranch: (companyId: string, id: string) => {
+                set(s => ({
+                    companies: s.companies.map(c => {
+                        if (c.id !== companyId) return c;
+                        return {
+                            ...c,
+                            branches: (c.branches || []).filter(b => b.id !== id)
+                        };
+                    }),
+                    lastModified: Date.now()
+                }));
+                syncAfter(get);
+            },
+            addStockTransfer: (t) => {
+                const newTrf = {
+                    ...t,
+                    id: uid(),
+                    status: 'pending' as const,
+                    createdAt: new Date().toISOString()
+                };
+                set(s => ({
+                    stockTransfers: [...(s.stockTransfers || []), newTrf],
+                    lastModified: Date.now()
+                }));
+                syncAfter(get);
+            },
+            approveStockTransfer: (id) => {
+                const state = get();
+                const transfer = (state.stockTransfers || []).find(t => t.id === id);
+                if (!transfer) return;
+                
+                set(s => ({
+                    stockTransfers: s.stockTransfers.map(t => t.id === id ? { ...t, status: 'approved' as const } : t),
+                    products: s.products.map(p => {
+                        if (p.id !== transfer.productId) return p;
+                        
+                        const bStock = p.branchStock || {};
+                        const oldFromQty = bStock[transfer.fromBranchId] ?? (transfer.fromBranchId === 'head_office' ? p.stockQty : 0);
+                        const oldToQty = bStock[transfer.toBranchId] ?? (transfer.toBranchId === 'head_office' ? p.stockQty : 0);
+                        
+                        const newFromQty = Math.max(0, oldFromQty - transfer.qty);
+                        const newToQty = oldToQty + transfer.qty;
+                        
+                        const updatedBranchStock = {
+                            ...bStock,
+                            [transfer.fromBranchId]: newFromQty,
+                            [transfer.toBranchId]: newToQty
+                        };
+
+                        let updatedBaseStock = p.stockQty;
+                        if (transfer.fromBranchId === 'head_office') {
+                            updatedBaseStock = newFromQty;
+                        } else if (transfer.toBranchId === 'head_office') {
+                            updatedBaseStock = newToQty;
+                        }
+                        
+                        const fromName = s.companies.find(c => c.id === transfer.companyId)?.branches?.find(b => b.id === transfer.fromBranchId)?.name || 'source branch';
+                        const toName = s.companies.find(c => c.id === transfer.companyId)?.branches?.find(b => b.id === transfer.toBranchId)?.name || 'dest branch';
+                        
+                        const logFrom: Omit<StockLog, 'id'> = {
+                            date: new Date().toISOString().slice(0, 10),
+                            time: new Date().toTimeString().slice(0, 5),
+                            type: 'out',
+                            qty: transfer.qty,
+                            reason: `Transfer to ${toName} (Approved)`,
+                            balanceAfter: newFromQty,
+                        };
+                        const logTo: Omit<StockLog, 'id'> = {
+                            date: new Date().toISOString().slice(0, 10),
+                            time: new Date().toTimeString().slice(0, 5),
+                            type: 'in',
+                            qty: transfer.qty,
+                            reason: `Transfer from ${fromName} (Approved)`,
+                            balanceAfter: newToQty,
+                        };
+                        
+                        const updatedLogs = [
+                            { ...logFrom, id: uid(), branchId: transfer.fromBranchId },
+                            { ...logTo, id: uid(), branchId: transfer.toBranchId },
+                            ...(p.stockLogs || [])
+                        ].slice(0, 500);
+                        
+                        return {
+                            ...p,
+                            stockQty: updatedBaseStock,
+                            branchStock: updatedBranchStock,
+                            stockLogs: updatedLogs
+                        };
+                    }),
+                    lastModified: Date.now()
+                }));
+                syncAfter(get);
+            },
+            rejectStockTransfer: (id) => {
+                set(s => ({
+                    stockTransfers: s.stockTransfers.map(t => t.id === id ? { ...t, status: 'rejected' as const } : t),
+                    lastModified: Date.now()
+                }));
+                syncAfter(get);
+            },
 
             parties: [],
             addParty: (p) => {
                 const party = { ...p, id: uid(), createdAt: new Date().toISOString() };
                 set(s => ({ parties: [party, ...s.parties], lastModified: Date.now() }));
                 syncAfter(get);
+                get().addAuditLog({
+                    action: 'create',
+                    resource: 'Party',
+                    details: `Created party "${party.name}" (Type: ${party.type}, Phone: ${party.phone || '—'})`
+                });
                 return party;
             },
-            updateParty: (id, upd) =>
-                set(s => ({ parties: s.parties.map(p => p.id === id ? { ...p, ...upd } : p), lastModified: Date.now() })),
-            deleteParty: (id) =>
-                set(s => ({ parties: s.parties.filter(p => p.id !== id), lastModified: Date.now() })),
+            updateParty: (id, upd) => {
+                const prev = get().parties.find(p => p.id === id);
+                set(s => ({ parties: s.parties.map(p => p.id === id ? { ...p, ...upd } : p), lastModified: Date.now() }));
+                syncAfter(get);
+                if (prev) {
+                    get().addAuditLog({
+                        action: 'update',
+                        resource: 'Party',
+                        details: `Updated party "${prev.name}" details.`
+                    });
+                }
+            },
+            deleteParty: (id) => {
+                const prev = get().parties.find(p => p.id === id);
+                set(s => ({ parties: s.parties.filter(p => p.id !== id), lastModified: Date.now() }));
+                syncAfter(get);
+                if (prev) {
+                    get().addAuditLog({
+                        action: 'delete',
+                        resource: 'Party',
+                        details: `Deleted party "${prev.name}"`
+                    });
+                }
+            },
 
-            addBalancePayment: (partyId, payment) =>
+            addBalancePayment: (partyId, payment) => {
+                const party = get().parties.find(p => p.id === partyId);
                 set(s => ({
                     parties: s.parties.map(p => {
                         if (p.id !== partyId) return p;
@@ -582,9 +812,19 @@ export const useStore = create<EdibioState>()(
                         };
                     }),
                     lastModified: Date.now()
-                })),
+                }));
+                syncAfter(get);
+                if (party) {
+                    get().addAuditLog({
+                        action: 'update',
+                        resource: 'Party Balance',
+                        details: `Recorded payment of ₹${payment.amount} (${payment.type}) for party "${party.name}"`
+                    });
+                }
+            },
 
-            deleteBalancePayment: (partyId, paymentId) =>
+            deleteBalancePayment: (partyId, paymentId) => {
+                const party = get().parties.find(p => p.id === partyId);
                 set(s => ({
                     parties: s.parties.map(p => {
                         if (p.id !== partyId) return p;
@@ -601,59 +841,240 @@ export const useStore = create<EdibioState>()(
                         };
                     }),
                     lastModified: Date.now()
-                })),
+                }));
+                syncAfter(get);
+                if (party) {
+                    get().addAuditLog({
+                        action: 'delete',
+                        resource: 'Party Balance',
+                        details: `Deleted payment record for party "${party.name}"`
+                    });
+                }
+            },
 
             products: [],
             addProduct: (p) => {
                 const prod = { ...p, id: uid(), createdAt: new Date().toISOString() };
                 set(s => ({ products: [prod, ...s.products], lastModified: Date.now() }));
                 syncAfter(get);
+                get().addAuditLog({
+                    action: 'create',
+                    resource: 'Product',
+                    details: `Created product "${prod.name}" (Barcode: ${prod.barcode || '—'}, Selling Price: ₹${prod.sellingPrice})`
+                });
                 return prod;
             },
             importProductsBulk: (prods) => {
                 const newProds = prods.map(p => ({ ...p as any, id: uid(), createdAt: new Date().toISOString() }));
                 set(s => ({ products: [...newProds, ...s.products], lastModified: Date.now() }));
                 syncAfter(get);
+                get().addAuditLog({
+                    action: 'create',
+                    resource: 'Product',
+                    details: `Imported ${newProds.length} products in bulk.`
+                });
             },
-            updateProduct: (id, upd) =>
-                set(s => ({ products: s.products.map(p => p.id === id ? { ...p, ...upd } : p), lastModified: Date.now() })),
-            deleteProduct: (id) =>
-                set(s => ({ products: s.products.filter(p => p.id !== id), lastModified: Date.now() })),
-            appendStockLog: (productId, log) =>
-                set(s => ({
-                    products: s.products.map(p =>
-                        p.id === productId
-                            ? { ...p, stockLogs: [{ ...log, id: uid() }, ...(p.stockLogs || [])].slice(0, 500) }
-                            : p
-                    ),
-                    lastModified: Date.now()
-                })),
+            updateProduct: (id, upd) => {
+                const prev = get().products.find(p => p.id === id);
+                let reconciledUpd = { ...upd };
 
-            adjustStock: (id, delta) => {
+                if (prev) {
+                    if (upd.batches !== undefined) {
+                        if (upd.batches.length > 0 || (prev.batches && prev.batches.length > 0)) {
+                            reconciledUpd.stockQty = upd.batches.reduce((sum, b) => sum + b.qty, 0);
+                        }
+                    } else if (upd.stockQty !== undefined && prev.batches && prev.batches.length > 0) {
+                        const delta = upd.stockQty - prev.stockQty;
+                        if (delta !== 0) {
+                            let updatedBatches = [...prev.batches];
+                            if (delta < 0) {
+                                let remaining = Math.abs(delta);
+                                const sorted = [...updatedBatches].sort((a, b) => {
+                                    const expA = a.expiryDate || '9999-12-31';
+                                    const expB = b.expiryDate || '9999-12-31';
+                                    if (expA !== expB) return expA.localeCompare(expB);
+                                    return (a.addedAt || '').localeCompare(b.addedAt || '');
+                                });
+                                const resolved = sorted.map(b => {
+                                    if (remaining <= 0) return b;
+                                    const deduct = Math.min(b.qty, remaining);
+                                    remaining -= deduct;
+                                    return { ...b, qty: Math.max(0, b.qty - deduct) };
+                                });
+                                if (remaining > 0 && resolved.length > 0) {
+                                    resolved[0].qty -= remaining;
+                                }
+                                updatedBatches = resolved;
+                            } else {
+                                const sorted = [...updatedBatches].sort((a, b) => (b.addedAt || '').localeCompare(a.addedAt || ''));
+                                if (sorted.length > 0) {
+                                    sorted[0].qty += delta;
+                                    updatedBatches = sorted;
+                                }
+                            }
+                            reconciledUpd.batches = updatedBatches;
+                        }
+                    }
+                }
+
+                set(s => ({ products: s.products.map(p => p.id === id ? { ...p, ...reconciledUpd } : p), lastModified: Date.now() }));
+                syncAfter(get);
+                if (prev) {
+                    get().addAuditLog({
+                        action: 'update',
+                        resource: 'Product',
+                        details: `Updated product "${prev.name}" details.`
+                    });
+                }
+            },
+            deleteProduct: (id) => {
+                const prev = get().products.find(p => p.id === id);
+                set(s => ({ products: s.products.filter(p => p.id !== id), lastModified: Date.now() }));
+                syncAfter(get);
+                if (prev) {
+                    get().addAuditLog({
+                        action: 'delete',
+                        resource: 'Product',
+                        details: `Deleted product "${prev.name}"`
+                    });
+                }
+            },
+            appendStockLog: (productId, log) => {
+                const branchId = get().activeBranchId;
+                set(s => ({
+                    products: s.products.map(p => {
+                        if (p.id !== productId) return p;
+                        
+                        let balanceAfter = log.balanceAfter;
+                        if (branchId) {
+                            balanceAfter = p.branchStock?.[branchId] ?? 0;
+                        }
+                        
+                        const logWithBranch = { ...log, id: uid(), branchId, balanceAfter };
+                        return {
+                            ...p,
+                            stockLogs: [logWithBranch, ...(p.stockLogs || [])].slice(0, 500)
+                        };
+                    }),
+                    lastModified: Date.now()
+                }));
+            },
+
+            adjustStock: (id, delta, reason, branchIdOverride) => {
                 const state = useStore.getState();
                 const product = state.products.find(p => p.id === id);
                 if (!product) return;
-                const newQty = Math.max(0, product.stockQty + delta);
-                const log: Omit<StockLog, 'id'> = {
-                    date: new Date().toISOString().slice(0, 10),
-                    time: new Date().toTimeString().slice(0, 5),
-                    type: delta > 0 ? 'in' : 'out',
-                    qty: Math.abs(delta),
-                    reason: 'Manual Adjust',
-                    balanceAfter: newQty,
-                };
+                const branchId = branchIdOverride || state.activeBranchId;
+                
                 set(s => ({
-                    products: s.products.map(p =>
-                        p.id === id
-                            ? {
+                    products: s.products.map(p => {
+                        if (p.id !== id) return p;
+                        
+                        let updated: any;
+                        if (branchId) {
+                            const bStock = p.branchStock || {};
+                            const oldBranchQty = bStock[branchId] ?? 0;
+                            const newBranchQty = Math.max(0, oldBranchQty + delta);
+                            const updatedBranchStock = { ...bStock, [branchId]: newBranchQty };
+                            
+                            updated = {
                                 ...p,
-                                stockQty: newQty,
-                                stockLogs: [{ ...log, id: uid() }, ...(p.stockLogs || [])].slice(0, 500)
-                              }
-                            : p
-                    ),
+                                branchStock: updatedBranchStock
+                            };
+                            
+                            if (p.batches && p.batches.length > 0 && delta !== 0) {
+                                let updatedBatches = [...p.batches];
+                                if (delta < 0) {
+                                    let remaining = Math.abs(delta);
+                                    const sorted = [...updatedBatches].sort((a, b) => {
+                                        const expA = a.expiryDate || '9999-12-31';
+                                        const expB = b.expiryDate || '9999-12-31';
+                                        if (expA !== expB) return expA.localeCompare(expB);
+                                        return (a.addedAt || '').localeCompare(b.addedAt || '');
+                                    });
+                                    const resolved = sorted.map(b => {
+                                        if (remaining <= 0) return b;
+                                        const deduct = Math.min(b.qty, remaining);
+                                        remaining -= deduct;
+                                        return { ...b, qty: Math.max(0, b.qty - deduct) };
+                                    });
+                                    if (remaining > 0 && resolved.length > 0) {
+                                        resolved[0].qty -= remaining;
+                                    }
+                                    updatedBatches = resolved;
+                                } else {
+                                    const sorted = [...updatedBatches].sort((a, b) => (b.addedAt || '').localeCompare(a.addedAt || ''));
+                                    if (sorted.length > 0) {
+                                        sorted[0].qty += delta;
+                                        updatedBatches = sorted;
+                                    }
+                                }
+                                updated.batches = updatedBatches;
+                            }
+
+                            if (reason !== 'skip') {
+                                const log: Omit<StockLog, 'id'> = {
+                                    date: new Date().toISOString().slice(0, 10),
+                                    time: new Date().toTimeString().slice(0, 5),
+                                    type: delta > 0 ? 'in' : 'out',
+                                    qty: Math.abs(delta),
+                                    reason: reason || 'Manual Adjust',
+                                    balanceAfter: newBranchQty,
+                                };
+                                const logWithBranch = { ...log, id: uid(), branchId };
+                                updated.stockLogs = [logWithBranch, ...(p.stockLogs || [])].slice(0, 500);
+                            }
+                        } else {
+                            const newQty = Math.max(0, p.stockQty + delta);
+                            updated = { ...p, stockQty: newQty };
+                            
+                            if (p.batches && p.batches.length > 0 && delta !== 0) {
+                                let updatedBatches = [...p.batches];
+                                if (delta < 0) {
+                                    let remaining = Math.abs(delta);
+                                    const sorted = [...updatedBatches].sort((a, b) => {
+                                        const expA = a.expiryDate || '9999-12-31';
+                                        const expB = b.expiryDate || '9999-12-31';
+                                        if (expA !== expB) return expA.localeCompare(expB);
+                                        return (a.addedAt || '').localeCompare(b.addedAt || '');
+                                    });
+                                    const resolved = sorted.map(b => {
+                                        if (remaining <= 0) return b;
+                                        const deduct = Math.min(b.qty, remaining);
+                                        remaining -= deduct;
+                                        return { ...b, qty: Math.max(0, b.qty - deduct) };
+                                    });
+                                    if (remaining > 0 && resolved.length > 0) {
+                                        resolved[0].qty -= remaining;
+                                    }
+                                    updatedBatches = resolved;
+                                } else {
+                                    const sorted = [...updatedBatches].sort((a, b) => (b.addedAt || '').localeCompare(a.addedAt || ''));
+                                    if (sorted.length > 0) {
+                                        sorted[0].qty += delta;
+                                        updatedBatches = sorted;
+                                    }
+                                }
+                                updated.batches = updatedBatches;
+                            }
+
+                            if (reason !== 'skip') {
+                                const log: Omit<StockLog, 'id'> = {
+                                    date: new Date().toISOString().slice(0, 10),
+                                    time: new Date().toTimeString().slice(0, 5),
+                                    type: delta > 0 ? 'in' : 'out',
+                                    qty: Math.abs(delta),
+                                    reason: reason || 'Manual Adjust',
+                                    balanceAfter: newQty,
+                                };
+                                updated.stockLogs = [{ ...log, id: uid() }, ...(p.stockLogs || [])].slice(0, 500);
+                            }
+                        }
+                        return updated;
+                    }),
                     lastModified: Date.now()
                 }));
+                syncAfter(get);
             },
 
             assignProductsToParty: (partyId, productIds) =>
@@ -669,14 +1090,21 @@ export const useStore = create<EdibioState>()(
 
             invoices: [],
             addInvoice: (inv) => {
+                const branchId = get().activeBranchId;
+                const taggedInv = branchId ? { ...inv, branchId } : inv;
                 set(s => ({
-                    invoices: [inv, ...s.invoices],
+                    invoices: [taggedInv, ...s.invoices],
                     companies: s.companies.map(c =>
-                        c.id === inv.companyId ? { ...c, invoiceCounter: c.invoiceCounter + 1 } : c
+                        c.id === taggedInv.companyId ? { ...c, invoiceCounter: c.invoiceCounter + 1 } : c
                     ),
                     lastModified: Date.now()
                 }));
                 syncAfter(get);
+                get().addAuditLog({
+                    action: 'create',
+                    resource: 'Invoice',
+                    details: `Created invoice ${inv.invoiceNumber} for ${inv.partyName} (Total: ₹${inv.grandTotal})`
+                });
 
                 // Auto-link products to supplier if purchase
                 if (inv.invoiceType === 'purchase' && inv.partyId) {
@@ -698,7 +1126,7 @@ export const useStore = create<EdibioState>()(
                         const prod = state.products.find(p => p.id === item.productId);
                         if (!prod) return;
                         const delta = isStockIn ? item.qty : -item.qty;
-                        const balanceAfter = Math.max(0, prod.stockQty + delta);
+                        const balanceAfter = prod.stockQty;
                         const log: Omit<StockLog, 'id'> = {
                             date: inv.date,
                             time: inv.time,
@@ -717,7 +1145,7 @@ export const useStore = create<EdibioState>()(
                 // Update party balance based on invoice type
                 // Draft types (estimate, proforma, delivery_challan) do NOT affect balance
                 const DRAFT_TYPES = ['estimate', 'proforma', 'delivery_challan'];
-                if (inv.partyId && !DRAFT_TYPES.includes(inv.invoiceType) && inv.balanceDue > 0) {
+                if (inv.partyId && !DRAFT_TYPES.includes(inv.invoiceType) && inv.balanceDue !== 0) {
                     let balanceDelta = 0;
                     if (inv.invoiceType === 'sale') {
                         // Customer owes us → increase their balance (positive = receivable from them)
@@ -758,11 +1186,26 @@ export const useStore = create<EdibioState>()(
                     }
                 }
             },
-            updateInvoice: (id, upd) =>
-                set(s => ({ invoices: s.invoices.map(i => i.id === id ? { ...i, ...upd } : i), lastModified: Date.now() })),
+            updateInvoice: (id, upd) => {
+                const prev = get().invoices.find(i => i.id === id);
+                set(s => ({ invoices: s.invoices.map(i => i.id === id ? { ...i, ...upd } : i), lastModified: Date.now() }));
+                syncAfter(get);
+                if (prev) {
+                    get().addAuditLog({
+                        action: 'update',
+                        resource: 'Invoice',
+                        details: `Updated invoice ${prev.invoiceNumber} details.`
+                    });
+                }
+            },
             deleteInvoice: (id) => {
                 const inv = get().invoices.find(i => i.id === id);
                 if (inv) {
+                    get().addAuditLog({
+                        action: 'delete',
+                        resource: 'Invoice',
+                        details: `Deleted invoice ${inv.invoiceNumber} (Total: ₹${inv.grandTotal})`
+                    });
                     // Revert stock changes
                     inv.items.forEach((item: any) => {
                         if (item.productId) {
@@ -773,7 +1216,7 @@ export const useStore = create<EdibioState>()(
                                 delta = -item.qty;
                             }
                             if (delta !== 0) {
-                                get().adjustStock(item.productId, delta);
+                                get().adjustStock(item.productId, delta, `Reverted - Invoice ${inv.invoiceNumber}`);
                             }
                         }
                     });
@@ -836,53 +1279,105 @@ export const useStore = create<EdibioState>()(
             },
 
             expenses: [],
-            addExpense: (e) =>
-                set(s => ({ expenses: [{ ...e, id: uid(), createdAt: new Date().toISOString() }, ...s.expenses], lastModified: Date.now() })),
-            deleteExpense: (id) =>
-                set(s => ({ expenses: s.expenses.filter(x => x.id !== id), lastModified: Date.now() })),
+            addExpense: (e) => {
+                const branchId = get().activeBranchId || undefined;
+                const exp = { ...e, id: uid(), branchId, createdAt: new Date().toISOString() };
+                set(s => ({ expenses: [exp, ...s.expenses], lastModified: Date.now() }));
+                syncAfter(get);
+                get().addAuditLog({
+                    action: 'create',
+                    resource: 'Expense',
+                    details: `Added expense (Category: ${exp.category}, Amount: ₹${exp.amount}, Date: ${exp.date})`
+                });
+            },
+            updateExpense: (id, upd) => {
+                const prev = get().expenses.find(x => x.id === id);
+                set(s => ({ expenses: s.expenses.map(x => x.id === id ? { ...x, ...upd } : x), lastModified: Date.now() }));
+                syncAfter(get);
+                if (prev) {
+                    get().addAuditLog({
+                        action: 'update',
+                        resource: 'Expense',
+                        details: `Updated expense (Category: ${prev.category}, Amount: ₹${prev.amount})`
+                    });
+                }
+            },
+            deleteExpense: (id) => {
+                const prev = get().expenses.find(x => x.id === id);
+                set(s => ({ expenses: s.expenses.filter(x => x.id !== id), lastModified: Date.now() }));
+                syncAfter(get);
+                if (prev) {
+                    get().addAuditLog({
+                        action: 'delete',
+                        resource: 'Expense',
+                        details: `Deleted expense (Category: ${prev.category}, Amount: ₹${prev.amount})`
+                    });
+                }
+            },
 
             agencyClients: [],
             addAgencyClient: (c) => {
                 const ac = { ...c, id: uid(), createdAt: new Date().toISOString() };
                 set(s => ({ agencyClients: [ac, ...s.agencyClients], lastModified: Date.now() }));
+                syncAfter(get);
                 return ac;
             },
-            updateAgencyClient: (id, upd) =>
-                set(s => ({ agencyClients: s.agencyClients.map(c => c.id === id ? { ...c, ...upd } : c), lastModified: Date.now() })),
-            deleteAgencyClient: (id) =>
-                set(s => ({ agencyClients: s.agencyClients.filter(c => c.id !== id), lastModified: Date.now() })),
+            updateAgencyClient: (id, upd) => {
+                set(s => ({ agencyClients: s.agencyClients.map(c => c.id === id ? { ...c, ...upd } : c), lastModified: Date.now() }));
+                syncAfter(get);
+            },
+            deleteAgencyClient: (id) => {
+                set(s => ({ agencyClients: s.agencyClients.filter(c => c.id !== id), lastModified: Date.now() }));
+                syncAfter(get);
+            },
 
             agencyProjects: [],
             addAgencyProject: (p) => {
                 const proj = { ...p, id: uid(), createdAt: new Date().toISOString() };
                 set(s => ({ agencyProjects: [proj, ...s.agencyProjects], lastModified: Date.now() }));
+                syncAfter(get);
                 return proj;
             },
-            updateAgencyProject: (id, upd) =>
-                set(s => ({ agencyProjects: s.agencyProjects.map(p => p.id === id ? { ...p, ...upd } : p), lastModified: Date.now() })),
-            deleteAgencyProject: (id) =>
-                set(s => ({ agencyProjects: s.agencyProjects.filter(p => p.id !== id), lastModified: Date.now() })),
+            updateAgencyProject: (id, upd) => {
+                set(s => ({ agencyProjects: s.agencyProjects.map(p => p.id === id ? { ...p, ...upd } : p), lastModified: Date.now() }));
+                syncAfter(get);
+            },
+            deleteAgencyProject: (id) => {
+                set(s => ({ agencyProjects: s.agencyProjects.filter(p => p.id !== id), lastModified: Date.now() }));
+                syncAfter(get);
+            },
 
             purchaseOrders: [],
             addPurchaseOrder: (po) => {
                 const now = new Date().toISOString();
                 const full: PurchaseOrder = { ...po, id: uid(), createdAt: now, updatedAt: now };
                 set(s => ({ purchaseOrders: [full, ...s.purchaseOrders], lastModified: Date.now() }));
+                syncAfter(get);
                 return full;
             },
-            updatePurchaseOrder: (id, upd) =>
-                set(s => ({ purchaseOrders: s.purchaseOrders.map(po => po.id === id ? { ...po, ...upd, updatedAt: new Date().toISOString() } : po), lastModified: Date.now() })),
-            deletePurchaseOrder: (id) =>
-                set(s => ({ purchaseOrders: s.purchaseOrders.filter(po => po.id !== id), lastModified: Date.now() })),
+            updatePurchaseOrder: (id, upd) => {
+                set(s => ({ purchaseOrders: s.purchaseOrders.map(po => po.id === id ? { ...po, ...upd, updatedAt: new Date().toISOString() } : po), lastModified: Date.now() }));
+                syncAfter(get);
+            },
+            deletePurchaseOrder: (id) => {
+                set(s => ({ purchaseOrders: s.purchaseOrders.filter(po => po.id !== id), lastModified: Date.now() }));
+                syncAfter(get);
+            },
 
 
             templates: DEFAULT_TEMPLATES,
-            addTemplate: (t) =>
-                set(s => ({ templates: [...s.templates, { ...t, id: uid() }], lastModified: Date.now() })),
-            updateTemplate: (id, upd) =>
-                set(s => ({ templates: s.templates.map(t => t.id === id ? { ...t, ...upd } : t), lastModified: Date.now() })),
-            deleteTemplate: (id) =>
-                set(s => ({ templates: s.templates.filter(t => t.id !== id), lastModified: Date.now() })),
+            addTemplate: (t) => {
+                set(s => ({ templates: [...s.templates, { ...t, id: uid() }], lastModified: Date.now() }));
+                syncAfter(get);
+            },
+            updateTemplate: (id, upd) => {
+                set(s => ({ templates: s.templates.map(t => t.id === id ? { ...t, ...upd } : t), lastModified: Date.now() }));
+                syncAfter(get);
+            },
+            deleteTemplate: (id) => {
+                set(s => ({ templates: s.templates.filter(t => t.id !== id), lastModified: Date.now() }));
+                syncAfter(get);
+            },
 
             hsnCache: [],
             addToHsnCache: (h) =>
@@ -892,7 +1387,7 @@ export const useStore = create<EdibioState>()(
 
             resetAll: () =>
                 set({
-                    companies: [], parties: [], products: [], invoices: [], expenses: [],
+                    companies: [], parties: [], products: [], invoices: [], expenses: [], purchaseOrders: [],
                     agencyClients: [], agencyProjects: [], hsnCache: [], templates: DEFAULT_TEMPLATES,
                     user: null, isAuthenticated: false, activeCompanyId: null, isHydrating: true, primarySwapCount: 0, aiApiKey: null, aiUsageCount: 0,
                     lastSyncedAt: null, syncStatus: 'idle', syncError: null,
@@ -911,6 +1406,7 @@ export const useStore = create<EdibioState>()(
                     products: s.products,
                     invoices: s.invoices,
                     expenses: s.expenses,
+                    purchaseOrders: s.purchaseOrders,
                     agencyClients: s.agencyClients,
                     agencyProjects: s.agencyProjects,
                     hsnCache: s.hsnCache,
@@ -940,6 +1436,7 @@ export const useStore = create<EdibioState>()(
                         products: data.products || [],
                         invoices: data.invoices || [],
                         expenses: data.expenses || [],
+                        purchaseOrders: data.purchaseOrders || [],
                         agencyClients: data.agencyClients || [],
                         agencyProjects: data.agencyProjects || [],
                         hsnCache: data.hsnCache || [],
@@ -956,11 +1453,16 @@ export const useStore = create<EdibioState>()(
             addAuditLog: (log) => {
                 const { activeCompanyId, user } = get();
                 if (!activeCompanyId || !user) return;
-                const newLog = {
-                    ...log,
+                const newLog = Object.assign({
+                    userId: user.uid || '',
+                    userName: user.name || 'Unknown',
+                    userEmail: user.email || '',
+                    userRole: user.role || 'owner',
+                    ipAddress: '127.0.0.1',
+                }, log, {
                     id: uid(),
                     timestamp: new Date().toISOString(),
-                };
+                });
                 set(s => ({
                     companies: s.companies.map(c =>
                         c.id === activeCompanyId
@@ -976,6 +1478,9 @@ export const useStore = create<EdibioState>()(
             name: 'edibio-store',
             version: 1,
             storage: typeof window !== 'undefined' ? createJSONStorage(() => idbStorage) : undefined,
+            onRehydrateStorage: () => (state) => {
+                state?.setIsHydrating(false);
+            }
         }
     )
 );

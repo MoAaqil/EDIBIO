@@ -42,15 +42,18 @@ export interface Company {
     templateTheme?: string; // Standard / Manual Invoice theme
     quickBillingTheme?: string; // Theme for Quick Billing
     posTheme?: string; // Theme for POS Billing
+    templateThemeColor?: string; // Custom Accent/Primary color for templates
     templatePageSize?: string; // Page size
     templateColumns?: { sn: boolean; hsn: boolean; rate: boolean; discount: boolean; tax: boolean };
     quickBillingColumns?: { barcode: boolean; hsn: boolean; mfgDate: boolean; mrp: boolean; size: boolean; discount: boolean; tax: boolean };
     customLabels?: { invoiceTitle: string; invoiceNo: string; date: string; dueDate: string; billedTo: string; paymentMethod: string; footerTerms: string; };
     invoicePassword?: string; // password to view hidden invoices
+    showHiddenInvoices?: boolean; // toggle visibility of hidden invoices globally
     whatsappEnabled?: boolean;  // WhatsApp invoice sending toggle
     autoBackupEnabled?: boolean; // auto-save local backup file
+    kitchenDisplayEnabled?: boolean; // Kitchen Display System toggle
     bankDetails?: { bankName: string; accountName: string; accountNumber: string; ifsc: string; upiId: string; qrCodeUrl?: string };
-    team?: { id: string; contact: string; name: string; role: 'co_owner' | 'manager' | 'staff' | 'principal' | 'accountant' | 'teacher' | 'receptionist' | 'chef_atelier' | 'server'; code?: string; password?: string; counter?: string; }[];
+    team?: { id: string; contact: string; name: string; role: 'co_owner' | 'manager' | 'staff' | 'principal' | 'accountant' | 'teacher' | 'receptionist' | 'chef_atelier' | 'server' | 'cashier' | 'warehouse'; code?: string; password?: string; counter?: string; branchId?: string; }[];
     licenseNo?: string;
     auditLogs?: AuditLog[]; // Enterprise Audit Trail
     loyaltyPointsEnabled?: boolean;
@@ -64,7 +67,7 @@ export interface Company {
     tableConfig?: Record<string, number>;
     customAreas?: string[];
     kitchenOrders?: { id: string; tableNum: string; area: string; items: { name: string; qty: number; notes?: string }[]; status: 'new' | 'preparing' | 'ready'; orderedAt: string; servedBy?: string }[];
-    deals?: { id: string; name: string; description: string; items: { name: string; qty: number; price: number }[]; dealPrice: number; emoji: string; type: 'combo' | 'offer' | 'special'; validFor: 'All' | 'Breakfast' | 'Lunch' | 'Dinner' }[];
+    deals?: { id: string; name: string; description: string; items: { name: string; qty: number; price: number }[]; dealPrice: number; emoji: string; type: 'combo' | 'offer' | 'special'; validFor: 'All' | 'Breakfast' | 'Lunch' | 'Dinner'; startDate?: string | null; endDate?: string | null; isPromo?: boolean }[];
     deliveryIntegrations?: { platform: string; apiKey: string; restaurantId: string; enabled: boolean; color: string; icon: string }[];
     recentZReports?: any[];
     appOrders?: any[];
@@ -72,6 +75,45 @@ export interface Company {
     registerOpen?: boolean;
     openingFloat?: number;
     openingTime?: string;
+    franchiseEnabled?: boolean;
+    branches?: Branch[];
+    createdAt: string;
+}
+
+export interface Branch {
+    id: string;
+    name: string;
+    gstin?: string;
+    address?: string;
+    phone?: string;
+    email?: string;
+    managerName?: string;
+    warehouseName?: string;
+    bankDetails?: {
+        bankName: string;
+        accountNumber: string;
+        ifsc: string;
+        upiId?: string;
+    };
+    printerSettings?: string;
+    invoiceSeries?: string;
+    licenseKey: string;
+    dailyTarget?: number;
+    monthlyTarget?: number;
+    revenueGoal?: number;
+    profitGoal?: number;
+    logoUrl?: string;
+}
+
+export interface StockTransfer {
+    id: string;
+    companyId: string;
+    fromBranchId: string;
+    toBranchId: string;
+    productId: string;
+    productName: string;
+    qty: number;
+    status: 'pending' | 'approved' | 'rejected';
     createdAt: string;
 }
 
@@ -81,9 +123,12 @@ export interface AuditLog {
     timestamp: string;
     userId: string;
     userName: string;
+    userEmail?: string;
     userRole: string;
-    action: 'CREATE' | 'UPDATE' | 'DELETE' | 'LOGIN' | 'EXPORT' | 'IMPORT';
-    entityType: 'INVOICE' | 'PRODUCT' | 'PARTY' | 'SETTINGS' | 'SYSTEM';
+    ipAddress?: string;
+    action: string;
+    resource?: string;
+    entityType?: string;
     entityId?: string;
     details: string;
 }
@@ -196,6 +241,8 @@ export interface Product {
     stockLogs?: StockLog[];   // movement history
     batches?: Batch[];        // batch/expiry tracking
     expiryDate?: string;      // YYYY-MM-DD (Product Expiry Date)
+    branchStock?: Record<string, number>;
+    branchPrice?: Record<string, number>;
 }
 
 // ── Digital Agency CRM & Projects ───────────────────────────────────────────────
@@ -321,6 +368,7 @@ export interface Invoice {
     payments: PaymentEntry[];
     paymentMethod: PaymentMethod;
     splitPayments?: { method: PaymentMethod; amount: number; label?: string }[]; // e.g. [{method:'cash',amount:200},{method:'upi',amount:300}]
+    servedBy?: string;
 
     // Flags
     isGstBill: boolean;       // has GST? if false, hidden from normal view
@@ -336,6 +384,8 @@ export interface Invoice {
     pointsEarned?: number;
     pointsRedeemed?: number;
     pointsValueRedeemed?: number;
+    receiptUrl?: string;
+    branchId?: string;
     createdAt: string;
     updatedAt: string;
 }
@@ -353,6 +403,7 @@ export interface Expense {
     partyId?: string;
     projectId?: string; // link expense to project
     receiptUrl?: string;
+    branchId?: string;
     createdAt: string;
 }
 

@@ -250,3 +250,37 @@ export function buildWhatsAppReminderUrl(invoice: any, party?: any): string {
     const base = phone ? `https://wa.me/${phone.startsWith('91') ? phone : '91' + phone}` : 'https://wa.me/';
     return `${base}?text=${encoded}`;
 }
+
+// ── WhatsApp Invoice ─────────────────────────────────────────────────────────
+/**
+ * Builds a wa.me URL with a pre-filled complete invoice detail summary.
+ * @param invoice  The invoice object
+ * @param company  The company object
+ */
+export function buildWhatsAppInvoiceUrl(invoice: any, company?: any): string {
+    const rawPhone = (invoice.partyPhone || '').replace(/\D/g, '');
+    const phone = rawPhone ? (rawPhone.length === 10 ? '91' + rawPhone : rawPhone) : '';
+    
+    let itemsText = '';
+    (invoice.items || []).forEach((item: any) => {
+        itemsText += `• *${item.name}* × ${item.qty} ${item.unit || 'pcs'} — ₹${item.amount.toLocaleString('en-IN')}\n`;
+    });
+
+    const msg = `🧾 *INVOICE: ${invoice.invoiceNumber}*\n\n` +
+        `*${company?.name || 'Store'}*\n` +
+        `Date: ${invoice.date}\n\n` +
+        `--------------------------------\n` +
+        `Hello *${invoice.partyName || 'Customer'}*,\n` +
+        `Thank you for your business!\n\n` +
+        `*ITEMS:*\n${itemsText}` +
+        `--------------------------------\n` +
+        `*SUBTOTAL:* ₹${(invoice.subTotal || 0).toLocaleString('en-IN')}\n` +
+        `*TAX / GST:* ₹${(invoice.totalGst || 0).toLocaleString('en-IN')}\n` +
+        `*GRAND TOTAL: ₹${(invoice.grandTotal || 0).toLocaleString('en-IN')}*\n\n` +
+        `${invoice.balanceDue > 0 ? `⚠️ *BALANCE DUE: ₹${invoice.balanceDue.toLocaleString('en-IN')}*` : '✅ *STATUS: FULLY PAID*'}\n\n` +
+        `_Sent via Edibio Cloud_`;
+
+    const encoded = encodeURIComponent(msg);
+    const base = phone ? `https://wa.me/${phone.startsWith('91') ? phone : '91' + phone}` : 'https://wa.me/';
+    return `${base}?text=${encoded}`;
+}

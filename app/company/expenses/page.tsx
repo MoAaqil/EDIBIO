@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useStore, useCompanyData, useActiveCompany } from '@/lib/store';
 import { formatDate, PAYMENT_METHODS } from '@/lib/utils';
 import type { Expense, AgencyProject } from '@/lib/types';
-import { Plus, Lock, Unlock, DollarSign, TrendingDown, Calendar, Trash2, X, Search, Download, PieChart, Briefcase } from 'lucide-react';
+import { Plus, Lock, Unlock, DollarSign, TrendingDown, Calendar, Trash2, X, Search, Download, PieChart, Briefcase, Pencil } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { confirm } from '@/components/ConfirmDialog';
 
@@ -15,7 +15,7 @@ const EXPENSE_CATEGORIES = [
 ];
 
 export default function ExpensesPage() {
-    const { activeCompanyId, addExpense, deleteExpense } = useStore();
+    const { activeCompanyId, addExpense, deleteExpense, updateExpense } = useStore();
     const companyId = activeCompanyId;
     const company = useActiveCompany();
     const isAgency = company?.type === 'Digital Agency';
@@ -29,8 +29,29 @@ export default function ExpensesPage() {
     const [search, setSearch] = useState('');
     const [catFilter, setCatFilter] = useState('');
     const [showAdd, setShowAdd] = useState(false);
+    const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
     const [form, setForm] = useState({ category: 'Rent', description: '', amount: '', gstAmount: '', date: new Date().toISOString().slice(0, 10), paymentMethod: 'cash', projectId: '' });
     const up = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
+
+    const handleEditClick = (e: Expense) => {
+        setEditingExpense(e);
+        setForm({
+            category: e.category,
+            description: e.description || '',
+            amount: String(e.amount),
+            gstAmount: e.gstAmount ? String(e.gstAmount) : '',
+            date: e.date || new Date().toISOString().slice(0, 10),
+            paymentMethod: e.paymentMethod || 'cash',
+            projectId: e.projectId || ''
+        });
+        setShowAdd(true);
+    };
+
+    const handleCloseModal = () => {
+        setShowAdd(false);
+        setEditingExpense(null);
+        setForm({ category: 'Rent', description: '', amount: '', gstAmount: '', date: new Date().toISOString().slice(0, 10), paymentMethod: 'cash', projectId: '' });
+    };
 
     const verifyPw = () => {
         const pw = company?.invoicePassword;
@@ -45,7 +66,8 @@ export default function ExpensesPage() {
     });
 
     const totalExpenses = expenses.reduce((a, e) => a + e.amount, 0);
-    const thisMonth = expenses.filter(e => e.date?.slice(0, 7) === new Date().toISOString().slice(0, 7)).reduce((a, e) => a + e.amount, 0);
+    const localMonthKey = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+    const thisMonth = expenses.filter(e => e.date?.slice(0, 7) === localMonthKey).reduce((a, e) => a + e.amount, 0);
 
     const catTotals: Record<string, number> = {};
     expenses.forEach(e => { catTotals[e.category] = (catTotals[e.category] || 0) + e.amount; });
@@ -53,16 +75,25 @@ export default function ExpensesPage() {
 
     const handleSave = () => {
         if (!form.amount || parseFloat(form.amount) <= 0) { toast.error('Enter expense amount'); return; }
-        addExpense({
-            companyId: companyId!, category: form.category,
+        const data = {
+            category: form.category,
             description: form.description || undefined,
             amount: parseFloat(form.amount),
             gstAmount: form.gstAmount ? parseFloat(form.gstAmount) : undefined,
             date: form.date, paymentMethod: form.paymentMethod as any,
             projectId: form.projectId || undefined,
-        });
-        setShowAdd(false);
-        setForm({ category: 'Rent', description: '', amount: '', gstAmount: '', date: new Date().toISOString().slice(0, 10), paymentMethod: 'cash', projectId: '' });
+        };
+        if (editingExpense) {
+            updateExpense(editingExpense.id, data);
+            toast.success('Expense updated');
+        } else {
+            addExpense({
+                companyId: companyId!,
+                ...data
+            });
+            toast.success('Expense added');
+        }
+        handleCloseModal();
     };
 
     const exportCSV = () => {
@@ -155,7 +186,7 @@ export default function ExpensesPage() {
                         {EXPENSE_CATEGORIES.map(c => <option key={c}>{c}</option>)}
                     </select>
                     <button onClick={exportCSV} className="btn btn-outline btn-sm" style={{ gap: 5 }}><Download size={13} /> Export</button>
-                    <button onClick={() => setShowAdd(true)} className="btn btn-red btn-sm" style={{ gap: 5 }}>
+                    <button onClick={() => { setEditingExpense(null); setShowAdd(true); }} className="btn btn-red btn-sm" style={{ gap: 5 }}>
                         <Plus size={13} /> Add Expense
                     </button>
                 </div>
@@ -165,7 +196,7 @@ export default function ExpensesPage() {
                         <div style={{ textAlign: 'center', padding: '56px 20px' }}>
                             <DollarSign size={44} style={{ color: '#E1E4E8', margin: '0 auto 12px' }} />
                             <p style={{ color: '#A0AEC0', fontWeight: 600, fontSize: 14 }}>No expenses yet</p>
-                            <button onClick={() => setShowAdd(true)} className="btn btn-red btn-sm" style={{ display: 'inline-flex', marginTop: 12, gap: 5 }}>
+                            <button onClick={() => { setEditingExpense(null); setShowAdd(true); }} className="btn btn-red btn-sm" style={{ display: 'inline-flex', marginTop: 12, gap: 5 }}>
                                 <Plus size={13} /> Add Expense
                             </button>
                         </div>
@@ -186,10 +217,15 @@ export default function ExpensesPage() {
                                                 <td style={{ fontWeight: 900, color: '#EA4335' }}>₹{e.amount.toLocaleString('en-IN')}</td>
                                                 <td style={{ fontSize: 12, color: '#718096' }}>{e.gstAmount ? `₹${e.gstAmount}` : '—'}</td>
                                                 <td><span className="badge badge-gray" style={{ textTransform: 'capitalize' }}>{e.paymentMethod}</span></td>
-                                                <td><button onClick={async () => {
-                                                    const yes = await confirm({ message: 'This expense record will be permanently deleted.', danger: true });
-                                                    if (yes) { deleteExpense(e.id); toast.success('Expense deleted'); }
-                                                }} className="btn btn-ghost btn-icon" style={{ padding: 6, color: '#EA4335' }}><Trash2 size={13} /></button></td>
+                                                <td>
+                                                    <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                                                        <button onClick={() => handleEditClick(e)} className="btn btn-ghost btn-icon" style={{ padding: 6, color: '#4285F4' }}><Pencil size={13} /></button>
+                                                        <button onClick={async () => {
+                                                            const yes = await confirm({ message: 'This expense record will be permanently deleted.', danger: true });
+                                                            if (yes) { deleteExpense(e.id); toast.success('Expense deleted'); }
+                                                        }} className="btn btn-ghost btn-icon" style={{ padding: 6, color: '#EA4335' }}><Trash2 size={13} /></button>
+                                                    </div>
+                                                </td>
                                             </tr>
                                         ))}
                                     </tbody>
@@ -201,13 +237,20 @@ export default function ExpensesPage() {
                                         <div style={{ width: 40, height: 40, borderRadius: 11, background: '#FCE8E6', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                                             <DollarSign size={18} color="#EA4335" />
                                         </div>
-                                        <div style={{ flex: 1 }}>
-                                            <p style={{ fontWeight: 700, fontSize: 13, color: '#1A1A2E' }}>{e.category}</p>
-                                            <p style={{ fontSize: 11, color: '#A0AEC0' }}>{formatDate(e.date)}{e.description ? ` · ${e.description}` : ''}</p>
+                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                            <p style={{ fontWeight: 700, fontSize: 13, color: '#1A1A2E', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.category}</p>
+                                            <p style={{ fontSize: 11, color: '#A0AEC0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{formatDate(e.date)}{e.description ? ` · ${e.description}` : ''}</p>
                                         </div>
-                                        <div style={{ textAlign: 'right' }}>
+                                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
                                             <p style={{ fontWeight: 900, fontSize: 14, color: '#EA4335' }}>₹{e.amount.toLocaleString('en-IN')}</p>
                                             <span className="badge badge-gray" style={{ fontSize: 9 }}>{e.paymentMethod}</span>
+                                        </div>
+                                        <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                                            <button onClick={() => handleEditClick(e)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#E8F0FE', border: 'none', cursor: 'pointer', padding: 0, borderRadius: '50%', width: 30, height: 30 }} title="Edit"><Pencil size={13} color="#4285F4" /></button>
+                                            <button onClick={async () => {
+                                                const yes = await confirm({ message: 'This expense record will be permanently deleted.', danger: true });
+                                                if (yes) { deleteExpense(e.id); toast.success('Expense deleted'); }
+                                            }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#FCE8E6', border: 'none', cursor: 'pointer', padding: 0, borderRadius: '50%', width: 30, height: 30 }} title="Delete"><Trash2 size={13} color="#EA4335" /></button>
                                         </div>
                                     </div>
                                 ))}
@@ -217,13 +260,13 @@ export default function ExpensesPage() {
                 </div>
             </div>
 
-            {/* Add Expense Modal */}
+            {/* Add/Edit Expense Modal */}
             {showAdd && (
-                <div className="modal-overlay" onClick={() => setShowAdd(false)}>
+                <div className="modal-overlay" onClick={handleCloseModal}>
                     <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 480 }}>
                         <div style={{ padding: '18px 24px 14px', borderBottom: '1px solid #E1E4E8', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <h3 style={{ fontWeight: 900, fontSize: 17, color: '#1A1A2E' }}>Add Expense</h3>
-                            <button onClick={() => setShowAdd(false)} className="btn btn-ghost btn-icon"><X size={18} /></button>
+                            <h3 style={{ fontWeight: 900, fontSize: 17, color: '#1A1A2E' }}>{editingExpense ? 'Edit Expense' : 'Add Expense'}</h3>
+                            <button onClick={handleCloseModal} className="btn btn-ghost btn-icon"><X size={18} /></button>
                         </div>
                         <div style={{ padding: '18px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
                             <div>
@@ -271,8 +314,8 @@ export default function ExpensesPage() {
                             )}
                         </div>
                         <div style={{ padding: '14px 24px', borderTop: '1px solid #E1E4E8', display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-                            <button onClick={() => setShowAdd(false)} className="btn btn-outline">Cancel</button>
-                            <button onClick={handleSave} className="btn btn-red">Add Expense</button>
+                            <button onClick={handleCloseModal} className="btn btn-outline">Cancel</button>
+                            <button onClick={handleSave} className="btn btn-red">{editingExpense ? 'Save Changes' : 'Add Expense'}</button>
                         </div>
                     </div>
                 </div>
