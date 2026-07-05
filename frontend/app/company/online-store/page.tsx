@@ -16,7 +16,7 @@ const getEdistoreUrl = () => {
       return 'http://localhost:3001';
     }
   }
-  return 'https://edistore.vercel.app';
+  return 'https://edistore-online.vercel.app';
 };
 
 export default function OnlineStorePage() {
@@ -297,7 +297,7 @@ export default function OnlineStorePage() {
     } catch (err: any) {
       // Fallback relative call if remote port differs
       try {
-        const res = await fetch('/api/products', {
+        const res = await fetch(`${getEdistoreUrl()}/api/products`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

@@ -66,5 +66,10 @@ This file documents the restructuring changes, database connections, and hosting
 - Fixed account switching synchronization bug on mobile devices by ensuring that `isHydrating` is reset to false upon store reset (logout), permitting subsequent user logins to fetch cloud data immediately.
 - Prevented race conditions that overwrite cloud database state with empty/stale local state by gating push synchronization until the first cloud pull completes successfully.
 - Resolved build failures on Vercel by modifying copy-backend scripts to preserve existing committed libraries and using fallback Firebase credentials during static page prerendering.
+- Modified `copy-backend.js` to preserve other local library files (like `edistore-models.ts` in `edibio-app`) during local compile copy procedures.
+- Implemented `/store/[slug]` page route in the marketplace to enable storefront catalog browsing (resolving 404 page error).
+- Implemented global CORS middleware in `edistore/frontend/middleware.ts` to allow cross-origin API operations from POS `edibio-app`.
+- Fixed POS catalog publish action inside `edibio-app/frontend/app/company/online-store/page.tsx` by routing POST requests to the dynamic storefront URL instead of local relative routes.
+- Harmonized local dev credentials in `edistore`'s `.env.local` with `edibio-app`'s Firebase Auth credentials.
 - Dynamic Storefront URL: Replaced hardcoded localhost:3001 API endpoints in Edibio Online Store page with a dynamic utility resolving to https://edistore.vercel.app in production, and falling back to localhost when running locally.
 - Real-Time MongoDB Database Connection: Aligned models so that Edibio billing app writes listings/read orders directly in the 'edistore' database, sharing the same live collections as the marketplace storefront app.
