@@ -20,16 +20,18 @@ This file documents the restructuring changes, database connections, and hosting
 ------------------------------------------------------------------------
 - Git Provider: GitHub
 - Repository URL: https://github.com/MoAaqil/EDIBIO.git
-- Branch: main (or local checkout)
-- Push Command: git push origin main
+- Branch: master
+- Push Command: git push origin master
 
 ------------------------------------------------------------------------
-3. VERCEL DEPLOYMENT CONFIG
+3. VERCEL DEPLOYMENTS
 ------------------------------------------------------------------------
 - Vercel Owner/Account: aaqils-projects-a143f353 (Aaqil's Projects)
 - Vercel Organization ID: team_42Rd98tkgxs3HUXfc7pHqxpF
-- Vercel Project ID: prj_3suHSIR3S809JEtHbZ1VUYLDTh0E
-- Vercel Project Name: edibio-app
+- Active Projects & Production URLs:
+  * Edibio ERP App: https://edibio-app.vercel.app
+  * Edibio Corporate Homepage: https://edibio-homepage.vercel.app
+  * EdiStore Marketplace: https://edistore.vercel.app
 
 ------------------------------------------------------------------------
 4. DATABASE CONNECTION (MONGODB ATLAS)
@@ -38,13 +40,31 @@ This file documents the restructuring changes, database connections, and hosting
 - Connection Pooler Username: arkadmin
 - Connection String:
   mongodb+srv://arkadmin:Ryomensukuna1@cluster0.ornlhs8.mongodb.net/?appName=Cluster0
-- Default Database: test (stores User, Company, Invoice, Party, Product, Expense schemas)
+- Databases:
+  * 'test' : Stores User, Company, Invoice, Party, Product, Expense schemas.
+  * 'edistore' : Stores EdistoreUser, Store, Product, Order, Review, Cart collections.
+- Database Alignment:
+  * edibio-app connects to 'test' by default, but routes EdiStore connections, catalog products, and order syncs directly to the 'edistore' database using Mongoose sub-connections (mongoose.connection.useDb('edistore')).
+  * edistore connects directly to 'edistore' database.
 
 ------------------------------------------------------------------------
 5. LOCAL DEV & PORT SPEC
 ------------------------------------------------------------------------
-- Port: 3000
-- Run Command: cd frontend && npm run dev
-- Build Command: cd frontend && npm run build
+- Ports:
+  * Edibio ERP App: 3000
+  * EdiStore Marketplace: 3001
+- Dev Commands:
+  * Edibio: cd edibio-app/frontend && npm run dev
+  * EdiStore: cd edistore/frontend && npm run dev
+  * Homepage: Open edibio-homepage/frontend/index.html in browser
 - Mobile Sync: cd frontend && $env:NEXT_PUBLIC_APK_BUILD="true" && npm run build && npx cap sync
 - Desktop Build: cd frontend && npm run electron:build
+
+------------------------------------------------------------------------
+6. RECENT UPDATE LOG (JULY 2026)
+------------------------------------------------------------------------
+- Fixed account switching synchronization bug on mobile devices by ensuring that `isHydrating` is reset to false upon store reset (logout), permitting subsequent user logins to fetch cloud data immediately.
+- Prevented race conditions that overwrite cloud database state with empty/stale local state by gating push synchronization until the first cloud pull completes successfully.
+- Resolved build failures on Vercel by modifying copy-backend scripts to preserve existing committed libraries and using fallback Firebase credentials during static page prerendering.
+- Dynamic Storefront URL: Replaced hardcoded localhost:3001 API endpoints in Edibio Online Store page with a dynamic utility resolving to https://edistore.vercel.app in production, and falling back to localhost when running locally.
+- Real-Time MongoDB Database Connection: Aligned models so that Edibio billing app writes listings/read orders directly in the 'edistore' database, sharing the same live collections as the marketplace storefront app.
