@@ -71,5 +71,9 @@ This file documents the restructuring changes, database connections, and hosting
 - Implemented global CORS middleware in `edistore/frontend/middleware.ts` to allow cross-origin API operations from POS `edibio-app`.
 - Fixed POS catalog publish action inside `edibio-app/frontend/app/company/online-store/page.tsx` by routing POST requests to the dynamic storefront URL instead of local relative routes.
 - Harmonized local dev credentials in `edistore`'s `.env.local` with `edibio-app`'s Firebase Auth credentials.
+- Fixed the checkout page to post order details to MongoDB (`POST /api/orders`) rather than simulating placing the order, ensuring live synchronization of client checkout orders in the database.
+- Added a GET endpoint to `api/stores/[storeId]/route.ts` to allow looking up merchant stores directly by ID.
+- Re-styled the bottom footer logo (and mobile menu brand logo) in `edistore` to use the multi-color Google-inspired brand colors matching the header navbar.
+- Created a profile page for the admin portal at `/admin/profile` allowing super-users to view name, email, access roles, and platform permissions records.
 - Dynamic Storefront URL: Replaced hardcoded localhost:3001 API endpoints in Edibio Online Store page with a dynamic utility resolving to https://edistore.vercel.app in production, and falling back to localhost when running locally.
 - Real-Time MongoDB Database Connection: Aligned models so that Edibio billing app writes listings/read orders directly in the 'edistore' database, sharing the same live collections as the marketplace storefront app.
