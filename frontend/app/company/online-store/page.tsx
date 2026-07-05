@@ -10,6 +10,15 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
+const getEdistoreUrl = () => {
+  if (typeof window !== 'undefined') {
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      return 'http://localhost:3001';
+    }
+  }
+  return 'https://edistore.vercel.app';
+};
+
 export default function OnlineStorePage() {
   const { user, activeCompanyId, products: erpProducts } = useStore();
   const company = useActiveCompany();
@@ -249,7 +258,7 @@ export default function OnlineStorePage() {
     try {
       // Standalone edistore URI shares the same products endpoint, and we connect directly
       // POST directly to the shared API
-      const res = await fetch('http://localhost:3001/api/products', {
+      const res = await fetch(`${getEdistoreUrl()}/api/products`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -326,7 +335,7 @@ export default function OnlineStorePage() {
     if (!confirm) return;
 
     try {
-      const res = await fetch(`http://localhost:3001/api/products/${id}`, { method: 'DELETE' });
+      const res = await fetch(`${getEdistoreUrl()}/api/products/${id}`, { method: 'DELETE' });
       if (res.ok) {
         setProducts(prev => prev.filter(p => p._id !== id));
         toast.success('Product deleted.');
@@ -349,7 +358,7 @@ export default function OnlineStorePage() {
   const handleUpdateOrderStatus = async (orderId: string, status: string) => {
     const toastId = toast.loading(`Updating order status to ${status}...`);
     try {
-      const res = await fetch(`http://localhost:3001/api/orders/${orderId}`, {
+      const res = await fetch(`${getEdistoreUrl()}/api/orders/${orderId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status })
@@ -382,7 +391,7 @@ export default function OnlineStorePage() {
 
     const toastId = toast.loading('Saving settlements account details...');
     try {
-      const res = await fetch(`http://localhost:3001/api/stores/${storeData._id}`, {
+      const res = await fetch(`${getEdistoreUrl()}/api/stores/${storeData._id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -578,7 +587,7 @@ export default function OnlineStorePage() {
         </div>
         
         <div style={{ display: 'flex', gap: 12 }}>
-          <a href={`http://localhost:3001/store/${storeData?.slug}`} target="_blank" className="btn btn-outline btn-sm" style={{ borderColor: '#E2E8F0', color: '#4A5568', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <a href={`${getEdistoreUrl()}/store/${storeData?.slug}`} target="_blank" className="btn btn-outline btn-sm" style={{ borderColor: '#E2E8F0', color: '#4A5568', display: 'flex', alignItems: 'center', gap: 6 }}>
             <span>Storefront Link</span>
             <ExternalLink size={12} />
           </a>

@@ -108,7 +108,9 @@ if (process.env.NODE_ENV === 'development') {
   delete mongoose.models.EdibioConnection;
 }
 
-export const EdistoreStoreData = mongoose.models.EdistoreStore || mongoose.model('EdistoreStore', StoreSchema, 'stores');
-export const EdistoreProductData = mongoose.models.EdistoreProduct || mongoose.model('EdistoreProduct', ProductSchema, 'products');
-export const EdistoreOrderData = mongoose.models.EdistoreOrder || mongoose.model('EdistoreOrder', OrderSchema, 'orders');
-export const EdibioConnectionData = mongoose.models.EdibioConnection || mongoose.model('EdibioConnection', EdibioConnectionSchema, 'edibioconnections');
+const edistoreDb = mongoose.connection.useDb('edistore', { useCache: true });
+
+export const EdistoreStoreData = edistoreDb.models.EdistoreStore || edistoreDb.model('EdistoreStore', StoreSchema, 'stores');
+export const EdistoreProductData = edistoreDb.models.EdistoreProduct || edistoreDb.model('EdistoreProduct', ProductSchema, 'products');
+export const EdistoreOrderData = edistoreDb.models.EdistoreOrder || edistoreDb.model('EdistoreOrder', OrderSchema, 'orders');
+export const EdibioConnectionData = edistoreDb.models.EdibioConnection || edistoreDb.model('EdibioConnection', EdibioConnectionSchema, 'edibioconnections');
