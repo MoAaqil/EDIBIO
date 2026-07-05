@@ -31,7 +31,7 @@ This file documents the restructuring changes, database connections, and hosting
 - Active Projects & Production URLs:
   * Edibio ERP App: https://edibio-app.vercel.app
   * Edibio Corporate Homepage: https://edibio-homepage.vercel.app
-  * EdiStore Marketplace: https://edistore.vercel.app
+  * EdiStore Marketplace: https://edistore-online.vercel.app
 
 ------------------------------------------------------------------------
 4. DATABASE CONNECTION (MONGODB ATLAS)
