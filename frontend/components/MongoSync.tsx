@@ -74,10 +74,15 @@ export default function MongoSync() {
     const sync = useCallback(async (showToast = true) => {
         if (!isAuthenticated || !user?.uid || isDemo) return;
         
+        const localTime = parseInt(localStorage.getItem(`sync_ts_${user.uid}`) || '0', 10);
+        if (localTime === 0) {
+            console.log('[MongoSync] Skipping push sync since first pull is pending');
+            return;
+        }
+
         try {
             setSyncStatus('syncing');
             const state = useStore.getState();
-            const localTime = parseInt(localStorage.getItem(`sync_ts_${user.uid}`) || '0', 10);
             
             const payload = {
                 user: state.user,

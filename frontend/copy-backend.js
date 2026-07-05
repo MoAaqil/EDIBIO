@@ -21,10 +21,6 @@ function copyDir(src, dest) {
 }
 
 if (fs.existsSync(srcDir)) {
-  // Clean target first to avoid stale files
-  if (fs.existsSync(destDir)) {
-    fs.rmSync(destDir, { recursive: true, force: true });
-  }
   copyDir(srcDir, destDir);
   console.log('Backend database assets copied to frontend library successfully.');
 } else {

@@ -1389,7 +1389,7 @@ export const useStore = create<EdibioState>()(
                 set({
                     companies: [], parties: [], products: [], invoices: [], expenses: [], purchaseOrders: [],
                     agencyClients: [], agencyProjects: [], hsnCache: [], templates: DEFAULT_TEMPLATES,
-                    user: null, isAuthenticated: false, activeCompanyId: null, isHydrating: true, primarySwapCount: 0, aiApiKey: null, aiUsageCount: 0,
+                    user: null, isAuthenticated: false, activeCompanyId: null, isHydrating: false, primarySwapCount: 0, aiApiKey: null, aiUsageCount: 0,
                     lastSyncedAt: null, syncStatus: 'idle', syncError: null,
                     lastModified: Date.now(),
                     isDemo: false, demoExpiresAt: null,
