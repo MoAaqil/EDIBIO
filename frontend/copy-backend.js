@@ -20,14 +20,13 @@ function copyDir(src, dest) {
   }
 }
 
-// Clean target first to avoid stale files
-if (fs.existsSync(destDir)) {
-  fs.rmSync(destDir, { recursive: true, force: true });
-}
-
 if (fs.existsSync(srcDir)) {
+  // Clean target first to avoid stale files
+  if (fs.existsSync(destDir)) {
+    fs.rmSync(destDir, { recursive: true, force: true });
+  }
   copyDir(srcDir, destDir);
   console.log('Backend database assets copied to frontend library successfully.');
 } else {
-  console.error('Source backend/lib directory not found.');
+  console.log('Source backend/lib directory not found. Retaining existing frontend/lib assets.');
 }
