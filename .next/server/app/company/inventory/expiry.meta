@@ -1,0 +1,17 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/company/layout,_N_T_/company/inventory/layout,_N_T_/company/inventory/expiry/layout,_N_T_/company/inventory/expiry/page,_N_T_/company/inventory/expiry/"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/company/inventory/expiry/__PAGE__",
+    "/company/inventory/expiry",
+    "/company/inventory",
+    "/company",
+    "/_index",
+    "/_head"
+  ]
+}

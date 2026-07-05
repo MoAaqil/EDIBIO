@@ -1,0 +1,330 @@
+@import "https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap";
+/* [project]/app/logistics/logistics.css [app-client] (css) */
+:root {
+  --ls-font: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --ls-bg-main: #090d1a;
+  --ls-bg-card: #12182d;
+  --ls-bg-sidebar: #0b0e1b;
+  --ls-bg-active: #3b82f626;
+  --ls-primary: #3b82f6;
+  --ls-primary-glow: #3b82f666;
+  --ls-primary-hover: #2563eb;
+  --ls-success: #10b981;
+  --ls-success-glow: #10b9814d;
+  --ls-warning: #f59e0b;
+  --ls-warning-glow: #f59e0b4d;
+  --ls-danger: #ef4444;
+  --ls-danger-glow: #ef44444d;
+  --ls-text-white: #fff;
+  --ls-text-muted: #8e9bb8;
+  --ls-text-dark: #1e293b;
+  --ls-border-color: #ffffff0f;
+  --ls-border-hover: #ffffff1f;
+  --ls-glass-bg: #12182db3;
+  --ls-glass-border: #ffffff0d;
+  --ls-transition: all .25s cubic-bezier(.4, 0, .2, 1);
+  --ls-shadow: 0 4px 20px #0000004d;
+  --ls-glow: 0 0 15px var(--ls-primary-glow);
+}
+
+.ls-dark-theme {
+  font-family: var(--ls-font);
+  background-color: var(--ls-bg-main);
+  color: var(--ls-text-white);
+}
+
+.ls-dark-theme ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.ls-dark-theme ::-webkit-scrollbar-track {
+  background: none;
+}
+
+.ls-dark-theme ::-webkit-scrollbar-thumb {
+  background: #ffffff1a;
+  border-radius: 4px;
+}
+
+.ls-dark-theme ::-webkit-scrollbar-thumb:hover {
+  background: #fff3;
+}
+
+@keyframes ls-pulse {
+  0%, 100% {
+    opacity: .6;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 1;
+    filter: drop-shadow(0 0 8px var(--ls-primary));
+    transform: scale(1.08);
+  }
+}
+
+@keyframes ls-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes ls-slide-in {
+  from {
+    transform: translateX(100%);
+  }
+
+  to {
+    transform: translateX(0);
+  }
+}
+
+.ls-animate-fade {
+  animation: .35s forwards ls-fade-in;
+}
+
+.ls-shell-container {
+  background-color: var(--ls-bg-main);
+  min-height: 100vh;
+  font-family: var(--ls-font);
+  display: flex;
+}
+
+.ls-main-content {
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  height: 100vh;
+  display: flex;
+}
+
+.ls-sidebar {
+  background-color: var(--ls-bg-sidebar);
+  border-right: 1px solid var(--ls-border-color);
+  width: 260px;
+  transition: var(--ls-transition);
+  z-index: 40;
+  flex-direction: column;
+  flex-shrink: 0;
+  display: flex;
+}
+
+.ls-sidebar.collapsed {
+  width: 80px;
+}
+
+.ls-sidebar-brand {
+  border-bottom: 1px solid var(--ls-border-color);
+  align-items: center;
+  gap: 12px;
+  height: 64px;
+  padding: 0 20px;
+  display: flex;
+}
+
+.ls-sidebar-logo {
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  border-radius: 12px;
+  justify-content: center;
+  align-items: center;
+  width: 38px;
+  height: 38px;
+  display: flex;
+  box-shadow: 0 0 15px #3b82f666;
+}
+
+.ls-sidebar-nav {
+  flex-direction: column;
+  flex: 1;
+  gap: 4px;
+  padding: 20px 12px;
+  display: flex;
+  overflow-y: auto;
+}
+
+.ls-nav-item {
+  color: var(--ls-text-muted);
+  transition: var(--ls-transition);
+  border-radius: 12px;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  display: flex;
+}
+
+.ls-nav-item:hover {
+  color: var(--ls-text-white);
+  background: #ffffff08;
+}
+
+.ls-nav-item.active {
+  background: var(--ls-bg-active);
+  color: var(--ls-primary);
+  border: 1px solid #3b82f633;
+  box-shadow: 0 0 15px #3b82f61a;
+}
+
+.ls-card {
+  background-color: var(--ls-bg-card);
+  border: 1px solid var(--ls-border-color);
+  transition: var(--ls-transition);
+  box-shadow: var(--ls-shadow);
+  border-radius: 20px;
+  padding: 20px;
+}
+
+.ls-card:hover {
+  border-color: var(--ls-border-hover);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 30px #0006;
+}
+
+.ls-split-grid {
+  flex-1: 1;
+  height: calc(100vh - 64px);
+  display: flex;
+  overflow: hidden;
+}
+
+.ls-panel-list {
+  background-color: var(--ls-bg-sidebar);
+  border-right: 1px solid var(--ls-border-color);
+  flex-direction: column;
+  flex-shrink: 0;
+  width: 340px;
+  height: 100%;
+  display: flex;
+}
+
+.ls-panel-detail {
+  background-color: var(--ls-bg-main);
+  border-right: 1px solid var(--ls-border-color);
+  flex-direction: column;
+  flex: 1;
+  height: 100%;
+  display: flex;
+}
+
+.ls-panel-map {
+  background-color: #0b0f19;
+  flex-shrink: 0;
+  width: 460px;
+  height: 100%;
+}
+
+.ls-input {
+  border: 1px solid var(--ls-border-color);
+  width: 100%;
+  color: var(--ls-text-white);
+  transition: var(--ls-transition);
+  background-color: #ffffff08;
+  border-radius: 12px;
+  padding: 12px 16px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.ls-input:focus {
+  border-color: var(--ls-primary);
+  background-color: #ffffff0d;
+  outline: none;
+  box-shadow: 0 0 10px #3b82f633;
+}
+
+.ls-btn-primary {
+  background-color: var(--ls-primary);
+  color: var(--ls-text-white);
+  cursor: pointer;
+  transition: var(--ls-transition);
+  border: none;
+  border-radius: 12px;
+  padding: 12px 20px;
+  font-size: 13px;
+  font-weight: 700;
+  box-shadow: 0 4px 15px #3b82f64d;
+}
+
+.ls-btn-primary:hover {
+  background-color: var(--ls-primary-hover);
+  box-shadow: 0 6px 20px #3b82f666;
+}
+
+.ls-badge {
+  border: 1px solid #0000;
+  border-radius: 99px;
+  align-items: center;
+  padding: 4px 12px;
+  font-size: 11px;
+  font-weight: 700;
+  display: inline-flex;
+}
+
+.ls-badge-upcoming {
+  color: #60a5fa;
+  background-color: #3b82f61a;
+  border-color: #3b82f633;
+}
+
+.ls-badge-transit {
+  color: #34d399;
+  background-color: #10b9811a;
+  border-color: #10b98133;
+}
+
+.ls-badge-delivered {
+  color: #a0aec0;
+  background-color: #8e9bb826;
+  border-color: #8e9bb833;
+}
+
+.ls-badge-delayed {
+  color: #fbbf24;
+  background-color: #f59e0b1a;
+  border-color: #f59e0b33;
+}
+
+.ls-meter-container {
+  background-color: #ffffff0d;
+  border-radius: 99px;
+  width: 100%;
+  height: 8px;
+  margin-top: 6px;
+  overflow: hidden;
+}
+
+.ls-meter-bar {
+  border-radius: 99px;
+  height: 100%;
+  transition: width 1.5s cubic-bezier(.4, 0, .2, 1);
+}
+
+.ls-dot {
+  border-radius: 55px;
+  width: 8px;
+  height: 8px;
+  display: inline-block;
+}
+
+.ls-dot-active {
+  background-color: var(--ls-success);
+  box-shadow: 0 0 8px var(--ls-success);
+  animation: 2s infinite ls-pulse;
+}
+
+.ls-grid-dashboard {
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 20px;
+  display: grid;
+}
+
+/*# sourceMappingURL=app_logistics_logistics_afe3e0dc.css.map*/

@@ -1,0 +1,78 @@
+{
+  "name": "edibio-app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Edibio Desktop Application",
+  "author": "Edibio",
+  "main": "main.js",
+  "scripts": {
+    "dev": "node copy-backend.js && next dev",
+    "build": "node copy-backend.js && next build",
+    "start": "node copy-backend.js && next start",
+    "lint": "eslint",
+    "electron:dev": "npm run build && electron .",
+    "electron:build": "npm run build && electron-builder"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.1.0",
+    "@capacitor/core": "^8.1.0",
+    "@google/genai": "^1.44.0",
+    "@google/generative-ai": "^0.24.1",
+    "clsx": "^2.1.1",
+    "date-fns": "^4.1.0",
+    "firebase": "^12.10.0",
+    "framer-motion": "^12.40.0",
+    "html2pdf.js": "^0.14.0",
+    "idb-keyval": "^6.2.2",
+    "jsonwebtoken": "^9.0.3",
+    "lucide-react": "^0.575.0",
+    "lz-string": "^1.5.0",
+    "mapbox-gl": "^3.24.0",
+    "mongoose": "^9.3.0",
+    "next": "16.1.6",
+    "razorpay": "^2.9.6",
+    "react": "19.2.3",
+    "react-barcode": "^1.6.1",
+    "react-dom": "19.2.3",
+    "react-hot-toast": "^2.6.0",
+    "react-image-crop": "^11.0.10",
+    "react-joyride": "^2.9.3",
+    "recharts": "^3.8.1",
+    "tailwind-merge": "^3.5.0",
+    "tesseract.js": "^7.0.0",
+    "zustand": "^5.0.11"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.1.0",
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "concurrently": "^9.2.1",
+    "electron": "^40.6.1",
+    "electron-builder": "^26.8.1",
+    "eslint": "^9",
+    "eslint-config-next": "16.1.6",
+    "tailwindcss": "^4",
+    "typescript": "^5",
+    "wait-on": "^9.0.4"
+  },
+  "build": {
+    "appId": "com.edibio.desktop",
+    "productName": "Edibio",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "out/**/*",
+      "main.js",
+      "package.json",
+      "!node_modules"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    }
+  }
+}

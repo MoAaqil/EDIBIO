@@ -1,0 +1,17 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/company/layout,_N_T_/company/inventory/layout,_N_T_/company/inventory/purchase-orders/layout,_N_T_/company/inventory/purchase-orders/page,_N_T_/company/inventory/purchase-orders/"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/company/inventory/purchase-orders/__PAGE__",
+    "/company/inventory/purchase-orders",
+    "/company/inventory",
+    "/company",
+    "/_index",
+    "/_head"
+  ]
+}

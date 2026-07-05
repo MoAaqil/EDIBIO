@@ -1,0 +1,50 @@
+========================================================================
+EDIBIO APP — DEVELOPER INFORMATION, CHANGES & DEPLOYMENT SPECS
+========================================================================
+
+This file documents the restructuring changes, database connections, and hosting configuration metrics for developers working on the Billing application codebase.
+
+------------------------------------------------------------------------
+1. STRUCTURAL CHANGES (RESTACKING)
+------------------------------------------------------------------------
+- Root directory cleaned: Deleted unused log and compile output files.
+- Standalone maintenance scripts moved to backend/scripts/ to reduce clutter.
+- The project has been physically split into two main sections:
+  * frontend/ : Houses the Next.js runtime, UI layouts, components, public assets, Capacitor native wrappers, and Electron configuration.
+  * backend/  : Houses the database models and connection helpers (lib/) and utility scripts (scripts/).
+- Integrated "copy-backend.js": Since Next.js requires TypeScript imports to be local, this pre-build script copies Mongoose models from the backend directory to the frontend library directory prior to compilation.
+- Refactored package.json scripts to automate copying.
+
+------------------------------------------------------------------------
+2. GIT REPOSITORY
+------------------------------------------------------------------------
+- Git Provider: GitHub
+- Repository URL: https://github.com/MoAaqil/EDIBIO.git
+- Branch: main (or local checkout)
+- Push Command: git push origin main
+
+------------------------------------------------------------------------
+3. VERCEL DEPLOYMENT CONFIG
+------------------------------------------------------------------------
+- Vercel Owner/Account: aaqils-projects-a143f353 (Aaqil's Projects)
+- Vercel Organization ID: team_42Rd98tkgxs3HUXfc7pHqxpF
+- Vercel Project ID: prj_3suHSIR3S809JEtHbZ1VUYLDTh0E
+- Vercel Project Name: edibio-app
+
+------------------------------------------------------------------------
+4. DATABASE CONNECTION (MONGODB ATLAS)
+------------------------------------------------------------------------
+- MongoDB Atlas Host: cluster0.ornlhs8.mongodb.net
+- Connection Pooler Username: arkadmin
+- Connection String:
+  mongodb+srv://arkadmin:Ryomensukuna1@cluster0.ornlhs8.mongodb.net/?appName=Cluster0
+- Default Database: test (stores User, Company, Invoice, Party, Product, Expense schemas)
+
+------------------------------------------------------------------------
+5. LOCAL DEV & PORT SPEC
+------------------------------------------------------------------------
+- Port: 3000
+- Run Command: cd frontend && npm run dev
+- Build Command: cd frontend && npm run build
+- Mobile Sync: cd frontend && $env:NEXT_PUBLIC_APK_BUILD="true" && npm run build && npx cap sync
+- Desktop Build: cd frontend && npm run electron:build

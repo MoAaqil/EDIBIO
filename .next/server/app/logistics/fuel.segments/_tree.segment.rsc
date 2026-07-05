@@ -1,0 +1,4 @@
+:HL["/_next/static/chunks/a0b89c4c4e303ddd.css","style"]
+:HL["/_next/static/chunks/fd0a75089ada0922.css","style"]
+:HL["https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Outfit:wght@300;400;600;800&family=Courier+Prime:wght@400;700&display=swap","style"]
+0:{"buildId":"5dOKCDbeCqEGsawwU78a4","tree":{"name":"","paramType":null,"paramKey":"","hasRuntimePrefetch":false,"slots":{"children":{"name":"logistics","paramType":null,"paramKey":"logistics","hasRuntimePrefetch":false,"slots":{"children":{"name":"fuel","paramType":null,"paramKey":"fuel","hasRuntimePrefetch":false,"slots":{"children":{"name":"__PAGE__","paramType":null,"paramKey":"__PAGE__","hasRuntimePrefetch":false,"slots":null,"isRootLayout":false}},"isRootLayout":false}},"isRootLayout":false}},"isRootLayout":true},"staleTime":300}

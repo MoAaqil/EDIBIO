@@ -1,0 +1,17 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/company/layout,_N_T_/company/reports/layout,_N_T_/company/reports/daily-close/layout,_N_T_/company/reports/daily-close/page,_N_T_/company/reports/daily-close/"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/company/reports/daily-close/__PAGE__",
+    "/company/reports/daily-close",
+    "/company/reports",
+    "/company",
+    "/_index",
+    "/_head"
+  ]
+}

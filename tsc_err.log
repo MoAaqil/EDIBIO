@@ -1,2 +1,0 @@
-﻿app/company/settings/custom-invoice/page.tsx(26,23): error TS2345: Argument of type 'Record<string, string>' is not assignable to parameter of type 'SetStateAction<{ invoiceTitle: string; invoiceNo: string; date: string; dueDate: string; billedTo: string; paymentMethod: string; footerTerms: string; }>'.
-  Type 'Record<string, string>' is missing the following properties from type '{ invoiceTitle: string; invoiceNo: string; date: string; dueDate: string; billedTo: string; paymentMethod: string; footerTerms: string; }': invoiceTitle, invoiceNo, date, dueDate, and 3 more.
