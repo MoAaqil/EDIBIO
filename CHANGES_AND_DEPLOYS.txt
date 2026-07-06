@@ -76,5 +76,8 @@ This file documents the restructuring changes, database connections, and hosting
 - Re-styled the bottom footer logo (and mobile menu brand logo) in `edistore` to use the multi-color Google-inspired brand colors matching the header navbar.
 - Created a profile page for the admin portal at `/admin/profile` allowing super-users to view name, email, access roles, and platform permissions records.
 - Fixed the navbar checkout cart button to correctly navigate customers to the `/cart` page (the checkout cart page) when clicked.
-- Dynamic Storefront URL: Replaced hardcoded localhost:3001 API endpoints in Edibio Online Store page with a dynamic utility resolving to https://edistore.vercel.app in production, and falling back to localhost when running locally.
+- Mapped Verified Custom Brand Domains on Vercel:
+  * Admin Portal: https://edibio-admin-app.vercel.app (and backup: https://edibio-suite-admin.vercel.app)
+  * Storefront Marketplace: https://edistore-aaqils-projects-a143f353.vercel.app (and aliases: https://edibio-store.vercel.app / https://edistore-edibio.vercel.app)
+- Dynamic Storefront URL: Replaced hardcoded localhost:3001 API endpoints in Edibio Online Store page with a dynamic utility resolving to https://edistore-aaqils-projects-a143f353.vercel.app in production, and falling back to localhost when running locally.
 - Real-Time MongoDB Database Connection: Aligned models so that Edibio billing app writes listings/read orders directly in the 'edistore' database, sharing the same live collections as the marketplace storefront app.
