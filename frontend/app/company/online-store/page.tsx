@@ -16,7 +16,7 @@ const getEdistoreUrl = () => {
       return 'http://localhost:3001';
     }
   }
-  return 'https://edistore-online.vercel.app';
+  return 'https://edistore-aaqils-projects-a143f353.vercel.app';
 };
 
 export default function OnlineStorePage() {
