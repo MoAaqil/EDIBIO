@@ -1,1 +1,0 @@
-{"version":3,"sources":["../../../../app/page.tsx"],"sourcesContent":["import { redirect } from \"next/navigation\";\nexport default function Home() { redirect(\"/login\"); }\n"],"names":[],"mappings":"+VAAA,EAAA,CAAA,CAAA,OAAA,IAAA,EAAA,EAAA,CAAA,CAAA,OACe,SAAS,IAAS,CAAA,EAAA,EAAA,QAAA,AAAQ,EAAC,SAAW"}

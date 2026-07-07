@@ -1,0 +1,60 @@
+========================================================================
+EDISTORE — DEVELOPER INFORMATION, CHANGES & DEPLOYMENT SPECS
+========================================================================
+
+This file documents the restructuring changes, database connections, and storefront configuration metrics for developers working on the E-Commerce marketplace codebase.
+
+------------------------------------------------------------------------
+1. STRUCTURAL CHANGES (RESTACKING)
+------------------------------------------------------------------------
+- The project has been physically split into two main sections:
+  * frontend/ : Houses the storefront app router, customer/seller dashboard components, styles, Zustand state managers, and assets.
+  * backend/  : Houses the database connections and Mongoose model files (lib/db/).
+- Integrated "copy-backend.js": Automates copying database logic to local frontend directories prior to Next.js compilation.
+- Refactored package.json scripts.
+- Homepage UI/UX fixes:
+  * Replaced the simple emoji visual placeholder (🛍️) on the landing page with an elegant, responsive visual dashboard card showing listings, sales, and orders.
+  * Replaced dead README.md links in the footer with beautiful interactive modals explaining seller commissions and packing guidelines.
+  * Optimized card hover transitions and scaling behaviors in globals.css.
+
+------------------------------------------------------------------------
+2. GIT REPOSITORY
+------------------------------------------------------------------------
+- Git Provider: Not locally initialized with git. (Parent repository can be initialized at https://github.com/MoAaqil/ or as a submodule).
+
+------------------------------------------------------------------------
+3. VERCEL DEPLOYMENT CONFIG
+------------------------------------------------------------------------
+- Vercel Owner/Account: aaqils-projects-a143f353 (Aaqil's Projects)
+- Vercel Project Name: edistore
+- Setup: Connect frontend/ directory as a Next.js application on Vercel dashboard.
+- Live Production URL: https://edistore-online.vercel.app
+
+------------------------------------------------------------------------
+4. DATABASE CONNECTION (MONGODB ATLAS)
+------------------------------------------------------------------------
+- MongoDB Atlas Host: cluster0.ornlhs8.mongodb.net
+- Connection Pooler Username: arkadmin
+- Connection String:
+  mongodb+srv://arkadmin:Ryomensukuna1@cluster0.ornlhs8.mongodb.net/?appName=Cluster0
+- Database Name: edistore (stores EdistoreUser, Store, Product, Order, Review, Cart collections)
+  * Managed via mongoose.connect(MONGODB_URI, { dbName: 'edistore' }) options.
+
+------------------------------------------------------------------------
+5. LOCAL DEV & PORT SPEC
+------------------------------------------------------------------------
+- Port: 3001
+- Run Command: cd frontend && npx next dev -p 3001
+- Build Command: cd frontend && npm run build
+
+------------------------------------------------------------------------
+6. RECENT UPDATE LOG (JULY 2026)
+========================================================================
+- Resolved Firebase initialization crashes during build-time page prerendering and local execution by introducing a fallback credential selector. If `NEXT_PUBLIC_FIREBASE_API_KEY` is not defined or is set to a placeholder prefix like `mock-`, the application automatically inherits the working Firebase Auth project credentials of the `edibio-app`.
+- Configured production routing variables on Vercel to link the storefront to `https://edistore-online.vercel.app` (bypassing the domain conflict error on the base word `edistore`).
+- Modified `copy-backend.js` to preserve other local library files (like `edistore-models.ts` in `edibio-app`) during local compile copy procedures.
+- Implemented Dynamic Proxy model wrappers inside `lib/db/models/` (Product, Store, Order, User) to resolve serverless connection caching issues on Vercel. All database operations automatically obtain the active mongoose model context at runtime, completely resolving `undefined (reading 'find')` crashes.
+- Mapped Verified Custom Brand Domains on Vercel:
+  * Primary storefront domain: https://edibio-store.vercel.app
+  * Backup brand alias: https://edistore-edibio.vercel.app
+  * Verified deploy URL: https://edistore-aaqils-projects-a143f353.vercel.app

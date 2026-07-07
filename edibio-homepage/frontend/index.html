@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Edibio — The Complete Business Ecosystem</title>
+  <meta name="description" content="Manage your billing, stock, and point of sale with Edibio App, and sell online instantly with EdiStore. Sync your physical and digital store in real-time.">
+  
+  <!-- Modern Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  
+  <!-- CSS Stylesheet -->
+  <link rel="stylesheet" href="style.css">
+  
+  <!-- Favicon placeholder -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚡</text></svg>">
+</head>
+<body>
+
+  <!-- Top Navigation Header -->
+  <header class="header">
+    <div class="container nav-container">
+      <a href="#" class="logo">
+        <span class="logo-accent">Edi</span>bio
+      </a>
+      <nav class="nav-links">
+        <a href="#products">Products</a>
+        <a href="#integration">Sync Engine</a>
+        <a href="#pricing">Pricing</a>
+      </nav>
+      <div class="nav-actions">
+        <a href="http://localhost:3000/login" class="btn btn-ghost">Billing Login</a>
+        <a href="http://localhost:3001" class="btn btn-primary">Visit EdiStore</a>
+      </div>
+      <button class="mobile-toggle" aria-label="Toggle Menu">
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <section class="hero-section">
+    <div class="glow-orb orb-1"></div>
+    <div class="glow-orb orb-2"></div>
+    <div class="container hero-grid">
+      <div class="hero-content">
+        <div class="hero-badge">
+          <span class="badge-icon">✨</span>
+          <span>Unified Retail Ecosystem</span>
+        </div>
+        <h1 class="hero-title">
+          Run your store offline.<br>
+          <span class="text-gradient">Grow your store online.</span>
+        </h1>
+        <p class="hero-subtext">
+          Edibio bridges the gap between your physical counter and digital sales. A cloud-connected Billing and POS software integrated seamlessly with your own E-commerce marketplace.
+        </p>
+        <div class="hero-buttons">
+          <a href="http://localhost:3000/login" class="btn btn-primary btn-lg">Launch Billing App</a>
+          <a href="http://localhost:3001" class="btn btn-secondary btn-lg">Shop on EdiStore</a>
+        </div>
+      </div>
+      <div class="hero-visual">
+        <div class="glass-card hero-dashboard">
+          <div class="dash-header">
+            <div class="dash-dots"><span></span><span></span><span></span></div>
+            <div class="dash-title">Edibio Core System</div>
+          </div>
+          <div class="dash-body">
+            <div class="sync-status">
+              <span class="pulse-indicator"></span>
+              <span>All Systems Operational</span>
+            </div>
+            <div class="metrics-grid">
+              <div class="metric-mini-card">
+                <span class="lbl">POS Billings</span>
+                <span class="val">₹48,250</span>
+              </div>
+              <div class="metric-mini-card">
+                <span class="lbl">Online Orders</span>
+                <span class="val">18 New</span>
+              </div>
+            </div>
+            <!-- Sync Animation Box -->
+            <div class="sync-engine-box">
+              <div class="node node-pos">
+                <div class="node-icon">💼</div>
+                <span>Edibio POS</span>
+              </div>
+              <div class="sync-track">
+                <div class="sync-pulse"></div>
+              </div>
+              <div class="node node-store">
+                <div class="node-icon">🛒</div>
+                <span>EdiStore Web</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Core Products Section -->
+  <section id="products" class="products-section">
+    <div class="container">
+      <div class="section-header">
+        <h2 class="section-title">The Edibio Product Suite</h2>
+        <p class="section-subtitle">Double the impact. Two interconnected applications built to operate as one unified brain.</p>
+      </div>
+
+      <div class="products-grid">
+        <!-- Product 1: Edibio Billing -->
+        <div class="glass-card product-card">
+          <div class="product-icon-wrap bg-blue">💼</div>
+          <h3 class="product-title">Edibio Billing & POS</h3>
+          <p class="product-desc">
+            A state-of-the-art billing and inventory platform for merchants. Runs flawlessly on desktop (Electron), mobile (Capacitor WebView), or web.
+          </p>
+          <ul class="product-features">
+            <li>✓ Superfast barcode inventory scanning</li>
+            <li>✓ Offline-first local cash register mode</li>
+            <li>✓ GST invoices & automated tax breakdowns</li>
+            <li>✓ Multiple branches and godown sync support</li>
+          </ul>
+          <div class="product-footer">
+            <a href="http://localhost:3000/login" class="btn btn-outline w-full">Open Billing Software</a>
+          </div>
+        </div>
+
+        <!-- Product 2: EdiStore -->
+        <div class="glass-card product-card">
+          <div class="product-icon-wrap bg-yellow">🛒</div>
+          <h3 class="product-title">EdiStore E-Commerce</h3>
+          <p class="product-desc">
+            An Amazon-style digital marketplace where local customers buy from your store. Integrated direct inventory sync.
+          </p>
+          <ul class="product-features">
+            <li>✓ Instant digital storefront for shopkeepers</li>
+            <li>✓ Custom seller dashboards & order dispatch</li>
+            <li>✓ Secure Razorpay payments checkout flow</li>
+            <li>✓ Real-time local delivery dispatch trackers</li>
+          </ul>
+          <div class="product-footer">
+            <a href="http://localhost:3001" class="btn btn-outline w-full">Visit Store Marketplace</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Integration Details -->
+  <section id="integration" class="integration-section">
+    <div class="container">
+      <div class="glass-card integration-card">
+        <div class="integration-grid">
+          <div class="integration-content">
+            <h2 class="integration-title">How the Sync Engine Works</h2>
+            <p class="integration-text">
+              Traditional setups require updating stock manually in both the physical register and the website. Edibio resolves this by establishing a real-time MongoDB data connection.
+            </p>
+            
+            <div class="step-list">
+              <div class="step-item">
+                <div class="step-num">1</div>
+                <div>
+                  <h4 class="step-title">Register Product in POS</h4>
+                  <p class="step-desc">Add products with barcodes on your desktop POS terminal.</p>
+                </div>
+              </div>
+              
+              <div class="step-item">
+                <div class="step-num">2</div>
+                <div>
+                  <h4 class="step-title">Instant Storefront Listing</h4>
+                  <p class="step-desc">The item populates instantly on EdiStore web page with matching quantity.</p>
+                </div>
+              </div>
+              
+              <div class="step-item">
+                <div class="step-num">3</div>
+                <div>
+                  <h4 class="step-title">Automated Inventory Adjustments</h4>
+                  <p class="step-desc">A customer buys online. Stock drops in POS automatically, generating an invoice entry.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="integration-demo-panel">
+            <h3 class="panel-title">Interactive Sync Simulator</h3>
+            <div class="demo-canvas">
+              <div class="canvas-item canvas-pos">
+                <div class="canvas-hdr">POS TERMINAL</div>
+                <div class="canvas-cnt">
+                  <div class="product-row">
+                    <span>Premium Basmati</span>
+                    <strong id="pos-stock-qty">50 pcs</strong>
+                  </div>
+                  <div class="status-badge sync">CONNECTED</div>
+                </div>
+              </div>
+              
+              <div class="pulse-connection">
+                <div class="flowing-particle" id="sync-particle"></div>
+              </div>
+              
+              <div class="canvas-item canvas-store">
+                <div class="canvas-hdr">EDISTORE PAGE</div>
+                <div class="canvas-cnt">
+                  <div class="store-product-card">
+                    <span>🌾 Premium Rice</span>
+                    <button class="btn btn-sm btn-buy" id="simulate-buy-btn">Buy 1 Item</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="toast-log" id="simulation-toast">Click 'Buy 1 Item' to see real-time inventory sync.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Pricing -->
+  <section id="pricing" class="pricing-section">
+    <div class="container">
+      <div class="section-header">
+        <h2 class="section-title">Transparent Pricing</h2>
+        <p class="section-subtitle">No hidden fees, choose a plan that scale with your retail operation.</p>
+      </div>
+
+      <div class="pricing-grid">
+        <div class="glass-card pricing-card">
+          <h3 class="plan-name">Starter Kit</h3>
+          <div class="plan-price">₹0<span>/month</span></div>
+          <p class="plan-desc">For small single-register outlets beginning their retail operations.</p>
+          <ul class="plan-features">
+            <li>✓ Up to 500 invoices per month</li>
+            <li>✓ Single device billing</li>
+            <li>✓ Standard GST invoicing templates</li>
+            <li>✓ Basic inventory tracker</li>
+          </ul>
+          <a href="http://localhost:3000/login" class="btn btn-outline w-full">Start Free</a>
+        </div>
+
+        <div class="glass-card pricing-card popular">
+          <div class="popular-ribbon">POPULAR</div>
+          <h3 class="plan-name">Pro Business</h3>
+          <div class="plan-price">₹1,499<span>/month</span></div>
+          <p class="plan-desc">For growing stores looking to sync inventory with E-commerce web.</p>
+          <ul class="plan-features">
+            <li>✓ Unlimited monthly invoices</li>
+            <li>✓ 3 Devices synced concurrently</li>
+            <li>✓ Full EdiStore E-commerce integration</li>
+            <li>✓ Multi-godown and branch tracking</li>
+            <li>✓ WhatsApp automated bill deliveries</li>
+          </ul>
+          <a href="http://localhost:3000/login" class="btn btn-primary w-full">Go Pro Today</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container footer-grid">
+      <div class="footer-brand">
+        <a href="#" class="logo"><span class="logo-accent">Edi</span>bio</a>
+        <p>Providing the backbone infrastructure for modern retail, e-commerce, and point of sale compliance.</p>
+      </div>
+      <div>
+        <h4>Products</h4>
+        <ul class="footer-links-list">
+          <li><a href="http://localhost:3000/login">Edibio Billing</a></li>
+          <li><a href="http://localhost:3001">EdiStore Shop</a></li>
+          <li><a href="#">Admin Center</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>Company</h4>
+        <ul class="footer-links-list">
+          <li><a href="#">About Us</a></li>
+          <li><a href="#">Terms & Privacy</a></li>
+          <li><a href="#">Contact Support</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="container footer-bottom">
+      <p>© 2026 Edibio Technologies Pvt. Ltd. All rights reserved.</p>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

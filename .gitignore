@@ -1,0 +1,10 @@
+# Ignore Node modules & Next/Vercel build artifacts globally across monorepo
+**/node_modules/
+**/.next/
+**/.vercel/
+**/dist/
+**/build/
+**/out/
+**/*.log
+**/*.tsbuildinfo
+.env*.local

@@ -1,8 +1,0 @@
-{
-  "/admin/page": "app/admin/page.js",
-  "/api/sync/route": "app/api/sync/route.js",
-  "/companies/page": "app/companies/page.js",
-  "/company/dashboard/page": "app/company/dashboard/page.js",
-  "/login/page": "app/login/page.js",
-  "/page": "app/page.js"
-}

@@ -1,0 +1,32 @@
+========================================================================
+EDIBIO HOMEPAGE — DEVELOPER INFORMATION & DEPLOYMENT SPECS
+========================================================================
+
+This file documents the restructuring changes and landing page configuration metrics for developers working on the corporate homepage.
+
+------------------------------------------------------------------------
+1. STRUCTURAL CHANGES (RESTACKING)
+------------------------------------------------------------------------
+- Structured directories into:
+  * frontend/ : Houses index.html (landing structure), style.css (indigo dark layout), and app.js (sync simulation animation script).
+  * backend/  : Houses conceptual documentation.
+
+------------------------------------------------------------------------
+2. GIT REPOSITORY
+------------------------------------------------------------------------
+- Git Provider: Not locally initialized with git. (Parent repository can be initialized at https://github.com/MoAaqil/ or as a submodule).
+
+------------------------------------------------------------------------
+3. VERCEL DEPLOYMENT CONFIG
+------------------------------------------------------------------------
+- Vercel Owner/Account: aaqils-projects-a143f353 (Aaqil's Projects)
+- Vercel Project Name: edibio-homepage
+- Setup: Connect frontend/ directory as a static application on Vercel.
+
+------------------------------------------------------------------------
+4. CORE UTILITIES
+------------------------------------------------------------------------
+- Redirect targets:
+  * POS Billing Software: http://localhost:3000/login
+  * E-Commerce Marketplace: http://localhost:3001
+- Interactive sync visualizer: Shows dynamic database replication logic.

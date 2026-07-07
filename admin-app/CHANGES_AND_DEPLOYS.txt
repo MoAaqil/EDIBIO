@@ -1,0 +1,55 @@
+========================================================================
+ADMIN APP — DEVELOPER INFORMATION, CHANGES & DEPLOYMENT SPECS
+========================================================================
+
+This file documents the restructuring changes, database connections, and console configuration metrics for developers working on the cross-product Admin application.
+
+------------------------------------------------------------------------
+1. STRUCTURAL CHANGES (RESTACKING)
+------------------------------------------------------------------------
+- Next.js project has been physically split into:
+  * frontend/ : Houses the React dashboard tabs UI, SVG graphs, searchable tables, layout scripts, and next.js app router.
+  * backend/  : Houses the MongoDB shared connection pooler and mongoose schemas (lib/).
+- Integrated "copy-backend.js": Copies backend files to local frontend library prior to compiles.
+- Unified registration monitoring:
+  * Tab 1: System overview stats and metric counters.
+  * Tab 2: Edibio Billing operators and company outlet details.
+  * Tab 3: EdiStore sellers and storefront details with approval actions (Approve, Reject, Toggle Verify) directly modifying the MongoDB.
+
+------------------------------------------------------------------------
+2. GIT REPOSITORY
+------------------------------------------------------------------------
+- Git Provider: Not locally initialized with git. (Parent repository can be initialized at https://github.com/MoAaqil/ or as a submodule).
+
+------------------------------------------------------------------------
+3. VERCEL DEPLOYMENT CONFIG
+------------------------------------------------------------------------
+- Vercel Owner/Account: aaqils-projects-a143f353 (Aaqil's Projects)
+- Vercel Project Name: edibio-admin-app
+- Setup: Connect frontend/ directory as a Next.js application on Vercel dashboard.
+
+------------------------------------------------------------------------
+4. DATABASE CONNECTION (MONGODB ATLAS)
+------------------------------------------------------------------------
+- MongoDB Atlas Host: cluster0.ornlhs8.mongodb.net
+- Connection Pooler Username: arkadmin
+- Connection String:
+  mongodb+srv://arkadmin:Ryomensukuna1@cluster0.ornlhs8.mongodb.net/?appName=Cluster0
+- Databases accessed concurrently:
+  * test (default database context) - pulls Billing users and companies.
+  * edistore (database context) - pulls E-commerce users and stores.
+
+------------------------------------------------------------------------
+5. LOCAL DEV & PORT SPEC
+------------------------------------------------------------------------
+- Port: 3002
+- Run Command: cd frontend && npm run dev
+- Build Command: cd frontend && npm run build
+
+------------------------------------------------------------------------
+6. RECENT DEVELOPER UPDATES & DEPLOYS
+------------------------------------------------------------------------
+- Resolved registrations GET route crash by instantiating and exporting all missing auditing and inventory Mongoose models (Invoice, Product, Party, Expense, EdistoreProduct, EdistoreOrder) from getConnections() in lib/db.ts.
+- Updated frontend/copy-backend.js script to preserve local committed library folders on Vercel by gating target cleanings.
+- Set Vercel project framework preset explicitly to "nextjs" and added MONGODB_URI.
+- Verified Live Admin URL: https://nowherenestadmin.vercel.app (Status: 200 OK, pulling real MongoDB records).

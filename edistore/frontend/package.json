@@ -1,0 +1,35 @@
+{
+  "name": "edistore",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "node copy-backend.js && next dev",
+    "build": "node copy-backend.js && next build",
+    "start": "node copy-backend.js && next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "date-fns": "^4.4.0",
+    "firebase": "^12.15.0",
+    "framer-motion": "^12.42.2",
+    "idb-keyval": "^6.2.6",
+    "lucide-react": "^1.23.0",
+    "lz-string": "^1.5.0",
+    "mongoose": "^9.7.3",
+    "next": "16.2.10",
+    "razorpay": "^2.9.6",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "react-hot-toast": "^2.6.0",
+    "recharts": "^3.9.1",
+    "zustand": "^5.0.14"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.10",
+    "typescript": "^5"
+  }
+}
