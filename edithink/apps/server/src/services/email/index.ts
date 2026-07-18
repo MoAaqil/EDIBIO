@@ -1,14 +1,17 @@
 import nodemailer from 'nodemailer';
+import { Resend } from 'resend';
 import { config } from '../../config/env.js';
 
+const resend = config.RESEND_API_KEY ? new Resend(config.RESEND_API_KEY) : null;
 let transporter: nodemailer.Transporter | null = null;
 
 function getTransporter(): nodemailer.Transporter | null {
+  if (resend) return null; // Prioritize Resend
   if (transporter) return transporter;
 
   // Skip creating transporter if SMTP credentials are not configured
   if (!config.SMTP_HOST || !config.SMTP_USER || !config.SMTP_PASS) {
-    console.warn('⚠️  Email service not configured (SMTP_HOST/SMTP_USER/SMTP_PASS missing). Emails will be skipped.');
+    console.warn('⚠️  Email service not configured (SMTP_HOST/SMTP_USER/SMTP_PASS and RESEND_API_KEY missing). Emails will be skipped.');
     return null;
   }
   
@@ -26,6 +29,39 @@ function getTransporter(): nodemailer.Transporter | null {
 }
 
 async function sendEmail(options: nodemailer.SendMailOptions): Promise<void> {
+  // 1. If Resend is configured, use it for direct premium deliverability
+  if (resend) {
+    try {
+      const fromEmail = config.EMAIL_FROM || 'onboarding@resend.dev';
+      // Format from name and address safely
+      const fromFormatted = typeof options.from === 'string' 
+        ? options.from.replace(/"/g, '') 
+        : fromEmail;
+      
+      const { data, error } = await resend.emails.send({
+        from: fromFormatted,
+        to: options.to as string | string[],
+        subject: options.subject || '',
+        html: options.html as string,
+        headers: {
+          'X-Entity-Ref-ID': Math.random().toString(36).substring(7),
+          'Precedence': 'bulk'
+        }
+      });
+
+      if (error) {
+        console.error('📧 Resend email error:', error);
+      } else {
+        console.log('📧 Resend email sent successfully:', data?.id);
+      }
+      return;
+    } catch (err) {
+      console.error('📧 Resend email send failed:', err);
+      // Fallback to Nodemailer SMTP if it fails
+    }
+  }
+
+  // 2. Fallback to Nodemailer SMTP
   const t = getTransporter();
   if (!t) {
     // In development, log the email to console instead of sending

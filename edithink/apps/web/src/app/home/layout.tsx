@@ -248,7 +248,7 @@ export default function HomeLayout({ children }: { children: React.ReactNode }) 
 
         {/* ── Top Bar ── */}
         <header
-          className="flex-shrink-0 flex items-center justify-between px-6 sticky top-0 z-30"
+          className="flex-shrink-0 flex items-center justify-between px-4 md:px-6 sticky top-0 z-30"
           style={{
             height: 72,
             background: 'rgba(255,255,255,0.9)',
@@ -256,8 +256,23 @@ export default function HomeLayout({ children }: { children: React.ReactNode }) 
             borderBottom: '1px solid #ECECEC',
           }}
         >
+          {/* Logo on Mobile */}
+          <div className="flex md:hidden items-center gap-2 mr-2">
+            <svg width="28" height="28" viewBox="0 0 32 32" fill="none" className="flex-shrink-0" xmlns="http://www.w3.org/2000/svg">
+              <rect width="32" height="32" rx="8" fill="url(#et-g-m)"/>
+              <path d="M9 9h14v3H12v2.5h9v3h-9V20h11v3H9Z" fill="white"/>
+              <defs>
+                <linearGradient id="et-g-m" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+                  <stop offset="0%" stopColor="#3B82F6"/>
+                  <stop offset="100%" stopColor="#6366F1"/>
+                </linearGradient>
+              </defs>
+            </svg>
+            <span className="font-bold text-sm" style={{ color: '#0F172A', letterSpacing: '-0.02em' }}>EdiThink</span>
+          </div>
+
           {/* Search */}
-          <div className="relative flex-1" style={{ maxWidth: 480 }}>
+          <div className="relative flex-1 hidden sm:block" style={{ maxWidth: 480 }}>
             <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2" style={{ color: '#64748B' }} />
             <input
               placeholder="Search meetings, recordings…"
@@ -284,15 +299,15 @@ export default function HomeLayout({ children }: { children: React.ReactNode }) 
           </div>
 
           {/* Right side items */}
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3 sm:gap-4 ml-auto sm:ml-0">
             {/* Install App Button */}
             {isInstallable && (
               <button
                 onClick={handleInstallClick}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-600 rounded-full text-xs font-semibold shadow-sm transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-600 rounded-full text-xs font-semibold shadow-sm transition-all hover:scale-105 active:scale-95 cursor-pointer"
               >
                 <Download size={14} />
-                <span>Install App</span>
+                <span className="hidden sm:inline">Install App</span>
               </button>
             )}
 
@@ -329,7 +344,7 @@ export default function HomeLayout({ children }: { children: React.ReactNode }) 
                     transition={{ duration: 0.13 }}
                     className="absolute right-0 mt-2 overflow-hidden shadow-card"
                     style={{
-                      width: 340,
+                      width: 320,
                       background: '#FFFFFF',
                       border: '1px solid #ECECEC',
                       borderRadius: 16,
@@ -402,12 +417,39 @@ export default function HomeLayout({ children }: { children: React.ReactNode }) 
         </header>
 
         {/* ── Page Content ── */}
-        <div className="flex-1 overflow-y-auto" style={{ padding: '32px 40px' }}>
+        <div className="flex-1 overflow-y-auto px-4 py-6 md:p-8 pb-20 md:pb-8">
           <div style={{ maxWidth: 1100, margin: '0 auto' }}>
             {children}
           </div>
         </div>
       </main>
+
+      {/* ══════════════════ MOBILE BOTTOM TAB BAR ══════════════════ */}
+      <nav
+        className="fixed bottom-0 left-0 right-0 z-40 md:hidden flex items-center justify-around bg-white/95 backdrop-blur-md border-t border-[#ECECEC] px-2 shadow-lg"
+        style={{ height: 64 }}
+      >
+        {[
+          { icon: Home,     label: 'Home',       href: '/home' },
+          { icon: Video,    label: 'Meetings',   href: '/home/meetings' },
+          { icon: Calendar, label: 'Calendar',   href: '/home/calendar' },
+          { icon: Clock,    label: 'Recordings', href: '/home/recordings' },
+          { icon: Settings, label: 'Settings',   href: '/home/settings' },
+        ].map(item => {
+          const active = pathname === item.href;
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className="flex flex-col items-center justify-center gap-1.5 flex-1 py-1 text-center"
+              style={{ color: active ? '#2563EB' : '#64748B' }}
+            >
+              <item.icon size={20} fill={active ? 'currentColor' : 'none'} strokeWidth={active ? 2.2 : 1.8} />
+              <span style={{ fontSize: 10, fontWeight: active ? 600 : 500 }}>{item.label}</span>
+            </Link>
+          );
+        })}
+      </nav>
     </div>
   );
 }

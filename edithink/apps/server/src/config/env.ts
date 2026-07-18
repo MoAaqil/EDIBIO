@@ -39,6 +39,7 @@ const envSchema = z.object({
   SMTP_PORT: z.string().optional().transform(v => v ? Number(v) : 587),
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
+  RESEND_API_KEY: z.string().optional(),
   EMAIL_FROM: z.string().default('noreply@edithink.app'),
   
   // Cloudinary (file storage)
