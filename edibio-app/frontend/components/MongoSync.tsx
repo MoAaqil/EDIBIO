@@ -15,6 +15,10 @@ export default function MongoSync() {
 
     const pull = useCallback(async () => {
         if (!isAuthenticated || !user?.uid || isDemo) return;
+        // Skip network fetch gracefully if the navigator is explicitly offline
+        if (typeof window !== 'undefined' && !navigator.onLine) {
+            return;
+        }
         try {
             const s = useStore.getState();
             const role = s.user?.role || 'owner';
@@ -66,13 +70,18 @@ export default function MongoSync() {
                     useStore.setState({ activeCompanyId: merged.companies[0].id });
                 }
             }
-        } catch (err) {
-            console.error('[MongoSync] Pull error:', err);
+        } catch (err: any) {
+            // Use warn string representation to prevent Next.js dev overlay interruptions during disconnections
+            console.warn('[MongoSync] Pull failed/offline:', err?.message || err);
         }
     }, [isAuthenticated, user?.uid, isDemo, setLastSyncedAt]);
 
     const sync = useCallback(async (showToast = true) => {
         if (!isAuthenticated || !user?.uid || isDemo) return;
+        // Skip network fetch gracefully if the navigator is explicitly offline
+        if (typeof window !== 'undefined' && !navigator.onLine) {
+            return;
+        }
         
         const localTime = parseInt(localStorage.getItem(`sync_ts_${user.uid}`) || '0', 10);
         if (localTime === 0) {
@@ -134,10 +143,14 @@ export default function MongoSync() {
             setSyncStatus('saved');
             if (showToast) toast.success('Cloud Synced');
         } catch (err: any) {
-            console.error('[MongoSync] Sync error:', err);
+            // Use warn string representation to prevent Next.js dev overlay interruptions during disconnections
+            console.warn('[MongoSync] Push sync failed/offline:', err?.message || err);
             setSyncStatus('error');
-            setSyncError(err.message);
-            if (showToast) toast.error(err.message.includes('Conflict') ? 'Sync Conflict: Use Force Sync' : 'Sync Error');
+            setSyncError(err.message || 'Offline');
+            if (showToast) {
+                const isConflict = err.message && err.message.includes('Conflict');
+                toast.error(isConflict ? 'Sync Conflict: Use Force Sync' : 'Sync Offline/Error');
+            }
         }
     }, [isAuthenticated, user?.uid, isDemo, setLastSyncedAt, setSyncStatus, setSyncError]);
 
