@@ -207,7 +207,7 @@ export default function MeetingRoomPage() {
     const inviteLink = `${window.location.origin}/meet/${roomId}`;
     
     return (
-      <div className="h-screen bg-slate-50 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 overflow-y-auto">
         <div className="max-w-4xl w-full bg-white rounded-3xl border border-slate-200 shadow-premium-lg overflow-hidden flex flex-col md:flex-row min-h-[480px]">
           {/* Left: Camera Preview Setup */}
           <div className="flex-1 bg-slate-100 p-6 flex flex-col justify-between relative min-h-[300px] md:min-h-auto">
@@ -352,10 +352,10 @@ export default function MeetingRoomPage() {
         : null;
 
   return (
-    <div className="h-screen bg-slate-50 flex flex-col overflow-hidden relative p-4">
+    <div className="h-screen bg-slate-50 flex flex-col overflow-hidden relative p-4 pt-16 md:pt-4">
       {/* Floating Header Hover Zone */}
-      <div className="fixed top-0 left-0 right-0 h-3 hover:h-18 z-45 group/header flex items-start justify-center pointer-events-none transition-all duration-300">
-        <div className="w-full bg-white border-b border-slate-200 pointer-events-auto transform -translate-y-[85%] group-hover/header:translate-y-0 hover:translate-y-0 opacity-0 group-hover/header:opacity-100 hover:opacity-100 transition-all duration-300 shadow-sm rounded-none">
+      <div className="fixed top-0 left-0 right-0 z-[100] h-auto md:h-3 md:hover:h-18 group/header flex items-start justify-center pointer-events-none transition-all duration-300">
+        <div className="w-full bg-white border-b border-slate-200 pointer-events-auto transform translate-y-0 opacity-100 md:-translate-y-[85%] md:group-hover/header:translate-y-0 md:hover:translate-y-0 md:opacity-0 md:group-hover/header:opacity-100 md:hover:opacity-100 transition-all duration-300 shadow-sm rounded-none">
           <MeetingHeader meeting={meeting} roomId={roomId} />
         </div>
       </div>

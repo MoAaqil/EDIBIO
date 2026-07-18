@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Clock, Wifi, WifiOff, Users, Video } from 'lucide-react';
+import { Clock, Wifi, WifiOff, Users, Video, ChevronLeft } from 'lucide-react';
 import { useMeetingStore } from '@/store/meeting';
 import { formatDuration } from '@/lib/utils';
 
@@ -31,16 +31,27 @@ export function MeetingHeader({ meeting, roomId }: MeetingHeaderProps) {
   }[connectionQuality];
 
   return (
-    <div className="flex items-center justify-between px-6 py-3 bg-white/95 backdrop-blur-md border-b border-slate-200 z-30 w-full">
+    <div className="flex items-center justify-between px-4 sm:px-6 py-3 bg-white/95 backdrop-blur-md border-b border-slate-200 z-30 w-full">
       {/* Left: Title */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2 sm:gap-3">
+        <button
+          onClick={() => {
+            if (confirm('Leave this meeting?')) {
+              window.location.href = '/home';
+            }
+          }}
+          className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600 transition-colors flex items-center justify-center"
+          title="Leave meeting"
+        >
+          <ChevronLeft className="w-5 h-5" />
+        </button>
         <div className="flex items-center gap-2">
           <div className="w-2 h-2 bg-success rounded-full animate-pulse" />
-          <span className="text-slate-800 font-semibold text-sm truncate max-w-48">
+          <span className="text-slate-800 font-semibold text-sm truncate max-w-28 sm:max-w-48">
             {meeting?.title || 'Meeting'}
           </span>
         </div>
-        <span className="text-brand-primary text-xs font-semibold font-mono bg-brand-primary/10 px-2 py-0.5 rounded">
+        <span className="text-brand-primary text-xs font-semibold font-mono bg-brand-primary/10 px-2 py-0.5 rounded hidden sm:inline-block">
           {roomId}
         </span>
       </div>

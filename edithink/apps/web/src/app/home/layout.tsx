@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   Home, Video, Calendar, Clock, Settings,
-  LogOut, Plus, Search, Bell, BellOff, ChevronRight
+  LogOut, Plus, Search, Bell, BellOff, ChevronRight, Download
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth';
 import { getInitials, getAvatarColor, cn } from '@/lib/utils';
@@ -35,6 +35,36 @@ export default function HomeLayout({ children }: { children: React.ReactNode }) 
   const [showNotifications, setShowNotifications] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const notifiedMeetingsRef = useRef<Record<string, boolean>>({});
+
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [isInstallable, setIsInstallable] = useState(false);
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      setIsInstallable(true);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    if (window.matchMedia('(display-mode: standalone)').matches) {
+      setIsInstallable(false);
+    }
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    console.log(`User response to install: ${outcome}`);
+    setDeferredPrompt(null);
+    setIsInstallable(false);
+  };
 
   /* ── Notifications ── */
   const fetchNotifications = async () => {
@@ -122,7 +152,7 @@ export default function HomeLayout({ children }: { children: React.ReactNode }) 
   }
 
   return (
-    <div className="min-h-screen flex" style={{ background: '#F8FAFC' }}>
+    <div className="min-h-screen flex" style={{ background: '#FAFAFB' }}>
 
       {/* ══════════════════ SIDEBAR ══════════════════ */}
       <aside
@@ -130,11 +160,11 @@ export default function HomeLayout({ children }: { children: React.ReactNode }) 
         style={{
           width: 240,
           background: '#FFFFFF',
-          borderRight: '1px solid #EAECEF',
+          borderRight: '1px solid #ECECEC',
         }}
       >
         {/* Logo */}
-        <div className="flex items-center gap-2.5 px-5 py-5" style={{ borderBottom: '1px solid #EAECEF' }}>
+        <div className="flex items-center gap-2.5 px-5 py-5" style={{ borderBottom: '1px solid #ECECEC' }}>
           <svg width="30" height="30" viewBox="0 0 32 32" fill="none" className="flex-shrink-0" xmlns="http://www.w3.org/2000/svg">
             <rect width="32" height="32" rx="8" fill="url(#et-g)"/>
             <path d="M9 9h14v3H12v2.5h9v3h-9V20h11v3H9Z" fill="white"/>
@@ -145,7 +175,7 @@ export default function HomeLayout({ children }: { children: React.ReactNode }) 
               </linearGradient>
             </defs>
           </svg>
-          <span className="font-bold text-base" style={{ color: '#111827', letterSpacing: '-0.01em' }}>EdiThink</span>
+          <span className="font-bold text-base" style={{ color: '#0F172A', letterSpacing: '-0.02em' }}>EdiThink</span>
         </div>
 
         {/* Navigation */}
@@ -162,7 +192,7 @@ export default function HomeLayout({ children }: { children: React.ReactNode }) 
                       href={item.href}
                       className={cn('nav-item', active && 'nav-item-active')}
                     >
-                      <item.icon size={18} strokeWidth={active ? 2.2 : 1.8} />
+                      <item.icon size={18} fill={active ? 'currentColor' : 'none'} strokeWidth={active ? 2.2 : 1.8} />
                       <span>{item.label}</span>
                     </Link>
                   );
@@ -173,42 +203,42 @@ export default function HomeLayout({ children }: { children: React.ReactNode }) 
         </nav>
 
         {/* Bottom — User + Actions */}
-        <div className="p-3" style={{ borderTop: '1px solid #EAECEF' }}>
-          {/* User pill */}
-          <div className="flex items-center gap-3 px-2 py-2.5 rounded-xl mb-2 hover:bg-gray-50 transition-colors cursor-pointer">
-            <div className={cn(
-              'w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0',
-              getAvatarColor(user.name)
-            )}>
-              {user.avatar
-                ? <img src={user.avatar} alt={user.name} className="w-full h-full rounded-full object-cover" />
-                : getInitials(user.name)
-              }
+        <div className="p-4" style={{ borderTop: '1px solid #ECECEC' }}>
+          <div className="p-3 bg-white border border-[#ECECEC] rounded-[18px] shadow-sm flex flex-col gap-3 transition-all duration-200 hover:shadow-md">
+            <div className="flex items-center gap-3">
+              <div className={cn(
+                'w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0',
+                getAvatarColor(user.name)
+              )}>
+                {user.avatar
+                  ? <img src={user.avatar} alt={user.name} className="w-full h-full rounded-full object-cover" />
+                  : getInitials(user.name)
+                }
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold truncate" style={{ color: '#0F172A' }}>{user.name}</p>
+                <p className="text-xs truncate" style={{ color: '#64748B' }}>{user.email}</p>
+              </div>
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-600 truncate" style={{ color: '#111827', fontWeight: 600 }}>{user.name}</p>
-              <p className="text-xs truncate" style={{ color: '#9CA3AF' }}>{user.email}</p>
-            </div>
-          </div>
 
-          {/* Settings + Logout */}
-          <div className="flex gap-1.5">
-            <Link
-              href="/home/settings"
-              className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-medium transition-colors hover:bg-gray-50"
-              style={{ color: '#6B7280' }}
-            >
-              <Settings size={15} />
-              Settings
-            </Link>
-            <button
-              onClick={logout}
-              className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-medium transition-colors hover:bg-red-50"
-              style={{ color: '#EF4444' }}
-            >
-              <LogOut size={15} />
-              Logout
-            </button>
+            <div className="flex gap-2" style={{ borderTop: '1px solid #ECECEC', paddingTop: '10px' }}>
+              <Link
+                href="/home/settings"
+                className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-[14px] text-xs font-semibold transition-all hover:bg-gray-50 border border-transparent hover:border-[#ECECEC]"
+                style={{ color: '#64748B' }}
+              >
+                <Settings size={14} />
+                Settings
+              </Link>
+              <button
+                onClick={logout}
+                className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-[14px] text-xs font-semibold transition-all hover:bg-red-50 border border-transparent hover:border-red-100"
+                style={{ color: '#EF4444' }}
+              >
+                <LogOut size={14} />
+                Logout
+              </button>
+            </div>
           </div>
         </div>
       </aside>
@@ -218,125 +248,157 @@ export default function HomeLayout({ children }: { children: React.ReactNode }) 
 
         {/* ── Top Bar ── */}
         <header
-          className="flex-shrink-0 flex items-center gap-4 px-6 sticky top-0 z-30"
+          className="flex-shrink-0 flex items-center justify-between px-6 sticky top-0 z-30"
           style={{
-            height: 64,
+            height: 72,
             background: 'rgba(255,255,255,0.9)',
             backdropFilter: 'blur(12px)',
-            borderBottom: '1px solid #EAECEF',
+            borderBottom: '1px solid #ECECEC',
           }}
         >
           {/* Search */}
           <div className="relative flex-1" style={{ maxWidth: 480 }}>
-            <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2" style={{ color: '#9CA3AF' }} />
+            <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2" style={{ color: '#64748B' }} />
             <input
               placeholder="Search meetings, recordings…"
               className="w-full pl-11 pr-4 text-sm transition-all outline-none"
               style={{
-                background: '#F3F4F6',
-                border: '1px solid #EAECEF',
-                borderRadius: 14,
-                height: 44,
-                color: '#111827',
+                background: '#FAFAFB',
+                border: '1px solid #ECECEC',
+                borderRadius: 16,
+                height: 48,
+                color: '#0F172A',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
               }}
               onFocus={e => {
                 e.currentTarget.style.background = '#FFFFFF';
                 e.currentTarget.style.borderColor = '#2563EB';
-                e.currentTarget.style.boxShadow = '0 0 0 3px rgba(37,99,235,0.08)';
+                e.currentTarget.style.boxShadow = '0 0 0 4px rgba(37,99,235,0.08)';
               }}
               onBlur={e => {
-                e.currentTarget.style.background = '#F3F4F6';
-                e.currentTarget.style.borderColor = '#EAECEF';
-                e.currentTarget.style.boxShadow = 'none';
+                e.currentTarget.style.background = '#FAFAFB';
+                e.currentTarget.style.borderColor = '#ECECEC';
+                e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.04)';
               }}
             />
           </div>
 
-          <div className="flex-1" />
+          {/* Right side items */}
+          <div className="flex items-center gap-4">
+            {/* Install App Button */}
+            {isInstallable && (
+              <button
+                onClick={handleInstallClick}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-600 rounded-full text-xs font-semibold shadow-sm transition-all hover:scale-105 active:scale-95 cursor-pointer"
+              >
+                <Download size={14} />
+                <span>Install App</span>
+              </button>
+            )}
 
-          {/* Bell */}
-          <div className="relative" ref={dropdownRef}>
-            <button
-              onClick={() => { setShowNotifications(!showNotifications); if (!showNotifications) fetchNotifications(); }}
-              className="relative flex items-center justify-center rounded-xl transition-colors"
-              style={{ width: 40, height: 40, background: showNotifications ? '#EEF4FF' : 'transparent' }}
-              onMouseEnter={e => (e.currentTarget.style.background = '#F3F4F6')}
-              onMouseLeave={e => (e.currentTarget.style.background = showNotifications ? '#EEF4FF' : 'transparent')}
-            >
-              <Bell size={19} style={{ color: '#6B7280' }} />
-              {unreadCount > 0 && (
-                <span className="absolute top-1.5 right-1.5 w-4 h-4 text-white text-[9px] font-bold flex items-center justify-center rounded-full"
-                  style={{ background: '#2563EB', fontSize: 9 }}>
-                  {unreadCount > 9 ? '9+' : unreadCount}
-                </span>
-              )}
-            </button>
+            {/* Workspace Badge */}
+            <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 bg-white border border-[#ECECEC] rounded-full text-xs font-semibold shadow-sm" style={{ color: '#64748B' }}>
+              <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse-soft" />
+              <span>Personal Workspace</span>
+            </div>
 
-            <AnimatePresence>
-              {showNotifications && (
-                <motion.div
-                  initial={{ opacity: 0, y: 8, scale: 0.97 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: 8, scale: 0.97 }}
-                  transition={{ duration: 0.13 }}
-                  className="absolute right-0 mt-2 overflow-hidden"
-                  style={{
-                    width: 340,
-                    background: '#FFFFFF',
-                    border: '1px solid #EAECEF',
-                    borderRadius: 16,
-                    boxShadow: '0 8px 32px rgba(0,0,0,0.10)',
-                    zIndex: 50,
-                  }}
-                >
-                  <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: '1px solid #F3F4F6' }}>
-                    <span className="text-sm font-semibold" style={{ color: '#111827' }}>Notifications</span>
-                    {unreadCount > 0 && (
-                      <button onClick={markAllAsRead} className="text-xs font-medium" style={{ color: '#2563EB' }}>
-                        Mark all read
-                      </button>
-                    )}
-                  </div>
-                  <div className="max-h-72 overflow-y-auto">
-                    {notifications.length === 0 ? (
-                      <div className="py-10 flex flex-col items-center gap-2">
-                        <BellOff size={28} style={{ color: '#D1D5DB' }} />
-                        <p className="text-sm" style={{ color: '#9CA3AF' }}>All caught up!</p>
-                      </div>
-                    ) : notifications.map(n => (
-                      <div
-                        key={n._id}
-                        onClick={() => { if (!n.isRead) markAsRead(n._id); if (n.link) { router.push(n.link); setShowNotifications(false); } }}
-                        className="flex items-start gap-3 px-4 py-3 cursor-pointer transition-colors"
-                        style={{ background: n.isRead ? 'transparent' : '#F8FBFF', borderBottom: '1px solid #F9FAFB' }}
-                        onMouseEnter={e => (e.currentTarget.style.background = '#F9FAFB')}
-                        onMouseLeave={e => (e.currentTarget.style.background = n.isRead ? 'transparent' : '#F8FBFF')}
-                      >
-                        {!n.isRead && <span className="mt-1.5 flex-shrink-0 w-1.5 h-1.5 rounded-full" style={{ background: '#2563EB' }} />}
-                        <div className={cn('flex-1 min-w-0', !n.isRead && 'pl-0', n.isRead && 'pl-[10px]')}>
-                          <p className="text-sm font-medium truncate" style={{ color: '#111827' }}>{n.title}</p>
-                          <p className="text-xs mt-0.5 line-clamp-2" style={{ color: '#6B7280' }}>{n.body}</p>
+            {/* Bell */}
+            <div className="relative" ref={dropdownRef}>
+              <button
+                onClick={() => { setShowNotifications(!showNotifications); if (!showNotifications) fetchNotifications(); }}
+                className="relative flex items-center justify-center rounded-xl transition-colors border border-transparent hover:border-[#ECECEC] hover:bg-gray-50"
+                style={{ width: 40, height: 40, background: showNotifications ? '#EEF4FF' : 'transparent' }}
+                onMouseEnter={e => (e.currentTarget.style.background = '#F3F4F6')}
+                onMouseLeave={e => (e.currentTarget.style.background = showNotifications ? '#EEF4FF' : 'transparent')}
+              >
+                <Bell size={19} style={{ color: '#64748B' }} />
+                {unreadCount > 0 && (
+                  <span className="absolute top-1.5 right-1.5 w-4 h-4 text-white text-[9px] font-bold flex items-center justify-center rounded-full"
+                    style={{ background: '#2563EB', fontSize: 9 }}>
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
+              </button>
+
+              <AnimatePresence>
+                {showNotifications && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 8, scale: 0.97 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 8, scale: 0.97 }}
+                    transition={{ duration: 0.13 }}
+                    className="absolute right-0 mt-2 overflow-hidden shadow-card"
+                    style={{
+                      width: 340,
+                      background: '#FFFFFF',
+                      border: '1px solid #ECECEC',
+                      borderRadius: 16,
+                      zIndex: 50,
+                    }}
+                  >
+                    <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: '1px solid #F3F4F6' }}>
+                      <span className="text-sm font-semibold" style={{ color: '#0F172A' }}>Notifications</span>
+                      {unreadCount > 0 && (
+                        <button onClick={markAllAsRead} className="text-xs font-semibold" style={{ color: '#2563EB' }}>
+                          Mark all read
+                        </button>
+                      )}
+                    </div>
+                    <div className="max-h-72 overflow-y-auto">
+                      {notifications.length === 0 ? (
+                        <div className="py-10 flex flex-col items-center gap-2">
+                          <BellOff size={28} style={{ color: '#D1D5DB' }} />
+                          <p className="text-sm" style={{ color: '#9CA3AF' }}>All caught up!</p>
                         </div>
-                        <span className="text-xs flex-shrink-0 mt-0.5" style={{ color: '#9CA3AF' }}>
-                          {new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
+                      ) : notifications.map(n => (
+                        <div
+                          key={n._id}
+                          onClick={() => { if (!n.isRead) markAsRead(n._id); if (n.link) { router.push(n.link); setShowNotifications(false); } }}
+                          className="flex items-start gap-3 px-4 py-3 cursor-pointer transition-colors"
+                          style={{ background: n.isRead ? 'transparent' : '#F8FBFF', borderBottom: '1px solid #F9FAFB' }}
+                          onMouseEnter={e => (e.currentTarget.style.background = '#F9FAFB')}
+                          onMouseLeave={e => (e.currentTarget.style.background = n.isRead ? 'transparent' : '#F8FBFF')}
+                        >
+                          {!n.isRead && <span className="mt-1.5 flex-shrink-0 w-1.5 h-1.5 rounded-full" style={{ background: '#2563EB' }} />}
+                          <div className={cn('flex-1 min-w-0', !n.isRead && 'pl-0', n.isRead && 'pl-[10px]')}>
+                            <p className="text-sm font-semibold truncate" style={{ color: '#0F172A' }}>{n.title}</p>
+                            <p className="text-xs mt-0.5 line-clamp-2" style={{ color: '#64748B' }}>{n.body}</p>
+                          </div>
+                          <span className="text-xs flex-shrink-0 mt-0.5" style={{ color: '#9CA3AF' }}>
+                            {new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
 
-          {/* New Meeting */}
-          <button
-            onClick={() => router.push('/home/calendar')}
-            className="btn-primary hidden sm:inline-flex"
-            style={{ height: 40, padding: '0 16px', fontSize: 13 }}
-          >
-            <Plus size={16} />
-            New Meeting
-          </button>
+            {/* Quick Profile Link */}
+            <Link
+              href="/home/settings"
+              className={cn(
+                'w-8 h-8 rounded-full flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0 cursor-pointer transition-transform hover:scale-105 border border-[#ECECEC] shadow-sm',
+                getAvatarColor(user.name)
+              )}
+            >
+              {user.avatar
+                ? <img src={user.avatar} alt={user.name} className="w-full h-full rounded-full object-cover" />
+                : getInitials(user.name)
+              }
+            </Link>
+
+            {/* New Meeting */}
+            <button
+              onClick={() => router.push('/home/calendar')}
+              className="btn-primary hidden sm:inline-flex"
+              style={{ height: 40, padding: '0 16px', fontSize: 13 }}
+            >
+              <Plus size={16} />
+              New Meeting
+            </button>
+          </div>
         </header>
 
         {/* ── Page Content ── */}

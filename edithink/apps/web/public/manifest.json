@@ -1,0 +1,16 @@
+{
+  "name": "EdiThink — Video Conferencing",
+  "short_name": "EdiThink",
+  "description": "World-class enterprise video conferencing platform. HD meetings, AI transcripts, and collaborative whiteboards.",
+  "start_url": "/home",
+  "display": "standalone",
+  "background_color": "#FAFAFB",
+  "theme_color": "#2563EB",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/x-icon"
+    }
+  ]
+}

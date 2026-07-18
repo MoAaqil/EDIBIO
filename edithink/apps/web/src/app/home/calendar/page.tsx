@@ -215,20 +215,21 @@ export default function CalendarPage() {
                 gridTemplateColumns: '52px repeat(7,1fr)',
                 background: 'rgba(255,255,255,0.96)',
                 backdropFilter: 'blur(8px)',
-                borderBottom: '1px solid #EAECEF',
+                borderBottom: '1px solid #ECECEC',
               }}
             >
-              <div style={{ borderRight: '1px solid #EAECEF' }} />
+              <div style={{ borderRight: '1px solid #ECECEC' }} />
               {weekDays.map((day, i) => {
                 const count   = getMeetingsForDay(day).length;
                 const isTd    = isToday(day);
+                const isWeekend = day.getDay() === 0 || day.getDay() === 6;
                 return (
                   <div
                     key={i}
                     className="flex flex-col items-center py-3"
                     style={{
-                      borderRight: i < 6 ? '1px solid #EAECEF' : 'none',
-                      background: isTd ? '#F8FBFF' : 'transparent',
+                      borderRight: i < 6 ? '1px solid #ECECEC' : 'none',
+                      background: isTd ? '#F3F8FF' : isWeekend ? '#FAFAFA' : 'transparent',
                     }}
                   >
                     <span
@@ -243,7 +244,7 @@ export default function CalendarPage() {
                         width: 32, height: 32, borderRadius: '50%',
                         fontSize: 13,
                         background: isTd ? '#2563EB' : 'transparent',
-                        color: isTd ? '#FFFFFF' : '#111827',
+                        color: isTd ? '#FFFFFF' : '#0F172A',
                         border: isTd ? '2px solid #2563EB' : '2px solid transparent',
                       }}
                     >
@@ -275,7 +276,7 @@ export default function CalendarPage() {
                 {/* Time label */}
                 <div
                   className="flex items-start justify-end pr-2 pt-2"
-                  style={{ borderRight: '1px solid #EAECEF' }}
+                  style={{ borderRight: '1px solid #ECECEC' }}
                 >
                   <span style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 600 }}>{fmtHour(hour)}</span>
                 </div>
@@ -284,6 +285,7 @@ export default function CalendarPage() {
                 {weekDays.map((day, di) => {
                   const slotMeetings = getMeetingsForHour(day, hour);
                   const isTd         = isToday(day);
+                  const isWeekend    = day.getDay() === 0 || day.getDay() === 6;
                   const nowHour      = today.getHours();
                   const nowPct       = (today.getMinutes() / 60) * 100;
                   const showLine     = isTd && nowHour === hour;
@@ -291,11 +293,11 @@ export default function CalendarPage() {
                   return (
                     <div
                       key={di}
-                      className="relative"
+                      className="relative transition-colors hover:bg-gray-50/50"
                       style={{
-                        borderRight: di < 6 ? '1px solid #EAECEF' : 'none',
-                        borderBottom: '1px solid #F9FAFB',
-                        background: isTd ? '#FAFCFF' : 'transparent',
+                        borderRight: di < 6 ? '1px solid #ECECEC' : 'none',
+                        borderBottom: '1px solid #ECECEC',
+                        background: isTd ? '#F3F8FF' : isWeekend ? '#FAFAFA' : 'transparent',
                       }}
                     >
                       {/* Now line */}
@@ -304,8 +306,8 @@ export default function CalendarPage() {
                           className="absolute left-0 right-0 z-10 pointer-events-none flex items-center"
                           style={{ top: `${nowPct}%` }}
                         >
-                          <div className="w-2 h-2 rounded-full flex-shrink-0 animate-pulse-soft" style={{ background: '#2563EB', marginLeft: -4 }} />
-                          <div className="flex-1 h-px" style={{ background: '#2563EB' }} />
+                          <div className="w-2.5 h-2.5 rounded-full flex-shrink-0 animate-pulse-soft" style={{ background: '#EF4444', marginLeft: -5 }} />
+                          <div className="flex-1 h-[2px]" style={{ background: '#EF4444' }} />
                         </div>
                       )}
 
@@ -319,26 +321,27 @@ export default function CalendarPage() {
                           <div
                             key={m._id || mi}
                             onClick={() => setSelectedMeeting(m)}
-                            className="absolute left-1 right-1 overflow-hidden cursor-pointer transition-all"
+                            className="absolute left-1 right-1 overflow-hidden cursor-pointer transition-all duration-200"
                             style={{
                               top: `${topPct}%`,
                               height: heightPx,
                               background: col.bg,
                               border: `1px solid ${col.border}`,
-                              borderRadius: 10,
-                              borderLeft: `3px solid ${col.bar}`,
-                              padding: '4px 8px',
+                              borderRadius: 12,
+                              borderLeft: `4px solid ${col.bar}`,
+                              padding: '6px 10px',
+                              boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
                             }}
                             onMouseEnter={e => {
                               e.currentTarget.style.transform = 'translateY(-1px)';
-                              e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)';
+                              e.currentTarget.style.boxShadow = '0 8px 25px rgba(0,0,0,0.08)';
                             }}
                             onMouseLeave={e => {
                               e.currentTarget.style.transform = 'translateY(0)';
-                              e.currentTarget.style.boxShadow = 'none';
+                              e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.04)';
                             }}
                           >
-                            <p style={{ fontSize: 10, fontWeight: 600, color: col.text, lineHeight: 1.3 }} className="truncate">
+                            <p style={{ fontSize: 10, fontWeight: 650, color: col.text, lineHeight: 1.3 }} className="truncate">
                               {m.title}
                             </p>
                             <p style={{ fontSize: 9, color: col.text, opacity: 0.75 }} className="flex items-center gap-1">
@@ -367,20 +370,20 @@ export default function CalendarPage() {
           className="hidden xl:flex flex-col flex-shrink-0 overflow-y-auto"
           style={{
             width: 280,
-            borderLeft: '1px solid #EAECEF',
-            background: '#F8FAFC',
+            borderLeft: '1px solid #ECECEC',
+            background: '#FAFAFB',
           }}
         >
           {/* Header */}
           <div
             className="flex items-center justify-between px-4 py-3 sticky top-0 z-10"
             style={{
-              background: 'rgba(248,250,252,0.95)',
+              background: 'rgba(250,250,251,0.95)',
               backdropFilter: 'blur(8px)',
-              borderBottom: '1px solid #EAECEF',
+              borderBottom: '1px solid #ECECEC',
             }}
           >
-            <span style={{ fontSize: 12, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               Quick Agenda
             </span>
             <span
@@ -399,7 +402,7 @@ export default function CalendarPage() {
             <div>
               <div className="flex items-center gap-2 mb-3">
                 <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#2563EB', display: 'inline-block' }} />
-                <span style={{ fontSize: 12, fontWeight: 700, color: '#111827', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: '#0F172A', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                   Today
                 </span>
               </div>
@@ -407,40 +410,42 @@ export default function CalendarPage() {
                 <div
                   className="text-center py-6"
                   style={{
-                    background: '#FFFFFF', border: '1px solid #EAECEF',
-                    borderRadius: 14, color: '#9CA3AF', fontSize: 12,
+                    background: '#FFFFFF', border: '1px solid #ECECEC',
+                    borderRadius: 14, color: '#64748B', fontSize: 12,
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
                   }}
                 >
                   No meetings today
                 </div>
               ) : (
-                <div className="space-y-2 pl-3" style={{ borderLeft: '2px solid #E5E7EB' }}>
+                <div className="space-y-3 pl-3" style={{ borderLeft: '2px solid #ECECEC' }}>
                   {agendaToday.map(m => {
                     const col = getColor(m._id || m.title);
                     return (
                       <div
                         key={m._id}
                         onClick={() => setSelectedMeeting(m)}
-                        className="cursor-pointer transition-all"
+                        className="cursor-pointer transition-all duration-200"
                         style={{
-                          background: '#FFFFFF', border: `1px solid #EAECEF`,
-                          borderRadius: 12, padding: '10px 12px',
-                          borderLeft: `3px solid ${col.bar}`,
+                          background: '#FFFFFF', border: `1px solid #ECECEC`,
+                          borderRadius: 14, padding: '12px 14px',
+                          borderLeft: `4px solid ${col.bar}`,
+                          boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
                         }}
                         onMouseEnter={e => {
-                          e.currentTarget.style.transform = 'translateY(-1px)';
-                          e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.06)';
+                          e.currentTarget.style.transform = 'translateY(-2px)';
+                          e.currentTarget.style.boxShadow = '0 8px 25px rgba(0,0,0,0.08)';
                           e.currentTarget.style.borderColor = col.border;
                         }}
                         onMouseLeave={e => {
                           e.currentTarget.style.transform = 'translateY(0)';
-                          e.currentTarget.style.boxShadow = 'none';
-                          e.currentTarget.style.borderColor = '#EAECEF';
+                          e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.04)';
+                          e.currentTarget.style.borderColor = '#ECECEC';
                         }}
                       >
-                        <p style={{ fontSize: 13, fontWeight: 600, color: '#111827', marginBottom: 4 }} className="truncate">{m.title}</p>
-                        <p style={{ fontSize: 11, color: '#6B7280' }} className="flex items-center gap-1">
-                          <Clock size={10} />
+                        <p style={{ fontSize: 14, fontWeight: 600, color: '#0F172A', marginBottom: 6 }} className="truncate">{m.title}</p>
+                        <p style={{ fontSize: 12, color: '#64748B' }} className="flex items-center gap-1">
+                          <Clock size={11} />
                           {new Date(m.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           {m.duration && <span style={{ color: '#9CA3AF' }}>  ·  {m.duration} min</span>}
                         </p>
@@ -454,8 +459,8 @@ export default function CalendarPage() {
             {/* Tomorrow section */}
             <div>
               <div className="flex items-center gap-2 mb-3">
-                <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#9CA3AF', display: 'inline-block' }} />
-                <span style={{ fontSize: 12, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#64748B', display: 'inline-block' }} />
+                <span style={{ fontSize: 12, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                   Tomorrow
                 </span>
               </div>
@@ -463,40 +468,42 @@ export default function CalendarPage() {
                 <div
                   className="text-center py-6"
                   style={{
-                    background: '#FFFFFF', border: '1px solid #EAECEF',
-                    borderRadius: 14, color: '#9CA3AF', fontSize: 12,
+                    background: '#FFFFFF', border: '1px solid #ECECEC',
+                    borderRadius: 14, color: '#64748B', fontSize: 12,
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
                   }}
                 >
                   No meetings tomorrow
                 </div>
               ) : (
-                <div className="space-y-2 pl-3" style={{ borderLeft: '2px solid #E5E7EB' }}>
+                <div className="space-y-3 pl-3" style={{ borderLeft: '2px solid #ECECEC' }}>
                   {agendaTomorrow.map(m => {
                     const col = getColor(m._id || m.title);
                     return (
                       <div
                         key={m._id}
                         onClick={() => setSelectedMeeting(m)}
-                        className="cursor-pointer transition-all"
+                        className="cursor-pointer transition-all duration-200"
                         style={{
-                          background: '#FFFFFF', border: '1px solid #EAECEF',
-                          borderRadius: 12, padding: '10px 12px',
-                          borderLeft: `3px solid ${col.bar}`,
+                          background: '#FFFFFF', border: `1px solid #ECECEC`,
+                          borderRadius: 14, padding: '12px 14px',
+                          borderLeft: `4px solid ${col.bar}`,
+                          boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
                         }}
                         onMouseEnter={e => {
-                          e.currentTarget.style.transform = 'translateY(-1px)';
-                          e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.06)';
+                          e.currentTarget.style.transform = 'translateY(-2px)';
+                          e.currentTarget.style.boxShadow = '0 8px 25px rgba(0,0,0,0.08)';
                           e.currentTarget.style.borderColor = col.border;
                         }}
                         onMouseLeave={e => {
                           e.currentTarget.style.transform = 'translateY(0)';
-                          e.currentTarget.style.boxShadow = 'none';
-                          e.currentTarget.style.borderColor = '#EAECEF';
+                          e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.04)';
+                          e.currentTarget.style.borderColor = '#ECECEC';
                         }}
                       >
-                        <p style={{ fontSize: 13, fontWeight: 600, color: '#111827', marginBottom: 4 }} className="truncate">{m.title}</p>
-                        <p style={{ fontSize: 11, color: '#6B7280' }} className="flex items-center gap-1">
-                          <Clock size={10} />
+                        <p style={{ fontSize: 14, fontWeight: 600, color: '#0F172A', marginBottom: 6 }} className="truncate">{m.title}</p>
+                        <p style={{ fontSize: 12, color: '#64748B' }} className="flex items-center gap-1">
+                          <Clock size={11} />
                           {new Date(m.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           {m.duration && <span style={{ color: '#9CA3AF' }}>  ·  {m.duration} min</span>}
                         </p>

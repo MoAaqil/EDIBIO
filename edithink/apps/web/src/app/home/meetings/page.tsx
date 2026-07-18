@@ -17,20 +17,23 @@ type TabType = 'all' | 'scheduled' | 'ended';
 function StatusBadge({ status }: { status: string }) {
   if (status === 'active')
     return (
-      <span className="badge-active">
-        <span className="dot-active" style={{ width: 6, height: 6 }} />
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-green-50 text-green-700 border border-green-200">
+        <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse-soft" />
         Active
       </span>
     );
   if (status === 'scheduled')
     return (
-      <span className="badge-scheduled">
-        <span className="dot-scheduled" style={{ width: 6, height: 6 }} />
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+        <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
         Scheduled
       </span>
     );
   return (
-    <span className="badge-ended">Ended</span>
+    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-600 border border-gray-200">
+      <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
+      Ended
+    </span>
   );
 }
 
@@ -98,8 +101,8 @@ export default function MeetingsPage() {
       {/* ── Page Header ── */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 style={{ fontSize: 18, fontWeight: 600, color: '#111827', margin: 0 }}>Meetings</h1>
-          <p style={{ fontSize: 14, color: '#6B7280', marginTop: 4 }}>View, create, and manage your video calls.</p>
+          <h1 className="text-3xl font-bold" style={{ color: '#0F172A', margin: 0 }}>Meetings</h1>
+          <p className="text-md" style={{ color: '#64748B', marginTop: 6, fontWeight: 500 }}>View, create, and manage your video calls.</p>
         </div>
         <button onClick={createMeeting} className="btn-primary">
           <Plus size={16} />
@@ -109,28 +112,24 @@ export default function MeetingsPage() {
 
       {/* ── Filters Bar ── */}
       <div
-        className="flex flex-col sm:flex-row items-start sm:items-center gap-3"
-        style={{
-          background: '#FFFFFF',
-          border: '1px solid #EAECEF',
-          borderRadius: 16,
-          padding: '12px 16px',
-        }}
+        className="flex flex-col sm:flex-row items-start sm:items-center gap-4 p-4 card shadow-sm"
+        style={{ background: '#FFFFFF' }}
       >
         {/* Tabs */}
         <div
-          className="flex gap-1 p-1 rounded-lg"
-          style={{ background: '#F3F4F6', flexShrink: 0 }}
+          className="flex gap-1 p-1 rounded-[12px]"
+          style={{ background: '#FAFAFB', border: '1px solid #ECECEC', flexShrink: 0 }}
         >
           {tabs.map(t => (
             <button
               key={t.id}
               onClick={() => setActiveTab(t.id)}
-              className="px-3 py-1.5 rounded-md text-sm font-medium transition-all"
+              className="px-4 py-2 rounded-[8px] text-sm font-semibold transition-all"
               style={{
                 background: activeTab === t.id ? '#FFFFFF' : 'transparent',
-                color: activeTab === t.id ? '#111827' : '#6B7280',
-                boxShadow: activeTab === t.id ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                color: activeTab === t.id ? '#0F172A' : '#64748B',
+                boxShadow: activeTab === t.id ? '0 2px 8px rgba(0,0,0,0.04)' : 'none',
+                border: activeTab === t.id ? '1px solid #ECECEC' : '1px solid transparent',
               }}
             >
               {t.label}
@@ -142,13 +141,13 @@ export default function MeetingsPage() {
 
         {/* Search */}
         <div className="relative w-full sm:w-72">
-          <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: '#9CA3AF' }} />
+          <Search size={15} className="absolute left-4 top-1/2 -translate-y-1/2" style={{ color: '#64748B' }} />
           <input
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             placeholder="Search by title or ID…"
-            className="input pl-10"
-            style={{ height: 38, fontSize: 13 }}
+            className="input pl-11"
+            style={{ height: 42, fontSize: 13 }}
           />
         </div>
       </div>
@@ -160,21 +159,21 @@ export default function MeetingsPage() {
           <p style={{ fontSize: 13, color: '#9CA3AF' }}>Loading meetings…</p>
         </div>
       ) : filtered.length === 0 ? (
-        <div className="empty-state">
+        <div className="empty-state p-8 md:p-12">
           <div className="empty-state-icon">
             <Video size={24} style={{ color: '#9CA3AF' }} />
           </div>
-          <h3 style={{ fontSize: 15, fontWeight: 600, color: '#111827', margin: '0 0 6px' }}>No meetings found</h3>
-          <p style={{ fontSize: 13, color: '#6B7280', maxWidth: 280, margin: '0 auto 20px' }}>
+          <h3 className="text-xl font-semibold" style={{ color: '#0F172A', margin: '0 0 6px' }}>No meetings found</h3>
+          <p className="text-sm" style={{ color: '#64748B', maxWidth: 280, margin: '0 auto 20px' }}>
             Start a new instant meeting or schedule one in the calendar.
           </p>
-          <button onClick={createMeeting} className="btn-primary" style={{ height: 38, padding: '0 16px', fontSize: 13 }}>
+          <button onClick={createMeeting} className="btn-primary" style={{ height: 40, padding: '0 16px', fontSize: 13 }}>
             <Plus size={15} />
             New Instant Meeting
           </button>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-4">
           <AnimatePresence>
             {filtered.map((m, i) => (
               <motion.div
@@ -183,93 +182,99 @@ export default function MeetingsPage() {
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -8 }}
-                transition={{ duration: 0.18, delay: i * 0.03 }}
+                transition={{ duration: 0.2, delay: i * 0.03 }}
                 className="card-lift"
-                style={{ padding: '20px 24px' }}
+                style={{ padding: '24px' }}
               >
-                <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
 
                   {/* Left: Icon + Info */}
                   <div className="flex items-start gap-4 flex-1 min-w-0">
                     {/* Status icon */}
                     <div
-                      className="flex-shrink-0 flex items-center justify-center rounded-xl"
+                      className="flex-shrink-0 flex items-center justify-center rounded-2xl border border-transparent shadow-sm transition-transform group-hover:scale-105"
                       style={{
-                        width: 44, height: 44,
+                        width: 48, height: 48,
                         background: m.status === 'active'
-                          ? 'rgba(34,197,94,0.1)'
+                          ? 'rgba(34,197,94,0.08)'
                           : m.status === 'scheduled'
                             ? '#EEF4FF'
-                            : '#F3F4F6',
+                            : '#FAFAFB',
+                        borderColor: m.status === 'active'
+                          ? 'rgba(34,197,94,0.2)'
+                          : m.status === 'scheduled'
+                            ? '#DBEAFE'
+                            : '#ECECEC',
                       }}
                     >
                       <Video
-                        size={20}
+                        size={22}
+                        fill={m.status === 'active' || m.status === 'scheduled' ? 'currentColor' : 'none'}
                         style={{
                           color: m.status === 'active'
                             ? '#22C55E'
                             : m.status === 'scheduled'
                               ? '#2563EB'
-                              : '#9CA3AF',
+                              : '#64748B',
                         }}
                       />
                     </div>
 
                     {/* Text block */}
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2.5 mb-1.5 flex-wrap">
-                        <h3 style={{ fontSize: 15, fontWeight: 600, color: '#111827', margin: 0 }} className="truncate">
+                      <div className="flex items-center gap-3 mb-2 flex-wrap">
+                        <h3 className="text-xl font-semibold" style={{ color: '#0F172A', margin: 0 }}>
                           {m.title}
                         </h3>
                         <StatusBadge status={m.status} />
                       </div>
 
-                      <div className="flex items-center gap-3 flex-wrap" style={{ fontSize: 12, color: '#6B7280' }}>
+                      <div className="flex items-center gap-4 flex-wrap text-sm" style={{ color: '#64748B', fontWeight: 500 }}>
                         <span
-                          className="font-mono"
-                          style={{
-                            background: '#F3F4F6',
-                            color: '#374151',
-                            padding: '1px 8px',
-                            borderRadius: 6,
-                            fontSize: 11,
-                          }}
+                          className="font-mono text-xs font-semibold px-2 py-0.5 rounded-[6px]"
+                          style={{ background: '#FAFAFB', border: '1px solid #ECECEC', color: '#0F172A' }}
                         >
                           {m.roomId}
                         </span>
                         {m.scheduledAt ? (
                           <>
-                            <span className="flex items-center gap-1">
-                              <Calendar size={12} style={{ color: '#9CA3AF' }} />
+                            <span className="flex items-center gap-1.5">
+                              <Calendar size={13} style={{ color: '#64748B' }} />
                               {formatDate(m.scheduledAt)}
                             </span>
-                            <span className="flex items-center gap-1">
-                              <Clock size={12} style={{ color: '#9CA3AF' }} />
+                            <span className="flex items-center gap-1.5">
+                              <Clock size={13} style={{ color: '#64748B' }} />
                               {formatTime(m.scheduledAt)}
                             </span>
                           </>
                         ) : (
-                          <span className="flex items-center gap-1">
-                            <Clock size={12} style={{ color: '#9CA3AF' }} />
+                          <span className="flex items-center gap-1.5">
+                            <Clock size={13} style={{ color: '#64748B' }} />
                             Instant
                           </span>
                         )}
-                        {m.participants?.length > 0 && (
-                          <span className="flex items-center gap-1">
-                            <Users size={12} style={{ color: '#9CA3AF' }} />
-                            {m.participants.length}
+
+                        {/* Avatars Stack */}
+                        <div className="flex items-center gap-2">
+                          <div className="flex -space-x-2.5 overflow-hidden">
+                            <div className="inline-block h-6 w-6 rounded-full ring-2 ring-white bg-blue-100 text-blue-600 flex items-center justify-center text-[10px] font-bold">JD</div>
+                            <div className="inline-block h-6 w-6 rounded-full ring-2 ring-white bg-green-100 text-green-600 flex items-center justify-center text-[10px] font-bold">AS</div>
+                            <div className="inline-block h-6 w-6 rounded-full ring-2 ring-white bg-red-100 text-red-600 flex items-center justify-center text-[10px] font-bold">MK</div>
+                          </div>
+                          <span className="text-xs font-semibold" style={{ color: '#64748B' }}>
+                            +{m.participants?.length > 0 ? m.participants.length : 3} participants
                           </span>
-                        )}
+                        </div>
                       </div>
                     </div>
                   </div>
 
                   {/* Right: Actions */}
-                  <div className="flex items-center gap-2 self-end sm:self-auto flex-shrink-0">
+                  <div className="flex items-center gap-2 self-end md:self-auto flex-shrink-0">
                     <button
                       onClick={() => handleCopy(m.inviteLink, m._id)}
                       className="btn-secondary"
-                      style={{ height: 38, padding: '0 14px', fontSize: 13 }}
+                      style={{ height: 40, padding: '0 16px', fontSize: 13 }}
                     >
                       <Copy size={14} />
                       {copiedId === m._id ? 'Copied!' : 'Copy Link'}
@@ -280,17 +285,17 @@ export default function MeetingsPage() {
                         <button
                           onClick={() => router.push(`/meet/${m.roomId}`)}
                           className="btn-primary"
-                          style={{ height: 38, padding: '0 18px', fontSize: 13 }}
+                          style={{ height: 40, padding: '0 18px', fontSize: 13 }}
                         >
-                          <Play size={14} style={{ fill: '#fff' }} />
+                          <Play size={14} fill="currentColor" />
                           Join
                         </button>
                         <button
                           onClick={() => cancelMeeting(m._id)}
-                          className="flex items-center justify-center rounded-xl transition-colors"
+                          className="flex items-center justify-center rounded-xl transition-colors border"
                           style={{
-                            width: 38, height: 38,
-                            border: '1px solid #E5E7EB',
+                            width: 40, height: 40,
+                            borderColor: '#ECECEC',
                             color: '#EF4444',
                             background: '#FFFFFF',
                           }}
@@ -300,7 +305,7 @@ export default function MeetingsPage() {
                           }}
                           onMouseLeave={e => {
                             e.currentTarget.style.background = '#FFFFFF';
-                            e.currentTarget.style.borderColor = '#E5E7EB';
+                            e.currentTarget.style.borderColor = '#ECECEC';
                           }}
                           title="Cancel meeting"
                         >

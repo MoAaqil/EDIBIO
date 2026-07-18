@@ -99,16 +99,16 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8 animate-fade-up">
       {/* Page Header */}
       <div>
-        <h1 style={{ fontSize: 18, fontWeight: 600, color: '#111827', margin: 0 }}>Account Settings</h1>
-        <p style={{ fontSize: 14, color: '#6B7280', marginTop: 4 }}>Manage your profile, security options, and call preferences.</p>
+        <h1 className="text-3xl font-bold" style={{ color: '#0F172A', margin: 0 }}>Account Settings</h1>
+        <p className="text-md" style={{ color: '#64748B', marginTop: 6, fontWeight: 500 }}>Manage your profile, security options, and call preferences.</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
         {/* Navigation Sidebar */}
-        <div className="card" style={{ padding: 12, height: 'fit-content', display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <div className="card shadow-sm" style={{ padding: 12, height: 'fit-content', display: 'flex', flexDirection: 'column', gap: 6, background: '#FFFFFF' }}>
           {[
             { id: 'profile', label: 'My Profile', icon: UserIcon },
             { id: 'security', label: 'Security & Sign In', icon: Shield },
@@ -120,9 +120,9 @@ export default function SettingsPage() {
                 key={section.id}
                 onClick={() => setActiveSection(section.id as any)}
                 className={`nav-item ${isActive ? 'nav-item-active' : ''}`}
-                style={{ border: 'none', background: 'transparent', textAlign: 'left', width: '100%' }}
+                style={{ textAlign: 'left', width: '100%' }}
               >
-                <section.icon size={16} />
+                <section.icon size={16} fill={isActive ? 'currentColor' : 'none'} />
                 <span style={{ fontSize: 13, fontWeight: isActive ? 600 : 500 }}>{section.label}</span>
               </button>
             );
@@ -130,38 +130,38 @@ export default function SettingsPage() {
         </div>
 
         {/* Content Container */}
-        <div className="md:col-span-3 card" style={{ padding: 24 }}>
+        <div className="md:col-span-3 card shadow-sm p-6 md:p-8" style={{ background: '#FFFFFF' }}>
           {activeSection === 'profile' && (
-            <form onSubmit={handleSaveProfile} className="space-y-5">
-              <h2 style={{ fontSize: 16, fontWeight: 600, color: '#111827', borderBottom: '1px solid #EAECEF', paddingBottom: 12, margin: 0 }}>
+            <form onSubmit={handleSaveProfile} className="space-y-6">
+              <h2 className="text-xl font-semibold" style={{ color: '#0F172A', borderBottom: '1px solid #ECECEC', paddingBottom: 16, margin: 0 }}>
                 My Profile
               </h2>
 
               {saveSuccess && (
-                <div style={{ background: '#DCFCE7', border: '1px solid #BBF7D0', borderRadius: 12, padding: '10px 14px', fontSize: 13, color: '#16A34A', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ background: '#DCFCE7', border: '1px solid #BBF7D0', borderRadius: 12, padding: '12px 16px', fontSize: 13, color: '#16A34A', display: 'flex', alignItems: 'center', gap: 8 }}>
                   <Check size={16} /> Profile updated successfully!
                 </div>
               )}
               {saveError && (
-                <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 12, padding: '10px 14px', fontSize: 13, color: '#DC2626', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 12, padding: '12px 16px', fontSize: 13, color: '#DC2626', display: 'flex', alignItems: 'center', gap: 8 }}>
                   <AlertCircle size={16} /> {saveError}
                 </div>
               )}
 
-              <div className="space-y-1.5">
-                <label style={{ fontSize: 11, fontWeight: 600, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block' }}>
+              <div className="space-y-2">
+                <label className="text-xs font-semibold" style={{ color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block' }}>
                   Email Address (Cannot change)
                 </label>
                 <input
                   disabled
                   value={user?.email}
                   className="input"
-                  style={{ background: '#F3F4F6', color: '#9CA3AF', cursor: 'not-allowed', height: 42 }}
+                  style={{ background: '#FAFAFB', color: '#9CA3AF', cursor: 'not-allowed' }}
                 />
               </div>
 
-              <div className="space-y-1.5">
-                <label style={{ fontSize: 11, fontWeight: 600, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block' }}>
+              <div className="space-y-2">
+                <label className="text-xs font-semibold" style={{ color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block' }}>
                   Display Name
                 </label>
                 <input
@@ -170,12 +170,11 @@ export default function SettingsPage() {
                   onChange={e => setName(e.target.value)}
                   placeholder="e.g. Aaqil Ezio"
                   className="input"
-                  style={{ height: 42 }}
                 />
               </div>
 
-              <div className="space-y-1.5">
-                <label style={{ fontSize: 11, fontWeight: 600, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block' }}>
+              <div className="space-y-2">
+                <label className="text-xs font-semibold" style={{ color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block' }}>
                   Avatar Image URL (Optional)
                 </label>
                 <input
@@ -183,7 +182,6 @@ export default function SettingsPage() {
                   onChange={e => setAvatar(e.target.value)}
                   placeholder="https://example.com/avatar.png"
                   className="input"
-                  style={{ height: 42 }}
                 />
               </div>
 
@@ -191,7 +189,7 @@ export default function SettingsPage() {
                 type="submit"
                 disabled={isSaving}
                 className="btn-primary"
-                style={{ height: 42, opacity: isSaving ? 0.6 : 1 }}
+                style={{ opacity: isSaving ? 0.6 : 1 }}
               >
                 {isSaving ? 'Saving Changes…' : 'Save Profile Details'}
               </button>
@@ -199,24 +197,24 @@ export default function SettingsPage() {
           )}
 
           {activeSection === 'security' && (
-            <form onSubmit={handleChangePassword} className="space-y-5">
-              <h2 style={{ fontSize: 16, fontWeight: 600, color: '#111827', borderBottom: '1px solid #EAECEF', paddingBottom: 12, margin: 0 }}>
+            <form onSubmit={handleChangePassword} className="space-y-6">
+              <h2 className="text-xl font-semibold" style={{ color: '#0F172A', borderBottom: '1px solid #ECECEC', paddingBottom: 16, margin: 0 }}>
                 Update Password
               </h2>
 
               {pwSuccess && (
-                <div style={{ background: '#DCFCE7', border: '1px solid #BBF7D0', borderRadius: 12, padding: '10px 14px', fontSize: 13, color: '#16A34A', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ background: '#DCFCE7', border: '1px solid #BBF7D0', borderRadius: 12, padding: '12px 16px', fontSize: 13, color: '#16A34A', display: 'flex', alignItems: 'center', gap: 8 }}>
                   <Check size={16} /> Password changed successfully!
                 </div>
               )}
               {pwError && (
-                <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 12, padding: '10px 14px', fontSize: 13, color: '#DC2626', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 12, padding: '12px 16px', fontSize: 13, color: '#DC2626', display: 'flex', alignItems: 'center', gap: 8 }}>
                   <AlertCircle size={16} /> {pwError}
                 </div>
               )}
 
-              <div className="space-y-1.5">
-                <label style={{ fontSize: 11, fontWeight: 600, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block' }}>
+              <div className="space-y-2">
+                <label className="text-xs font-semibold" style={{ color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block' }}>
                   Current Password
                 </label>
                 <input
@@ -225,12 +223,11 @@ export default function SettingsPage() {
                   value={currentPassword}
                   onChange={e => setCurrentPassword(e.target.value)}
                   className="input"
-                  style={{ height: 42 }}
                 />
               </div>
 
-              <div className="space-y-1.5">
-                <label style={{ fontSize: 11, fontWeight: 600, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block' }}>
+              <div className="space-y-2">
+                <label className="text-xs font-semibold" style={{ color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block' }}>
                   New Password
                 </label>
                 <input
@@ -239,12 +236,11 @@ export default function SettingsPage() {
                   value={newPassword}
                   onChange={e => setNewPassword(e.target.value)}
                   className="input"
-                  style={{ height: 42 }}
                 />
               </div>
 
-              <div className="space-y-1.5">
-                <label style={{ fontSize: 11, fontWeight: 600, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block' }}>
+              <div className="space-y-2">
+                <label className="text-xs font-semibold" style={{ color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block' }}>
                   Confirm New Password
                 </label>
                 <input
@@ -253,7 +249,6 @@ export default function SettingsPage() {
                   value={confirmPassword}
                   onChange={e => setConfirmPassword(e.target.value)}
                   className="input"
-                  style={{ height: 42 }}
                 />
               </div>
 
@@ -261,7 +256,7 @@ export default function SettingsPage() {
                 type="submit"
                 disabled={isChangingPassword}
                 className="btn-primary"
-                style={{ height: 42, opacity: isChangingPassword ? 0.6 : 1 }}
+                style={{ opacity: isChangingPassword ? 0.6 : 1 }}
               >
                 {isChangingPassword ? 'Changing Password…' : 'Change Password'}
               </button>
@@ -269,54 +264,54 @@ export default function SettingsPage() {
           )}
 
           {activeSection === 'preferences' && (
-            <div className="space-y-5">
-              <h2 style={{ fontSize: 16, fontWeight: 600, color: '#111827', borderBottom: '1px solid #EAECEF', paddingBottom: 12, margin: 0 }}>
+            <div className="space-y-6">
+              <h2 className="text-xl font-semibold" style={{ color: '#0F172A', borderBottom: '1px solid #ECECEC', paddingBottom: 16, margin: 0 }}>
                 Meeting Preferences
               </h2>
 
               {saveSuccess && (
-                <div style={{ background: '#DCFCE7', border: '1px solid #BBF7D0', borderRadius: 12, padding: '10px 14px', fontSize: 13, color: '#16A34A', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ background: '#DCFCE7', border: '1px solid #BBF7D0', borderRadius: 12, padding: '12px 16px', fontSize: 13, color: '#16A34A', display: 'flex', alignItems: 'center', gap: 8 }}>
                   <Check size={16} /> Preferences saved!
                 </div>
               )}
 
-              <div className="space-y-4">
-                <div className="flex items-center justify-between py-3 border-b border-slate-100">
+              <div className="space-y-4 divide-y divide-[#ECECEC]">
+                <div className="flex items-center justify-between py-4">
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Turn Camera On by Default</div>
-                    <div style={{ fontSize: 11, color: '#6B7280', marginTop: 2 }}>Join new meetings with your camera enabled.</div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: '#0F172A' }}>Turn Camera On by Default</div>
+                    <div style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>Join new meetings with your camera enabled.</div>
                   </div>
                   <input
                     type="checkbox"
                     checked={cameraPref}
                     onChange={e => setCameraPref(e.target.checked)}
-                    className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-350"
+                    className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-[#ECECEC]"
                   />
                 </div>
 
-                <div className="flex items-center justify-between py-3 border-b border-slate-100">
+                <div className="flex items-center justify-between py-4 pt-4">
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Turn Microphone On by Default</div>
-                    <div style={{ fontSize: 11, color: '#6B7280', marginTop: 2 }}>Join new meetings with your microphone enabled.</div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: '#0F172A' }}>Turn Microphone On by Default</div>
+                    <div style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>Join new meetings with your microphone enabled.</div>
                   </div>
                   <input
                     type="checkbox"
                     checked={micPref}
                     onChange={e => setMicPref(e.target.checked)}
-                    className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-350"
+                    className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-[#ECECEC]"
                   />
                 </div>
 
-                <div className="flex items-center justify-between py-3">
+                <div className="flex items-center justify-between py-4 pt-4">
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Enable Noise Suppression</div>
-                    <div style={{ fontSize: 11, color: '#6B7280', marginTop: 2 }}>Reduce background static noise during calls.</div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: '#0F172A' }}>Enable Noise Suppression</div>
+                    <div style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>Reduce background static noise during calls.</div>
                   </div>
                   <input
                     type="checkbox"
                     checked={noisePref}
                     onChange={e => setNoisePref(e.target.checked)}
-                    className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-350"
+                    className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-[#ECECEC]"
                   />
                 </div>
               </div>
@@ -326,7 +321,7 @@ export default function SettingsPage() {
                 onClick={handleSavePreferences}
                 disabled={isSaving}
                 className="btn-primary"
-                style={{ height: 42, opacity: isSaving ? 0.6 : 1, marginTop: 12 }}
+                style={{ opacity: isSaving ? 0.6 : 1, marginTop: 12 }}
               >
                 {isSaving ? 'Saving…' : 'Save Preferences'}
               </button>

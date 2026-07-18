@@ -7,14 +7,14 @@
 @layer base {
   :root {
     /* Core palette */
-    --bg: #F8FAFC;
+    --bg: #FAFAFB;
     --card: #FFFFFF;
-    --border: #EAECEF;
+    --border: #ECECEC;
     --blue: #2563EB;
     --blue-light: #EEF4FF;
     --blue-mid: #DBEAFE;
-    --text-primary: #111827;
-    --text-secondary: #6B7280;
+    --text-primary: #0F172A;
+    --text-secondary: #64748B;
     --text-tertiary: #9CA3AF;
     --success: #22C55E;
     --success-light: #DCFCE7;
@@ -42,7 +42,7 @@
     --border: 214 32% 91%;
     --input: 214 32% 91%;
     --ring: 221 83% 53%;
-    --radius: 12px;
+    --radius: 14px;
   }
 
   .dark {
@@ -75,7 +75,7 @@
   * {
     @apply border-border box-border;
     scrollbar-width: thin;
-    scrollbar-color: #EAECEF transparent;
+    scrollbar-color: #ECECEC transparent;
   }
 
   *::-webkit-scrollbar { width: 4px; height: 4px; }
@@ -90,28 +90,29 @@
 
   body {
     @apply font-sans;
-    background-color: #F8FAFC;
-    color: #111827;
+    background-color: #FAFAFB;
+    color: #0F172A;
     font-feature-settings: 'rlig' 1, 'calt' 1;
   }
 
-  h1 { font-size: 18px; font-weight: 600; color: #111827; }
-  h2 { font-size: 16px; font-weight: 600; color: #111827; }
-  h3 { font-size: 15px; font-weight: 600; color: #111827; }
-  h4 { font-size: 14px; font-weight: 500; color: #111827; }
+  h1 { font-size: 34px; font-weight: 700; color: #0F172A; letter-spacing: -0.02em; }
+  h2 { font-size: 24px; font-weight: 650; color: #0F172A; letter-spacing: -0.02em; }
+  h3 { font-size: 18px; font-weight: 650; color: #0F172A; letter-spacing: -0.02em; }
+  h4 { font-size: 15px; font-weight: 500; color: #0F172A; }
 }
 
 @layer components {
   /* ── Card ── */
   .card {
     background: #FFFFFF;
-    border: 1px solid #EAECEF;
-    border-radius: 18px;
-    transition: box-shadow 200ms ease, border-color 200ms ease, transform 200ms ease;
+    border: 1px solid #ECECEC;
+    border-radius: 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    transition: all 200ms ease;
   }
   .card:hover {
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
-    border-color: #D1D5DB;
+    box-shadow: 0 8px 25px rgba(0,0,0,0.06);
+    border-color: #ECECEC;
   }
 
   /* ── Card lift on hover ── */
@@ -121,8 +122,8 @@
   }
   .card-lift:hover {
     transform: translateY(-2px);
-    box-shadow: 0 8px 20px rgba(37, 99, 235, 0.08);
-    border-color: #BFDBFE;
+    box-shadow: 0 16px 40px rgba(0,0,0,0.08);
+    border-color: #2563EB;
   }
 
   /* ── Btn Primary ── */
@@ -132,16 +133,17 @@
     gap: 8px;
     background: #2563EB;
     color: #fff;
-    border-radius: 12px;
+    border-radius: 14px;
     height: 44px;
     padding: 0 20px;
     font-size: 14px;
     font-weight: 600;
     border: none;
     cursor: pointer;
-    transition: background 150ms, transform 150ms;
+    box-shadow: 0 2px 8px rgba(37,99,235,0.1);
+    transition: all 200ms ease;
   }
-  .btn-primary:hover { background: #1D4ED8; transform: scale(1.02); }
+  .btn-primary:hover { background: #1D4ED8; transform: scale(1.02); box-shadow: 0 4px 12px rgba(37,99,235,0.2); }
   .btn-primary:active { transform: scale(0.98); }
 
   /* ── Btn Secondary ── */
@@ -150,55 +152,68 @@
     align-items: center;
     gap: 8px;
     background: #FFFFFF;
-    color: #374151;
-    border-radius: 12px;
+    color: #0F172A;
+    border-radius: 14px;
     height: 44px;
     padding: 0 20px;
     font-size: 14px;
     font-weight: 500;
-    border: 1px solid #E5E7EB;
+    border: 1px solid #ECECEC;
     cursor: pointer;
-    transition: background 150ms, border-color 150ms, transform 150ms;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+    transition: all 200ms ease;
   }
-  .btn-secondary:hover { background: #F9FAFB; border-color: #D1D5DB; transform: scale(1.01); }
+  .btn-secondary:hover { background: #FAFAFB; border-color: #D1D5DB; transform: scale(1.02); box-shadow: 0 4px 12px rgba(0,0,0,0.04); }
+  .btn-secondary:active { transform: scale(0.98); }
 
   /* ── Sidebar nav item ── */
   .nav-item {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 9px 12px;
-    border-radius: 10px;
+    gap: 12px;
+    padding: 10px 16px;
+    border-radius: 18px;
     font-size: 14px;
     font-weight: 500;
-    color: #6B7280;
+    color: #64748B;
     text-decoration: none;
-    transition: background 150ms, color 150ms;
+    position: relative;
+    transition: all 200ms ease;
     cursor: pointer;
   }
-  .nav-item:hover { background: #F3F4F6; color: #111827; }
+  .nav-item:hover { background: #F3F4F6; color: #0F172A; }
   .nav-item-active {
     background: #EEF4FF !important;
     color: #2563EB !important;
     font-weight: 600;
+    box-shadow: 0 2px 8px rgba(37,99,235,0.06);
   }
-  .nav-item-active svg { color: #2563EB !important; }
+  .nav-item-active::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 25%;
+    height: 50%;
+    width: 3px;
+    background: #2563EB;
+    border-radius: 999px;
+  }
 
   /* ── Input ── */
   .input {
     background: #FFFFFF;
-    border: 1px solid #E5E7EB;
-    border-radius: 12px;
-    height: 40px;
-    padding: 0 14px;
+    border: 1px solid #ECECEC;
+    border-radius: 14px;
+    height: 48px;
+    padding: 0 16px;
     font-size: 14px;
-    color: #111827;
-    transition: border-color 150ms, box-shadow 150ms;
+    color: #0F172A;
+    transition: all 200ms ease;
     width: 100%;
     outline: none;
   }
   .input::placeholder { color: #9CA3AF; }
-  .input:focus { border-color: #2563EB; box-shadow: 0 0 0 3px rgba(37,99,235,0.08); }
+  .input:focus { border-color: #2563EB; box-shadow: 0 0 0 4px rgba(37,99,235,0.08); }
 
   /* ── Badge ── */
   .badge-active {

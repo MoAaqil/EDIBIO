@@ -24,14 +24,14 @@ const config: Config = {
         danger:   '#EF4444',
         // Surface
         surface: {
-          bg:     '#F8FAFC',
+          bg:     '#FAFAFB',
           card:   '#FFFFFF',
-          border: '#EAECEF',
+          border: '#ECECEC',
         },
         // Text
         ink: {
-          primary:   '#111827',
-          secondary: '#6B7280',
+          primary:   '#0F172A',
+          secondary: '#64748B',
           tertiary:  '#9CA3AF',
           disabled:  '#D1D5DB',
         },
@@ -83,10 +83,11 @@ const config: Config = {
         sm:    '6px',
         md:    '8px',
         DEFAULT: '10px',
-        lg:    '12px',       // buttons, inputs
-        xl:    '14px',       // search bar
-        '2xl': '18px',       // cards
-        '3xl': '20px',       // agenda panel, big modals
+        lg:    '14px',       // buttons, inputs
+        xl:    '16px',       // search bar
+        '2xl': '18px',       // sidebar
+        '3xl': '20px',       // cards
+        '4xl': '24px',       // modals
         full:  '9999px',
       },
 
@@ -98,12 +99,13 @@ const config: Config = {
       fontSize: {
         '2xs': ['11px', { lineHeight: '16px' }],
         xs:    ['12px', { lineHeight: '18px' }],
-        sm:    ['13px', { lineHeight: '20px' }],
+        sm:    ['13px', { lineHeight: '20px', letterSpacing: '-0.01em' }],
         base:  ['14px', { lineHeight: '22px' }],
-        md:    ['15px', { lineHeight: '24px' }],
+        md:    ['15px', { lineHeight: '24px', letterSpacing: '-0.01em' }],
         lg:    ['16px', { lineHeight: '24px' }],
-        xl:    ['18px', { lineHeight: '28px' }],
-        '2xl': ['20px', { lineHeight: '30px' }],
+        xl:    ['18px', { lineHeight: '28px', letterSpacing: '-0.02em' }],
+        '2xl': ['24px', { lineHeight: '32px', letterSpacing: '-0.02em' }],
+        '3xl': ['34px', { lineHeight: '42px', letterSpacing: '-0.02em' }],
       },
 
       spacing: {
@@ -115,13 +117,12 @@ const config: Config = {
       },
 
       boxShadow: {
-        // Only on hover — never as default
-        'card':    '0 4px 16px rgba(0,0,0,0.06)',
-        'card-hover': '0 8px 24px rgba(0,0,0,0.08)',
-        'card-blue': '0 8px 20px rgba(37,99,235,0.1)',
-        'dropdown': '0 4px 20px rgba(0,0,0,0.1), 0 1px 4px rgba(0,0,0,0.04)',
-        'modal':   '0 20px 60px rgba(0,0,0,0.14)',
-        'btn':     '0 1px 3px rgba(37,99,235,0.2)',
+        'sm':      '0 2px 8px rgba(0,0,0,0.04)',
+        'card':    '0 8px 25px rgba(0,0,0,0.06)',
+        'hover':   '0 16px 40px rgba(0,0,0,0.08)',
+        'card-blue': '0 8px 20px rgba(37,99,235,0.06)',
+        'dropdown': '0 8px 25px rgba(0,0,0,0.06)',
+        'modal':   '0 20px 60px rgba(0,0,0,0.12)',
         'none':    'none',
       },
 
