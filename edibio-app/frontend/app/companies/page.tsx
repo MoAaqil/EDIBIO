@@ -323,76 +323,76 @@ export default function CompaniesPage() {
                 <div className="modal-overlay" style={{ zIndex: 3000 }}>
                     <div className="modal-box" style={{ maxWidth: 480, borderRadius: 28, overflow: 'hidden', padding: 0 }} onClick={e => e.stopPropagation()}>
                         {/* Header gradient */}
-                        <div style={{ background: 'linear-gradient(135deg,#1A1A2E,#16213E)', padding: '32px 32px 24px', textAlign: 'center', position: 'relative' }}>
+                        <div style={{ background: 'linear-gradient(135deg,#1A1A2E,#16213E)', padding: '24px 24px 16px', textAlign: 'center', position: 'relative' }}>
                             <div style={{ height: 4, background: 'linear-gradient(90deg,#4285F4 25%,#34A853 25% 50%,#FBBC04 50% 75%,#EA4335 75%)', position: 'absolute', top: 0, left: 0, right: 0 }} />
-                            <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'linear-gradient(135deg,#4285F4,#9333EA)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', boxShadow: '0 8px 24px rgba(66,133,244,0.4)' }}>
-                                <Sparkles size={28} color="white" />
+                            <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'linear-gradient(135deg,#4285F4,#9333EA)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px', boxShadow: '0 8px 24px rgba(66,133,244,0.4)' }}>
+                                <Sparkles size={24} color="white" />
                             </div>
-                            <h2 style={{ color: 'white', fontWeight: 900, fontSize: 22, margin: '0 0 8px' }}>Welcome to Edibio! 🎉</h2>
-                            <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: 14 }}>Your powerful store management platform. Let's set you up in 3 easy steps.</p>
+                            <h2 style={{ color: 'white', fontWeight: 900, fontSize: 20, margin: '0 0 4px' }}>Welcome to Edibio! 🎉</h2>
+                            <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: 13, margin: 0 }}>Your store management platform. Let's set you up in 3 easy steps.</p>
                             {/* Step dots */}
-                            <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 20 }}>
+                            <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 14 }}>
                                 {[0, 1, 2].map(i => (
-                                    <div key={i} style={{ width: i === onboardStep ? 24 : 8, height: 8, borderRadius: 99, background: i <= onboardStep ? '#4285F4' : 'rgba(255,255,255,0.2)', transition: 'all 0.3s' }} />
+                                    <div key={i} style={{ width: i === onboardStep ? 20 : 6, height: 6, borderRadius: 99, background: i <= onboardStep ? '#4285F4' : 'rgba(255,255,255,0.2)', transition: 'all 0.3s' }} />
                                 ))}
                             </div>
                         </div>
 
-                        <div style={{ padding: '28px 32px' }}>
+                        <div className="modal-scroll-body" style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column' }}>
                             {onboardStep === 0 && (
                                 <div>
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 24 }}>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 18 }}>
                                         {[
-                                            { icon: <Building2 size={20} color="#4285F4" />, title: 'Create your business', desc: 'Add your company name, GST, and branding', color: '#E8F0FE' },
-                                            { icon: <Package size={20} color="#34A853" />, title: 'Add your products', desc: 'Bulk import or add items with prices & stock', color: '#E6F4EA' },
-                                            { icon: <FileText size={20} color="#FBBC04" />, title: 'Create your first bill', desc: 'Professional GST invoices in seconds', color: '#FEF7E0' },
+                                            { icon: <Building2 size={18} color="#4285F4" />, title: 'Create your business', desc: 'Add your company name, GST, and branding', color: '#E8F0FE' },
+                                            { icon: <Package size={18} color="#34A853" />, title: 'Add your products', desc: 'Bulk import or add items with prices & stock', color: '#E6F4EA' },
+                                            { icon: <FileText size={18} color="#FBBC04" />, title: 'Create your first bill', desc: 'Professional GST invoices in seconds', color: '#FEF7E0' },
                                         ].map((s, i) => (
-                                            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', borderRadius: 14, background: s.color }}>
-                                                <div style={{ width: 40, height: 40, borderRadius: 12, background: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{s.icon}</div>
+                                            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderRadius: 12, background: s.color }}>
+                                                <div style={{ width: 36, height: 36, borderRadius: 10, background: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{s.icon}</div>
                                                 <div>
                                                     <p style={{ fontWeight: 700, fontSize: 13, color: '#1A1A2E', margin: 0 }}>{s.title}</p>
-                                                    <p style={{ fontSize: 12, color: '#718096', margin: 0 }}>{s.desc}</p>
+                                                    <p style={{ fontSize: 11, color: '#718096', margin: 0 }}>{s.desc}</p>
                                                 </div>
                                             </div>
                                         ))}
                                     </div>
-                                    <button onClick={() => setOnboardStep(1)} style={{ width: '100%', padding: '14px', background: 'linear-gradient(135deg,#4285F4,#1967D2)', color: 'white', border: 'none', borderRadius: 14, fontWeight: 800, fontSize: 15, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                                        Get Started <ArrowRight size={18} />
+                                    <button onClick={() => setOnboardStep(1)} style={{ width: '100%', padding: '12px', background: 'linear-gradient(135deg,#4285F4,#1967D2)', color: 'white', border: 'none', borderRadius: 12, fontWeight: 800, fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                                        Get Started <ArrowRight size={16} />
                                     </button>
                                 </div>
                             )}
                             {onboardStep === 1 && (
                                 <div style={{ textAlign: 'center' }}>
-                                    <div style={{ width: 72, height: 72, borderRadius: 20, background: '#E8F0FE', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
-                                        <Building2 size={36} color="#4285F4" />
+                                    <div style={{ width: 64, height: 64, borderRadius: 16, background: '#E8F0FE', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+                                        <Building2 size={32} color="#4285F4" />
                                     </div>
-                                    <h3 style={{ fontWeight: 900, fontSize: 18, color: '#1A1A2E', marginBottom: 8 }}>Step 1: Add your business</h3>
-                                    <p style={{ color: '#718096', fontSize: 13, lineHeight: 1.6, marginBottom: 24 }}>
+                                    <h3 style={{ fontWeight: 900, fontSize: 16, color: '#1A1A2E', marginBottom: 6 }}>Step 1: Add your business</h3>
+                                    <p style={{ color: '#718096', fontSize: 12, lineHeight: 1.5, marginBottom: 20 }}>
                                         Give your business a name, choose your type (supermarket, retail, restaurant, etc.) and optionally add your GST number for tax invoices.
                                     </p>
                                     <div style={{ display: 'flex', gap: 10 }}>
-                                        <button onClick={() => setOnboardStep(0)} style={{ flex: 1, padding: '12px', background: '#F1F5F9', color: '#718096', border: 'none', borderRadius: 12, fontWeight: 700, cursor: 'pointer' }}>Back</button>
-                                        <button onClick={() => setOnboardStep(2)} style={{ flex: 2, padding: '12px', background: 'linear-gradient(135deg,#4285F4,#1967D2)', color: 'white', border: 'none', borderRadius: 12, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                                            Got it <ArrowRight size={16} />
+                                        <button onClick={() => setOnboardStep(0)} style={{ flex: 1, padding: '10px', background: '#F1F5F9', color: '#718096', border: 'none', borderRadius: 10, fontWeight: 700, cursor: 'pointer', fontSize: 13 }}>Back</button>
+                                        <button onClick={() => setOnboardStep(2)} style={{ flex: 2, padding: '10px', background: 'linear-gradient(135deg,#4285F4,#1967D2)', color: 'white', border: 'none', borderRadius: 10, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontSize: 13 }}>
+                                            Got it <ArrowRight size={14} />
                                         </button>
                                     </div>
                                 </div>
                             )}
                             {onboardStep === 2 && (
                                 <div style={{ textAlign: 'center' }}>
-                                    <div style={{ width: 72, height: 72, borderRadius: '50%', background: '#E6F4EA', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
-                                        <Check size={36} color="#34A853" />
+                                    <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#E6F4EA', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+                                        <Check size={32} color="#34A853" />
                                     </div>
-                                    <h3 style={{ fontWeight: 900, fontSize: 18, color: '#1A1A2E', marginBottom: 8 }}>You're all set! 🚀</h3>
-                                    <p style={{ color: '#718096', fontSize: 13, lineHeight: 1.6, marginBottom: 24 }}>
+                                    <h3 style={{ fontWeight: 900, fontSize: 16, color: '#1A1A2E', marginBottom: 6 }}>You're all set! 🚀</h3>
+                                    <p style={{ color: '#718096', fontSize: 12, lineHeight: 1.5, marginBottom: 20 }}>
                                         Once you create your company, add products to inventory, then start creating fast GST bills in seconds. Let's create your first company now!
                                     </p>
-                                    <button onClick={finishOnboarding} style={{ width: '100%', padding: '14px', background: 'linear-gradient(135deg,#34A853,#16A34A)', color: 'white', border: 'none', borderRadius: 14, fontWeight: 800, fontSize: 15, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                                        <Building2 size={18} /> Create My Business
+                                    <button onClick={finishOnboarding} style={{ width: '100%', padding: '12px', background: 'linear-gradient(135deg,#34A853,#16A34A)', color: 'white', border: 'none', borderRadius: 12, fontWeight: 800, fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                                        <Building2 size={16} /> Create My Business
                                     </button>
                                 </div>
                             )}
-                            <button onClick={() => { localStorage.setItem('edibio_onboarded', '1'); setShowOnboarding(false); }} style={{ width: '100%', marginTop: 12, background: 'none', border: 'none', color: '#A0AEC0', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>Skip for now</button>
+                            <button onClick={() => { localStorage.setItem('edibio_onboarded', '1'); setShowOnboarding(false); }} style={{ width: '100%', marginTop: 10, background: 'none', border: 'none', color: '#A0AEC0', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>Skip for now</button>
                         </div>
                     </div>
                 </div>

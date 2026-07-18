@@ -25,6 +25,8 @@ export default function CheckoutPage() {
   const [storesMap, setStoresMap] = useState<{ [id: string]: any }>({});
   const [userPoints, setUserPoints] = useState(0);
   const [redeemApplied, setRedeemApplied] = useState(false);
+  const [walletBalance, setWalletBalance] = useState(0);
+  const [useWallet, setUseWallet] = useState(false);
 
   useEffect(() => {
     async function fetchUserPoints() {
@@ -34,6 +36,7 @@ export default function CheckoutPage() {
           if (res.ok) {
             const data = await res.json();
             setUserPoints(data.ediPoints || 0);
+            setWalletBalance(data.walletBalance || 0);
           }
         } catch (err) {
           console.error('Error fetching user points:', err);
@@ -87,15 +90,18 @@ export default function CheckoutPage() {
       }
 
       const pointsDiscount = redeemApplied ? Math.min(userPoints, cartTotal) : 0;
+      const afterPointsTotal = cartTotal - pointsDiscount;
+      const walletDiscount = useWallet ? Math.min(walletBalance, afterPointsTotal) : 0;
 
       // Create Order payload in database format
       const orderPayload = {
         customerId: user.uid,
         customerName: addressName,
         customerPhone: addressPhone,
-        items: cart, // pass full cart items directly
+        items: cart,
         paymentMethod,
-        redeemPoints: pointsDiscount, // pass points to redeem
+        redeemPoints: pointsDiscount,
+        walletDeduction: walletDiscount,
         shippingAddress: {
           name: addressName,
           phone: addressPhone,
@@ -367,11 +373,40 @@ export default function CheckoutPage() {
               </div>
             )}
 
+            {walletBalance > 0 && (
+              <div style={{ ...redemptionBoxStyle, marginTop: '12px' }}>
+                <label style={redemptionLabelStyle}>
+                  <input
+                    type="checkbox"
+                    checked={useWallet}
+                    onChange={(e) => setUseWallet(e.target.checked)}
+                    style={checkboxStyle}
+                  />
+                  <span>Redeem Wallet Balance (Available: {formatPrice(walletBalance)})</span>
+                </label>
+                {useWallet && (
+                  <div style={priceRowStyle}>
+                    <span style={{ color: '#ea4335', fontWeight: '600' }}>Wallet Discount</span>
+                    <span style={{ color: '#ea4335', fontWeight: '600' }}>-{formatPrice(Math.min(walletBalance, cartTotal - (redeemApplied ? Math.min(userPoints, cartTotal) : 0)))}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div style={dividerStyle}></div>
 
             <div style={totalRowStyle}>
               <span>Grand Total</span>
-              <span>{formatPrice(cartTotal - (redeemApplied ? Math.min(userPoints, cartTotal) : 0))}</span>
+              <span>
+                {formatPrice(
+                  Math.max(
+                    0,
+                    cartTotal - 
+                    (redeemApplied ? Math.min(userPoints, cartTotal) : 0) - 
+                    (useWallet ? Math.min(walletBalance, cartTotal - (redeemApplied ? Math.min(userPoints, cartTotal) : 0)) : 0)
+                  )
+                )}
+              </span>
             </div>
 
             <button type="submit" disabled={loading} style={placeOrderButtonStyle}>

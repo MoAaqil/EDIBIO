@@ -18,7 +18,9 @@ const OrderSchema = new Schema({
       price: { type: Number, required: true },
       mrp: { type: Number, required: true },
       gstRate: { type: Number, required: true },
-      totalPrice: { type: Number, required: true }
+      totalPrice: { type: Number, required: true },
+      variantSku: { type: String },
+      selectedAttributes: { type: Map, of: String }
     }],
     required: true
   },

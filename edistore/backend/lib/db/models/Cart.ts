@@ -12,7 +12,9 @@ const CartSchema = new Schema({
       mrp: { type: Number, required: true },
       stockQty: { type: Number, required: true },
       qty: { type: Number, required: true },
-      unit: { type: String, default: 'units' }
+      unit: { type: String, default: 'units' },
+      variantSku: { type: String },
+      selectedAttributes: { type: Map, of: String }
     }],
     default: []
   }

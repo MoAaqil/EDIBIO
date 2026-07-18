@@ -20,6 +20,7 @@ const StoreSchema = new Schema({
   isVerified: { type: Boolean, default: false },
   isActive: { type: Boolean, default: false },
   isPending: { type: Boolean, default: true },
+  razorpayAccountId: { type: String },
   bankDetails: {
     bankName: { type: String },
     accountName: { type: String },

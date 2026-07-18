@@ -12,6 +12,7 @@ const UserSchema = new Schema({
   fcmToken: { type: String },
   sellerStatus: { type: String, enum: ['pending', 'approved', 'rejected'] }, // only applicable for roles applying to be sellers
   ediPoints: { type: Number, default: 0 },
+  walletBalance: { type: Number, default: 0 },
 }, { timestamps: true });
 
 export const EdistoreUserData = mongoose.models.EdistoreUser || mongoose.model('EdistoreUser', UserSchema);

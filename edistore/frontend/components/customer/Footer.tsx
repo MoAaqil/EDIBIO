@@ -11,17 +11,25 @@ export default function Footer() {
     <footer style={footerStyle}>
       <div className="container" style={footerContainerStyle}>
         <div style={footerGridStyle}>
-          {/* Brand Info */}
+          {/* Trust Info & Accepted Payments */}
           <div style={footerBrandSectionStyle}>
-            <Link href="/" style={logoStyle}>
-              <span style={{ color: '#EA4335' }}>E</span>
-              <span style={{ color: '#FBBC04' }}>d</span>
-              <span style={{ color: '#34A853' }}>i</span>
-              <span style={{ color: '#4285F4' }}>Store</span>
-            </Link>
-            <p style={brandDescStyle}>
-              Your neighborhood supermarket, boutique, grocery, and electronic stores — all brought online. Secure checkout and fast delivery right to your doorstep.
-            </p>
+            <h4 style={footerHeadingStyle}>🛡️ EdiStore Trust Assurance</h4>
+            <ul style={{ ...listStyle, gap: '8px', color: '#cbd5e1' }}>
+              <li>✓ 100% Secure Payments</li>
+              <li>✓ Trusted Local Sellers</li>
+              <li>✓ Fast Delivery</li>
+              <li>✓ 24×7 Customer Support</li>
+            </ul>
+            <div style={{ marginTop: '16px' }}>
+              <h4 style={{ ...footerHeadingStyle, fontSize: '13px', marginBottom: '8px' }}>Accepted Payments</h4>
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                {['Visa', 'Mastercard', 'RuPay', 'UPI', 'Paytm', 'PhonePe', 'Google Pay'].map(pm => (
+                  <span key={pm} style={{ fontSize: '11px', fontWeight: '800', backgroundColor: '#1e293b', border: '1px solid #334155', color: '#cbd5e1', padding: '3px 8px', borderRadius: '6px' }}>
+                    {pm}
+                  </span>
+                ))}
+              </div>
+            </div>
           </div>
 
           {/* Links Section 1 */}

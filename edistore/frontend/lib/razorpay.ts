@@ -147,6 +147,58 @@ export function verifyPayment(
 }
 
 // ---------------------------------------------------------------------------
+// createTransfer  (Razorpay Route — split payout to a linked sub-account)
+// ---------------------------------------------------------------------------
+
+/**
+ * Transfers funds from a captured payment to a Razorpay linked sub-account
+ * using the Razorpay Route API.
+ *
+ * @param paymentId       - The captured Razorpay payment ID (e.g. "pay_xxxx")
+ * @param linkedAccountId - The seller's Razorpay linked-account ID (e.g. "acc_xxxx")
+ * @param amountPaise     - Amount in paise to transfer (e.g. ₹499 → 49900)
+ * @returns               The Razorpay Transfer object
+ */
+export async function createTransfer(
+  paymentId: string,
+  linkedAccountId: string,
+  amountPaise: number
+): Promise<any> {
+  if (!paymentId || !linkedAccountId) {
+    throw new Error('[Razorpay] createTransfer: paymentId and linkedAccountId are required.');
+  }
+  if (amountPaise <= 0) {
+    throw new Error('[Razorpay] createTransfer: amountPaise must be a positive integer.');
+  }
+
+  const razorpay = getRazorpayInstance();
+
+  try {
+    // Razorpay Route: POST /v1/payments/:id/transfers
+    // The Node SDK exposes this via razorpay.payments.transfer()
+    const transfer = await (razorpay as any).payments.transfer(paymentId, {
+      transfers: [
+        {
+          account: linkedAccountId,
+          amount: Math.round(amountPaise),
+          currency: 'INR',
+          notes: {
+            source_payment: paymentId,
+            description: 'EdiStore seller payout via Razorpay Route',
+          },
+          linked_account_notes: ['source_payment'],
+          on_hold: false,
+        },
+      ],
+    });
+    return transfer;
+  } catch (err) {
+    console.error('[Razorpay] createTransfer failed:', err);
+    throw err;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Export singleton accessor for advanced use-cases
 // ---------------------------------------------------------------------------
 export { getRazorpayInstance };

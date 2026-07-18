@@ -24,6 +24,16 @@ const ProductSchema = new Schema({
   length: { type: Number }, // in cm
   breadth: { type: Number }, // in cm
   height: { type: Number }, // in cm
+  variants: {
+    type: [{
+      sku: { type: String, required: true },
+      attributes: { type: Map, of: String }, // e.g. { size: "XL", color: "Black" }
+      price: { type: Number, required: true },
+      mrp: { type: Number, required: true },
+      stockQty: { type: Number, default: 0 }
+    }],
+    default: []
+  },
 }, { timestamps: true });
 
 // Compound indexes

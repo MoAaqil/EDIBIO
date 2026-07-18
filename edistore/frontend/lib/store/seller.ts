@@ -1,6 +1,7 @@
 'use client';
 
 import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import type { EdistoreUser, Store, Product, Order, Notification } from '../types';
 
 // ---------------------------------------------------------------------------
@@ -44,68 +45,81 @@ interface SellerState {
 }
 
 // ---------------------------------------------------------------------------
-// Store (no persistence — data is always fetched fresh from Firestore)
+// Store (Persisted to survive refresh)
 // ---------------------------------------------------------------------------
 
-export const useSellerStore = create<SellerState>()((set) => ({
-  // ── Initial state ──────────────────────────────────────────────────────────
-  user: null,
-  store: null,
-  products: [],
-  orders: [],
-  notifications: [],
-  unreadCount: 0,
-  isLoading: false,
-
-  // ── Auth ───────────────────────────────────────────────────────────────────
-  setUser: (user) => set({ user }),
-
-  // ── Store ──────────────────────────────────────────────────────────────────
-  setStore: (store) => set({ store }),
-
-  // ── Products ───────────────────────────────────────────────────────────────
-  setProducts: (products) => set({ products }),
-
-  addProduct: (product) =>
-    set((state) => ({
-      products: [product, ...state.products],
-    })),
-
-  updateProduct: (id, updates) =>
-    set((state) => ({
-      products: state.products.map((p) =>
-        p._id === id ? { ...p, ...updates } : p
-      ),
-    })),
-
-  deleteProduct: (id) =>
-    set((state) => ({
-      products: state.products.filter((p) => p._id !== id),
-    })),
-
-  // ── Orders ─────────────────────────────────────────────────────────────────
-  setOrders: (orders) => set({ orders }),
-
-  updateOrder: (id, updates) =>
-    set((state) => ({
-      orders: state.orders.map((o) =>
-        o._id === id ? { ...o, ...updates } : o
-      ),
-    })),
-
-  // ── Notifications ───────────────────────────────────────────────────────────
-  setNotifications: (notifications) =>
-    set({
-      notifications,
-      unreadCount: notifications.filter((n) => !n.isRead).length,
-    }),
-
-  markNotificationsRead: () =>
-    set((state) => ({
-      notifications: state.notifications.map((n) => ({ ...n, isRead: true })),
+export const useSellerStore = create<SellerState>()(
+  persist(
+    (set) => ({
+      // ── Initial state ──────────────────────────────────────────────────────────
+      user: null,
+      store: null,
+      products: [],
+      orders: [],
+      notifications: [],
       unreadCount: 0,
-    })),
+      isLoading: false,
 
-  // ── UI ──────────────────────────────────────────────────────────────────────
-  setLoading: (loading) => set({ isLoading: loading }),
-}));
+      // ── Auth ───────────────────────────────────────────────────────────────────
+      setUser: (user) => set({ user }),
+
+      // ── Store ──────────────────────────────────────────────────────────────────
+      setStore: (store) => set({ store }),
+
+      // ── Products ───────────────────────────────────────────────────────────────
+      setProducts: (products) => set({ products }),
+
+      addProduct: (product) =>
+        set((state) => ({
+          products: [product, ...state.products],
+        })),
+
+      updateProduct: (id, updates) =>
+        set((state) => ({
+          products: state.products.map((p) =>
+            p._id === id ? { ...p, ...updates } : p
+          ),
+        })),
+
+      deleteProduct: (id) =>
+        set((state) => ({
+          products: state.products.filter((p) => p._id !== id),
+        })),
+
+      // ── Orders ─────────────────────────────────────────────────────────────────
+      setOrders: (orders) => set({ orders }),
+
+      updateOrder: (id, updates) =>
+        set((state) => ({
+          orders: state.orders.map((o) =>
+            o._id === id ? { ...o, ...updates } : o
+          ),
+        })),
+
+      // ── Notifications ───────────────────────────────────────────────────────────
+      setNotifications: (notifications) =>
+        set({
+          notifications,
+          unreadCount: notifications.filter((n) => !n.isRead).length,
+        }),
+
+      markNotificationsRead: () =>
+        set((state) => ({
+          notifications: state.notifications.map((n) => ({ ...n, isRead: true })),
+          unreadCount: 0,
+        })),
+
+      // ── UI ──────────────────────────────────────────────────────────────────────
+      setLoading: (loading) => set({ isLoading: loading }),
+    }),
+    {
+      name: 'edistore-seller',
+      storage: createJSONStorage(() => localStorage),
+      // Only persist auth user and store details — dynamic arrays are fetched fresh
+      partialize: (state) => ({
+        user: state.user,
+        store: state.store,
+      }),
+    }
+  )
+);

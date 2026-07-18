@@ -4,6 +4,7 @@ import { OrderData } from '@/lib/db/models/Order';
 import { StoreData } from '@/lib/db/models/Store';
 import { PaymentData } from '@/lib/db/models/Payment';
 import { EdistoreUserData } from '@/lib/db/models/User';
+import { createTransfer } from '@/lib/razorpay';
 
 export async function GET(request: Request) {
   try {
@@ -47,7 +48,8 @@ export async function POST(request: Request) {
       shippingAddress,
       razorpayOrderId,
       razorpayPaymentId,
-      redeemPoints // optional Edi Points to redeem (1 point = ₹1 discount)
+      redeemPoints, // optional Edi Points to redeem (1 point = ₹1 discount)
+      walletDeduction // optional Wallet deduction
     } = body;
 
     // Enforce authentication for checkout
@@ -74,6 +76,21 @@ export async function POST(request: Request) {
       
       // Deduct the points from user profile in database
       await EdistoreUserData.findByIdAndUpdate(customerId, { $inc: { ediPoints: -pointsToRedeem } });
+    }
+
+    // Verify user profile and wallet balance if wallet deduction is requested
+    const walletAmt = Number(walletDeduction) || 0;
+    if (walletAmt > 0) {
+      const user = await EdistoreUserData.findById(customerId);
+      if (!user) {
+        return NextResponse.json({ error: 'User profile not found.' }, { status: 404 });
+      }
+      if (user.walletBalance < walletAmt) {
+        return NextResponse.json({ error: `Insufficient wallet balance. Available: ₹${user.walletBalance}` }, { status: 400 });
+      }
+      
+      // Deduct the wallet balance from user profile in database
+      await EdistoreUserData.findByIdAndUpdate(customerId, { $inc: { walletBalance: -walletAmt } });
     }
 
     // 1. Group items by storeId
@@ -119,14 +136,14 @@ export async function POST(request: Request) {
 
       const subtotal = storeSubtotals.get(storeId) || 0;
 
-      // Distribute points discount proportionally (1 point = ₹1)
+      // Distribute points and wallet discount proportionally
+      const totalRedeemDeduction = pointsToRedeem + walletAmt;
       let orderDiscount = 0;
-      if (pointsToRedeem > 0 && consolidatedSubtotal > 0) {
+      if (totalRedeemDeduction > 0 && consolidatedSubtotal > 0) {
         if (i === storeGroupEntries.length - 1) {
-          // Last order gets the remaining portion of the points discount
-          orderDiscount = pointsToRedeem - discountAppliedSoFar;
+          orderDiscount = totalRedeemDeduction - discountAppliedSoFar;
         } else {
-          orderDiscount = Math.floor(pointsToRedeem * (subtotal / consolidatedSubtotal));
+          orderDiscount = Math.floor(totalRedeemDeduction * (subtotal / consolidatedSubtotal));
           discountAppliedSoFar += orderDiscount;
         }
       }
@@ -183,6 +200,19 @@ export async function POST(request: Request) {
 
       const order = new OrderData(orderPayload);
       await order.save();
+
+      // Trigger Razorpay Route transfer if store has linked sub-account and method is Razorpay
+      if (paymentMethod === 'razorpay' && razorpayPaymentId && store.razorpayAccountId) {
+        const netTransferAmount = totalAmount - commAmount;
+        if (netTransferAmount > 0) {
+          try {
+            await createTransfer(razorpayPaymentId, store.razorpayAccountId, netTransferAmount * 100);
+            console.log(`[Razorpay Route] Split transfer of ₹${netTransferAmount} (in paise: ${netTransferAmount * 100}) for payment ${razorpayPaymentId} queued to seller sub-account ${store.razorpayAccountId}`);
+          } catch (splitErr: any) {
+            console.error(`[Razorpay Route] Failed to queue split transfer for store ${storeId} (seller: ${sellerId}):`, splitErr.message);
+          }
+        }
+      }
       
       createdOrders.push(order);
       createdOrderIds.push(orderId);

@@ -150,8 +150,10 @@ export const useCustomerStore = create<CustomerState>()(
       // (For guests the data clears when the user manually clears browser storage.)
       storage: createJSONStorage(() => localStorage),
 
-      // Only persist cart and wishlist — auth state and UI flags are ephemeral.
+      // Persist auth status, user info, cart, and wishlist - UI flags are ephemeral.
       partialize: (state) => ({
+        user: state.user,
+        isAuthenticated: state.isAuthenticated,
         cart: state.cart,
         cartCount: state.cartCount,
         cartTotal: state.cartTotal,

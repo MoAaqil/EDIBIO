@@ -697,3 +697,115 @@ select.input { cursor: pointer; appearance: none; background-image: url("data:im
   box-shadow: var(--shadow-md) !important;
   border-color: rgba(99, 102, 241, 0.3) !important;
 }
+
+/* ── Navbar Mobile Responsive ── */
+@media (max-width: 768px) {
+  /* Hide desktop nav links on mobile */
+  header > div > div:last-child:not(button) {
+    display: none !important;
+  }
+  /* Show hamburger on mobile */
+  header button[style*="display: none"] {
+    display: flex !important;
+  }
+  /* Collapse hero side offer cards */
+  div[style*="offerCardsColumn"],
+  div[style*="width: 240px"] {
+    display: none;
+  }
+}
+
+/* Explicit mobile hamburger show */
+@media (max-width: 900px) {
+  .mobile-trigger { display: flex !important; }
+  .desktop-links  { display: none !important; }
+}
+
+/* ── Enhanced Hover States for New Cards ── */
+.product-card:hover .btn-add-cart-visible,
+.product-card:hover [style*="addCartBtnStyle"] {
+  opacity: 1;
+}
+
+.category-bar-item:hover > div {
+  transform: translateY(-3px);
+  border-color: var(--blue) !important;
+  background-color: var(--blue-light) !important;
+}
+
+/* Store card hover polish */
+a[style*="richStoreCard"]:hover,
+a[style*="store-card"]:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 28px rgba(66, 133, 244, 0.15);
+}
+
+/* Offer cards hover */
+a[style*="offerCard"]:hover {
+  transform: scale(1.02);
+  box-shadow: 0 4px 14px rgba(0,0,0,0.08);
+}
+
+/* Timeline dot pulse for active step */
+@keyframes pulse-blue {
+  0%, 100% { box-shadow: 0 0 0 4px rgba(66, 133, 244, 0.2); }
+  50%       { box-shadow: 0 0 0 8px rgba(66, 133, 244, 0.08); }
+}
+
+/* Countdown timer animation */
+@keyframes tick {
+  0%   { transform: scale(1); }
+  50%  { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+
+/* Progress bar gradient animation */
+@keyframes shimmer {
+  0%   { background-position: -200px 0; }
+  100% { background-position: calc(200px + 100%) 0; }
+}
+
+/* Notification bell pulse */
+@keyframes bell-ring {
+  0%, 100% { transform: rotate(0deg); }
+  10%, 30% { transform: rotate(-15deg); }
+  20%, 40% { transform: rotate(15deg); }
+  50%       { transform: rotate(0deg); }
+}
+
+/* Smooth card entrance */
+.card {
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.card:hover {
+  box-shadow: var(--shadow-sm);
+}
+
+/* ── Mobile Scroll & Snap Helpers ── */
+.category-scroll-container {
+  overflow-x: auto;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none;  /* IE and Edge */
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+}
+.category-scroll-container::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
+}
+
+.products-horizontal-shelf {
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+}
+.products-horizontal-shelf::-webkit-scrollbar {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .offer-cards-column {
+    display: none !important;
+  }
+}

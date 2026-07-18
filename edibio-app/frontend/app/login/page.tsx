@@ -237,7 +237,18 @@ export default function LoginPage() {
             });
             router.replace('/companies');
         } catch (err: any) {
-            setError(err.message || 'Failed to create account');
+            console.error("Registration error:", err);
+            let msg = 'Failed to create account. Please try again.';
+            if (err.code === 'auth/email-already-in-use') {
+                msg = 'This email is already registered. Please sign in instead.';
+            } else if (err.code === 'auth/weak-password') {
+                msg = 'Password is too weak. Please use at least 6 characters.';
+            } else if (err.code === 'auth/invalid-email') {
+                msg = 'Invalid email address format.';
+            } else if (err.message) {
+                msg = err.message.replace('Firebase: ', '');
+            }
+            setError(msg);
             setLoading(false);
         }
     };
@@ -259,7 +270,16 @@ export default function LoginPage() {
             });
             router.replace('/companies');
         } catch (err: any) {
-            setError('Invalid email or password');
+            console.error("Login error:", err);
+            let msg = 'Invalid email or password.';
+            if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+                msg = 'Invalid email or password. Please verify your credentials.';
+            } else if (err.code === 'auth/too-many-requests') {
+                msg = 'Account temporarily locked due to too many failed attempts. Try again later or reset password.';
+            } else if (err.message) {
+                msg = err.message.replace('Firebase: ', '');
+            }
+            setError(msg);
             setLoading(false);
         }
     };

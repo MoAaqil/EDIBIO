@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { formatPrice } from '@/lib/utils';
 import { TrendingUp, ShoppingBag, Award, ArrowUpRight, BarChart3 } from 'lucide-react';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 export default function SellerAnalyticsPage() {
   const [salesPeriod, setSalesPeriod] = useState<'week' | 'month' | 'year'>('month');
@@ -23,8 +24,6 @@ export default function SellerAnalyticsPage() {
     { name: 'Wireless Bluetooth Headset v5.3', units: 12, revenue: 17988 },
   ];
 
-  const maxVal = Math.max(...monthlyRevenueData.map(d => d.value));
-
   return (
     <div style={containerStyle}>
       <div style={headerRowStyle}>
@@ -43,19 +42,27 @@ export default function SellerAnalyticsPage() {
         {/* Sales charts */}
         <div className="card" style={chartCardStyle}>
           <h3 style={cardTitleStyle}>Monthly Revenue Graph (INR)</h3>
-          <div style={chartWrapperStyle}>
-            {monthlyRevenueData.map((d, idx) => {
-              const heightPct = (d.value / maxVal) * 100;
-              return (
-                <div key={idx} style={chartBarContainerStyle}>
-                  <div style={chartBarLabelValueStyle}>{formatPrice(d.value)}</div>
-                  <div style={chartBarInnerWrapperStyle}>
-                    <div style={chartBarFillStyle(heightPct)}></div>
-                  </div>
-                  <div style={chartBarLabelStyle}>{d.label}</div>
-                </div>
-              );
-            })}
+          <div style={{ height: '260px', width: '100%', marginTop: '16px' }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={monthlyRevenueData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.2}/>
+                    <stop offset="95%" stopColor="#4f46e5" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis dataKey="label" stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} />
+                <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} />
+                <Tooltip 
+                  contentStyle={{ backgroundColor: '#0f172a', borderRadius: '12px', border: 'none' }}
+                  labelStyle={{ color: '#94a3b8', fontSize: '11px', fontWeight: '600' }}
+                  itemStyle={{ color: '#ffffff', fontSize: '13px', fontWeight: '800' }}
+                  formatter={(val) => [`₹${val}`, 'Revenue']}
+                />
+                <Area type="monotone" dataKey="value" stroke="#4f46e5" strokeWidth={3} fillOpacity={1} fill="url(#colorValue)" />
+              </AreaChart>
+            </ResponsiveContainer>
           </div>
         </div>
 

@@ -25,3 +25,33 @@ export async function GET(
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
+
+export async function PUT(
+  request: Request,
+  { params }: { params: Promise<{ userId: string }> }
+) {
+  try {
+    const { userId } = await params;
+    const body = await request.json();
+
+    if (!userId) {
+      return NextResponse.json({ error: 'Missing userId parameter' }, { status: 400 });
+    }
+
+    await dbConnect();
+    
+    const updatedUser = await EdistoreUserData.findByIdAndUpdate(
+      userId,
+      { $set: body },
+      { new: true, runValidators: true }
+    );
+
+    if (!updatedUser) {
+      return NextResponse.json({ error: 'User profile not found' }, { status: 404 });
+    }
+
+    return NextResponse.json(updatedUser);
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
+}
